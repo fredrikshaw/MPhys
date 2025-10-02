@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 def calc_clmn(l: int, m, n, a, r_g, mu_a):
     # Use ** for exponentiation
@@ -51,17 +52,17 @@ def Gamma(l, m, n, a, r_g, mu_a):
     return 2 * mu_a * alpha**(4 * l + 4) * r_plus * (m * w_plus - mu_a) * C_lmn
 
 def plot_inverse_superradiance_rate_overlay():
-    l_values = [1, 2, 3, 4]
+    l_values = [1, 2, 3, 4, 5]
     
-    r_g = 1#.33e21
-    spins = [0.90, 0.99]
+    r_g = 1.33e21
+    spins = [0.90, 0.99, 0.999]
     alpha_vals = np.logspace(-2, 1, 200)  # 0.01 to 1.0 (log scale)
     
     # Create single figure
     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
     
-    colors = ['blue', 'orange', 'red', 'green']
-    linestyles = ["--", "-"]
+    colors = ['blue', 'orange', 'red', 'green', 'purple']
+    linestyles = ["--", "-.", "-"]
     
     for spin_idx, a_star in enumerate(spins):
         a = a_star * r_g
@@ -88,25 +89,12 @@ def plot_inverse_superradiance_rate_overlay():
                             gamma_inv = 1.0 / gamma  # This is Gamma^{-1}
                             Gamma_inv_values.append(gamma_inv)
                             valid_alpha.append(alpha)
-                        else:
-                            # Use large value for log plot when Gamma is very small
-                            Gamma_inv_values.append(1e20)
-                            valid_alpha.append(alpha)
                     except (OverflowError, ValueError, ZeroDivisionError):
-                        # Handle numerical issues
-                        Gamma_inv_values.append(1e20)
-                        gamma_vals.append(1e-20)
-                        valid_alpha.append(alpha)
-                else:
-                    # Superradiance condition not satisfied - very long timescale
-                    gamma_vals.append(1e-20)
-                    Gamma_inv_values.append(1e20)
-                    valid_alpha.append(alpha)
+                        pass
             
             # Plot both spin values on the same axes
             # Use different linestyles for different spins, colors for different l
-            ax.semilogy(valid_alpha, gamma_vals, 
-                     label=f'l={l}, a*={a_star}', 
+            ax.semilogy(valid_alpha, np.array(gamma_vals) * r_g, 
                      color=colors[l_idx % len(colors)],
                      linestyle=linestyles[spin_idx % len(linestyles)],
                      linewidth=2)
@@ -115,22 +103,24 @@ def plot_inverse_superradiance_rate_overlay():
     ax.set_xlabel(r'$\alpha = \mu_a r_g$', fontsize=14)
     ax.set_ylabel(r'$\Gamma_{lmn} r_g$', fontsize=14)
     ax.set_title('Superradiance Timescales', fontsize=16)
-    ax.legend(fontsize=10, loc='upper right')
+    color_handles = [Line2D([0], [0], color=colors[i % len(colors)], lw=4, linestyle='-') for i, _ in enumerate(l_values)]
+    color_labels = [f"l={l}" for l in l_values]
+    legend1 = ax.legend(color_handles, color_labels, title='orbital (l)', fontsize=10, loc='upper right', frameon=True)
+
+    # create a linestyle legend (separate box) for spins
+    style_handles = [Line2D([0], [0], color='black', lw=2, linestyle=linestyles[i % len(linestyles)]) for i, _ in enumerate(spins)]
+    style_labels = [f"a*={a_star:.3f}" for a_star in spins]
+    legend2 = ax.legend(style_handles, style_labels, title='spin (a*)', fontsize=10, loc='upper left', frameon=True)
+
+    ax.add_artist(legend1)
+    ax.add_artist(legend2)
+
     ax.grid(True, which="both", ls="-", alpha=0.2)
-    ax.set_xlim(0, 2)
-    ax.set_ylim(1e-14, 1e-6)  # INVERTED: now descending from top to bottom
-    
-    # # Add horizontal lines for physical timescales
-    # ax.axhline(y=1, color='gray', linestyle=':', alpha=0.7, label=r'$1 r_g$')
-    # ax.axhline(y=1e7, color='brown', linestyle=':', alpha=0.7, label=r'$10^7 r_g$')
-    # ax.axhline(y=1e15, color='orange', linestyle=':', alpha=0.7, label=r'$10^{15} r_g$')
-    
-    # # Add text annotations for physical interpretation
-    # ax.text(0.02, 1e18, 'Very Slow Growth', fontsize=10, alpha=0.8)
-    # ax.text(0.02, 1e10, 'Moderate Growth', fontsize=10, alpha=0.8)
-    # ax.text(0.02, 1e2, 'Fast Growth', fontsize=10, alpha=0.8)
+    ax.set_xlim(0, 2.5)
+    ax.set_ylim(1e-16, 1e-6)
     
     plt.tight_layout()
+    plt.savefig("SRRateOutput.pdf")
     plt.show()
 
 def demonstrate_plot_features():

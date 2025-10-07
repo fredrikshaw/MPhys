@@ -54,7 +54,11 @@ def Gamma(l, m, n, a, r_g, mu_a):
 def plot_inverse_superradiance_rate_overlay():
     l_values = [1, 2, 3, 4, 5]
     
-    r_g = 1.33e21
+    m_bh_sm = 1e1
+    m_bh_ev = m_bh_sm * 1.116e66  # 10^-11 solar masses in kg
+    G_N = 6.708e-57  # m^3 kg^-1 s^-2
+    r_g = G_N * m_bh_ev
+    print(r_g)
     spins = [0.90, 0.99, 0.999]
     alpha_vals = np.logspace(-2, 1, 200)  # 0.01 to 1.0 (log scale)
     
@@ -72,8 +76,10 @@ def plot_inverse_superradiance_rate_overlay():
             n = l  # n = l
             
             gamma_vals = []
-            Gamma_inv_values = []  # Store Gamma^{-1} values
+            gamma_years = []
             valid_alpha = []
+            velocity_vals = []
+            mu_vals = []
             
             for alpha in alpha_vals:
                 mu_a = alpha / r_g
@@ -83,26 +89,27 @@ def plot_inverse_superradiance_rate_overlay():
                 if m * omega_plus > mu_a:
                     try:
                         gamma = Gamma(l, m, n, a, r_g, mu_a)
-                        gamma_vals.append(gamma)
                         # Calculate Gamma^{-1} instead of Gamma
                         if gamma > 0 and np.isfinite(gamma):
-                            gamma_inv = 1.0 / gamma  # This is Gamma^{-1}
-                            Gamma_inv_values.append(gamma_inv)
+                            gamma_vals.append(gamma)
+                            gamma_years.append(gamma * 6.58e-16 * 3.154e7)  # Convert eV^-1 to years
                             valid_alpha.append(alpha)
+                            velocity_vals.append(alpha / l)  # v = alpha / l
+                            mu_vals.append(mu_a)
                     except (OverflowError, ValueError, ZeroDivisionError):
                         pass
             
             # Plot both spin values on the same axes
             # Use different linestyles for different spins, colors for different l
-            ax.semilogy(valid_alpha, np.array(gamma_vals) * r_g, 
+            ax.semilogy(mu_vals, np.array(gamma_years), 
                      color=colors[l_idx % len(colors)],
                      linestyle=linestyles[spin_idx % len(linestyles)],
                      linewidth=2)
     
     # Format the plot for Gamma^{-1} with inverted y-axis
-    ax.set_xlabel(r'$\alpha = \mu_a r_g$', fontsize=14)
-    ax.set_ylabel(r'$\Gamma_{lmn} r_g$', fontsize=14)
-    ax.set_title('Superradiance Timescales', fontsize=16)
+    ax.set_xlabel(r'$\mu_a$ Axion mass [eV]', fontsize=14)
+    ax.set_ylabel(r'$\Gamma_{lmn} [years^{-1}]$', fontsize=14)
+    ax.set_title(r'Superradiance Timescales', fontsize=16)
     color_handles = [Line2D([0], [0], color=colors[i % len(colors)], lw=4, linestyle='-') for i, _ in enumerate(l_values)]
     color_labels = [f"l={l}" for l in l_values]
     legend1 = ax.legend(color_handles, color_labels, title='orbital (l)', fontsize=10, loc='upper right', frameon=True)
@@ -116,8 +123,8 @@ def plot_inverse_superradiance_rate_overlay():
     ax.add_artist(legend2)
 
     ax.grid(True, which="both", ls="-", alpha=0.2)
-    ax.set_xlim(0, 2.5)
-    ax.set_ylim(1e-16, 1e-6)
+    # ax.set_xlim(0, 0.5)
+    # ax.set_ylim(1e-16, 1e-6)
     
     plt.tight_layout()
     plt.savefig("SRRateOutput.pdf")

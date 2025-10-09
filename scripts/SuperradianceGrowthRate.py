@@ -92,11 +92,11 @@ def compute_superradiance_data(blackholemass: float):
                 mu_a = alpha / r_g
                 if m * omega_plus > mu_a:
                     try:
-                        gamma = Gamma(l, m, n, a, r_g, mu_a)
+                        gamma = Gamma(l, m, n, a, r_g, mu_a) # [eV]
                         if gamma > 0 and np.isfinite(gamma):
                             gamma_years.append((1 / gamma) * 2.086e-23)  # [years]
-                            gamma_rg.append(gamma * r_g)
-                            mu_vals.append(mu_a)
+                            gamma_rg.append(gamma * r_g) # [dimensionless]
+                            mu_vals.append(mu_a) # [eV]
                     except (OverflowError, ValueError, ZeroDivisionError):
                         pass
 
@@ -144,7 +144,7 @@ def plot_superradiance_data(data):
     # --- Axis configuration ---
     ax1.set_xlabel(r'$\mu_a$ Axion mass [eV]', fontsize=14)
     ax1.set_ylabel(r'$\Gamma_{lmn}^{-1}$ [years]', fontsize=14)
-    ax2.set_ylabel(r'$\Gamma_{lmn} r_g$ (dimensionless)', fontsize=14)
+    ax2.set_ylabel(r'$\Gamma_{lmn} r_g$', fontsize=14)
 
     # Invert the left y-axis (so longer timescales are higher)
     ax1.set_yscale('log')
@@ -194,7 +194,7 @@ def plot_superradiance_data(data):
     )
 
     # --- Save the figure ---
-    filename = f"SuperradianceRates_{int(bh_mass)}.pdf"
+    filename = f"SuperradianceRates_{int(bh_mass)}.png"
     plt.tight_layout()
     plt.savefig(filename, bbox_inches='tight', dpi=300)
     print(f"\n✅ Figure saved as '{filename}' in the current directory.\n")

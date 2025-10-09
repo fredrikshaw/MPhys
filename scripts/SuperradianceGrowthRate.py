@@ -94,7 +94,7 @@ def compute_superradiance_data(blackholemass: float):
                     try:
                         gamma = Gamma(l, m, n, a, r_g, mu_a) # [eV]
                         if gamma > 0 and np.isfinite(gamma):
-                            gamma_years.append((1 / gamma) * 2.086e-23)  # [years]
+                            gamma_years.append((1 / gamma) * 2.086e-23 * 3.154e7)  # [seconds]
                             gamma_rg.append(gamma * r_g) # [dimensionless]
                             mu_vals.append(mu_a) # [eV]
                     except (OverflowError, ValueError, ZeroDivisionError):
@@ -117,7 +117,6 @@ def compute_superradiance_data(blackholemass: float):
 def plot_superradiance_data(data):
     """Plot the superradiance rates with dual y-axes and BH mass annotation."""
     fig, ax1 = plt.subplots(figsize=(12, 8))
-    ax2 = ax1.twinx()  # Right-hand axis (for dimensionless Gamma·r_g)
 
     # Extract BH mass (solar masses) and gravitational radius
     bh_mass = data[0]["bh_mass"]
@@ -143,26 +142,27 @@ def plot_superradiance_data(data):
 
     # --- Axis configuration ---
     ax1.set_xlabel(r'$\mu_a$ Axion mass [eV]', fontsize=14)
-    ax1.set_ylabel(r'$\Gamma_{lmn}^{-1}$ [years]', fontsize=14)
-    ax2.set_ylabel(r'$\Gamma_{lmn} r_g$', fontsize=14)
+    ax1.set_ylabel(r'$\Gamma_{lmn}^{-1}$ [s]', fontsize=14)
+    #ax2.set_ylabel(r'$\Gamma_{lmn} r_g$', fontsize=14)
 
     # Invert the left y-axis (so longer timescales are higher)
     ax1.set_yscale('log')
-    ax2.set_yscale('log')
+    #ax2.set_yscale('log')
     ax1.invert_yaxis()
 
     # Set desired limits on left axis
-    ax1.set_ylim(1e2, 1e-5)
+    ax1.set_ylim(1e1, 1e-10)
 
     # Compute matching limits for the right axis
     year_to_ev_inv = 1 / 2.086e-23  # conversion from years to eV^-1
     y1_min, y1_max = ax1.get_ylim()
     y2_min = (2.086e-23 * r_g) / y1_max
     y2_max = (2.086e-23 * r_g) / y1_min
-    ax2.set_ylim(y2_max, y2_min)
+    #ax2.set_ylim(y2_max, y2_min)
 
     # --- Titles and labels ---
-    ax1.set_title(r'Superradiance Growth and Decay Rates', fontsize=16)
+    ax1.set_title(r'Superradiance Growth Rate, $\Gamma_{nm\ell}$', 
+                  fontsize=16)
     ax1.grid(True, which="both", ls="-", alpha=0.2)
 
     # --- Legends ---
@@ -186,7 +186,7 @@ def plot_superradiance_data(data):
 
     # --- Annotate BH mass on the plot ---
     ax1.text(0.15, 0.95,
-        fr"$M_{{BH}} = {bh_mass:.1f}\ M_\odot$",
+        fr"$M_{{BH}} = {bh_mass:.1e}\ M_\odot$",
         transform=ax1.transAxes,
         fontsize=13,
         verticalalignment='top',
@@ -204,7 +204,7 @@ def plot_superradiance_data(data):
 
 
 def main():
-    blackholemass = 10.0  # [solar masses]
+    blackholemass = 1e-11  # [solar masses]
     data = compute_superradiance_data(blackholemass)
     plot_superradiance_data(data)
 

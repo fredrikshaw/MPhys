@@ -42,8 +42,7 @@ def calc_w_plus(r_g, a):
 def calc_alpha(mu_a, r_g):
     return mu_a * r_g
 
-
-def Gamma(l, m, n, a, r_g, mu_a):
+def calc_gamma(l, m, n, a, r_g, mu_a):
     alpha = calc_alpha(mu_a, r_g)
     r_plus = calc_r_plus(r_g, a)
     w_plus = calc_w_plus(r_g, a)
@@ -92,7 +91,8 @@ def compute_superradiance_data(blackholemass: float):
                 mu_a = alpha / r_g
                 if m * omega_plus > mu_a:
                     try:
-                        gamma = Gamma(l, m, n, a, r_g, mu_a) # [eV]
+                        # Gamma is in units of [eV] (rate in natural units)
+                        gamma = calc_gamma(l, m, n, a, r_g, mu_a) # [eV]
                         if gamma > 0 and np.isfinite(gamma):
                             gamma_years.append((1 / gamma) * 2.086e-23 * 3.154e7)  # [seconds]
                             gamma_rg.append(gamma * r_g) # [dimensionless]

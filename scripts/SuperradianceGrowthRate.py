@@ -53,21 +53,26 @@ def Gamma(l, m, n, a, r_g, mu_a):
     # Superradiance rate formula
     return 2 * mu_a * alpha**(4 * l + 4) * r_plus * (m * w_plus - mu_a) * C_lmn
 
-def plot_inverse_superradiance_rate_overlay():
-    l_values = [1, 2, 3, 4, 5]
-    spins = [0.90, 0.99, 0.999]
+def plot_inverse_superradiance_rate_overlay(blackholemass: float):
+    """
+    float blackholemass: The mass of the BH in solar masses
     
-    m_bh_sm = 1e1 # Solar masses 
+    """
+    ## Set up values to plot ## 
+    l_values = [1, 2, 3, 4, 5] # [Dimensionless]
+    spins = [0.90, 0.99, 0.999] # [Dimensionless]
+    alpha_vals = np.logspace(-2, 1, 500)  # [Dimensionless]
+
+    
     ## Mass[eV] = Mass[SM] x SolarMass[kg] x c^2 
-    m_bh_J = m_bh_sm * SOLAR_MASS * (constants.c) ** 2 # [J]
-    m_bh_ev = m_bh_J / constants.e
+    m_bh_J = blackholemass * SOLAR_MASS * (constants.c) ** 2 # [J]
+    m_bh_ev = m_bh_J / constants.e # [eV]
     G_N = 6.708e-57 # [eV^-2]
     r_g = G_N * m_bh_ev # [eV]^-1
     ### CHECK VALUES ###
     print(f"Blackhole Mass: {m_bh_ev:.3e} eV")
     print(f"Graviational radius: {r_g} eV^-1")
 
-    alpha_vals = np.logspace(-2, 1, 500)  # [Dimensionless]
     
     # Create single figure
     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
@@ -86,7 +91,7 @@ def plot_inverse_superradiance_rate_overlay():
             gamma_years = []
             valid_alpha = []
             mu_vals = []
-            y = []
+            gamma_rg = []
             
             for alpha in alpha_vals:
                 mu_a = alpha / r_g # [eV]
@@ -95,14 +100,13 @@ def plot_inverse_superradiance_rate_overlay():
                 # Check superradiance condition
                 if m * omega_plus > mu_a:
                     try:
-                        gamma = Gamma(l, m, n, a, r_g, mu_a)
                         # Gamma is in units of [eV] (rate in natural units)
-                        # Convert to years^-1: multiply by (ℏ in eV·s) × (s/year)
-                        
+                        gamma = Gamma(l, m, n, a, r_g, mu_a) # [eV]
+                        gamma_inv = 1 / gamma # [eV]^-1
                         if gamma > 0 and np.isfinite(gamma):
                             gamma_vals.append(gamma)
-                            y.append(gamma * r_g)
-                            gamma_years.append(gamma * 6.58e-16 * 3.154e7)  # Convert eV to years^-1
+                            gamma_rg.append(gamma * r_g)
+                            gamma_years.append(gamma_inv * 2.086e-23)  # Convert eV^-1 to years
                             valid_alpha.append(alpha)
                             mu_vals.append(mu_a)
                     except (OverflowError, ValueError, ZeroDivisionError):
@@ -110,52 +114,40 @@ def plot_inverse_superradiance_rate_overlay():
             
             # Plot both spin values on the same axes
             # Use different linestyles for different spins, colors for different l
-            ax.semilogy(mu_vals, np.array(y), 
+            ax.semilogy(mu_vals, np.array(gamma_years), 
                      color=colors[l_idx % len(colors)],
                      linestyle=linestyles[spin_idx % len(linestyles)],
                      linewidth=2)
     
     # Format the plot for Gamma^{-1} with inverted y-axis
     ax.set_xlabel(r'$\mu_a$ Axion mass [eV]', fontsize=14)
-    ax.set_ylabel(r'$\Gamma_{lmn} r_g$', fontsize=14)
+    # ax.set_ylabel(r'$\Gamma_{lmn} r_g$', fontsize=14)
+    ax.set_ylabel(r'$\Gamma_{lmn}^{-1} $ [years]', fontsize=14)
     ax.set_title(r'Superradiance Timescales', fontsize=16)
     color_handles = [Line2D([0], [0], color=colors[i % len(colors)], lw=4, linestyle='-') for i, _ in enumerate(l_values)]
-    color_labels = [f"l={l}" for l in l_values]
-    legend1 = ax.legend(color_handles, color_labels, title='orbital (l)', fontsize=10, loc='upper right', frameon=True)
+    color_labels = [fr"$\ell$={l}" for l in l_values]
+    legend1 = ax.legend(color_handles, color_labels, title=r'orbital ($\ell$)', fontsize=10, loc='upper right', frameon=True)
 
     # create a linestyle legend (separate box) for spins
     style_handles = [Line2D([0], [0], color='black', lw=2, linestyle=linestyles[i % len(linestyles)]) for i, _ in enumerate(spins)]
     style_labels = [f"a*={a_star:.3f}" for a_star in spins]
-    legend2 = ax.legend(style_handles, style_labels, title='spin (a*)', fontsize=10, loc='upper left', frameon=True)
+    legend2 = ax.legend(style_handles, style_labels, title=r'spin ($a^*$)', fontsize=10, loc='upper left', frameon=True)
 
     ax.add_artist(legend1)
     ax.add_artist(legend2)
 
     ax.grid(True, which="both", ls="-", alpha=0.2)
     # ax.set_xlim(0, 0.5)
-    ax.set_ylim(1e-16, 1e-6)
+    ax.set_ylim(1e2, 1e-5)
     
     plt.tight_layout()
     plt.savefig("SRRateOutput.pdf")
     plt.show()
 
-def demonstrate_plot_features():
-    """Explain what the plot shows"""
-    print("Plot Features:")
-    print("=" * 50)
-    print("1. OVERLAY: Both spin values (a* = 0.90 and 0.99) on same plot")
-    print("2. COLOR CODING: Different colors for different l values")
-    print("   - Blue: l=1, Red: l=2, Green: l=3, Purple: l=4")
-    print("3. LINE STYLE: Solid lines: a*=0.99, Dashed lines: a*=0.90")
-    print("4. INVERTED Y-AXIS: Timescale DESCENDS from top to bottom")
-    print("   - Top: Long timescales (slow growth)")
-    print("   - Bottom: Short timescales (fast growth)")
-    print("5. PHYSICAL MEANING:")
-    print("   - Lower curves = Faster instability growth")
-    print("   - Higher spin (a*=0.99) = Faster growth than lower spin (a*=0.90)")
-    print("   - Lower l values = Much faster growth than higher l values")
-    print("=" * 50)
+def main():
+    blackholemass = 1e1 # solar mass(es) [Dimensionless]
+
+    plot_inverse_superradiance_rate_overlay(blackholemass)
 
 if __name__ == "__main__":
-    # demonstrate_plot_features()
-    plot_inverse_superradiance_rate_overlay()
+    main()

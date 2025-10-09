@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import constants
@@ -5,6 +6,9 @@ from scipy.integrate import solve_ivp
 from tqdm import tqdm
 
 from SuperradianceGrowthRate import calc_gamma, calc_alpha
+
+np.seterr(all='ignore')  # Suppress all numpy warnings
+warnings.filterwarnings('ignore')  # Suppress all Python warnings
 
 SOLAR_MASS = 1.988e30  # [kg]
 
@@ -70,6 +74,7 @@ if __name__ == "__main__":
     omega_tr = calc_omega_tr(n_g=n_g, n_e=n_e, mu_a=axion_mass, alpha=alpha)
     transition_rate_ev = calc_transition_rate_APPROX(G_N=G_N, alpha=alpha, r_g=r_g)  # [eV]
     transition_rate = 1e-72 #transition_rate_ev / inv_ev_to_years  # [years⁻¹]
+    
 
     y0 = [1, 1]  # Initial populations for n_g and n_e
     
@@ -103,26 +108,39 @@ if __name__ == "__main__":
     num_g = sol.y[0]
     num_e = sol.y[1]
 
-    # compute strain
+    ## convert transition rate into eV again 
+    transition_rate *= inv_ev_to_years 
+    ## calculate GW wave strain 
     h = np.sqrt(4 * G_N / (r**2 * omega_tr) * num_g * num_e * transition_rate)
 
-    fig, axs = plt.subplots(2, 1, figsize=(8, 10), sharex=True)
+    fig, ax1 = plt.subplots(figsize=(8, 10))
 
-    # First subplot for n_g and n_e
-    axs[0].plot(times, num_g, label='n_g (5g)', color='blue')
-    axs[0].plot(times, num_e, label='n_e (6g)', color='orange')
-    axs[0].set_yscale('log')  # Set y-axis to logarithmic scale
-    axs[0].set_ylabel('Population')
-    axs[0].legend()
-    axs[0].grid()
+    # Plot all curves
+    line1 = ax1.plot(times, num_g, label=r'$N_g$ (5g)', color='blue', linestyle='dashed')
+    line2 = ax1.plot(times, num_e, label=r'$N_e$ (6g)', color='orange')
+    
+    ax1.set_yscale('log')
+    ax1.set_ylabel(r'$N$')
+    ax1.set_xlabel("Time [years]")
+    ax1.set_ylim(1e50, 1e75)
+    ax1.set_xlim(1500, 1800)
+    ax1.grid()
 
-    # Second subplot for h
-    axs[1].plot(times, h, label='h (strain)', color='green')
-    axs[1].set_yscale('log')  # Set y-axis to logarithmic scale
-    axs[1].set_xlabel('Time (years)')
-    axs[1].set_ylabel('h (strain)')
-    axs[1].legend()
-    axs[1].grid()
+    # Create second y-axis for strain
+    ax2 = ax1.twinx()
+    line3 = ax2.plot(times, h, label=r'h', color='black', linestyle="dotted")
+    
+    
+    ax2.set_yscale('log')
+    ax2.set_ylabel(r'$r$')
+    ax2.set_ylim(1e-35, 1e-23)
+
+    # Combine all lines for a single legend
+    lines = line1 + line2 + line3
+    labels = [l.get_label() for l in lines]
+    
+    # Create single legend with transparent background
+    ax1.legend(lines, labels, framealpha=0)  # framealpha=0 makes background transparent
 
     plt.tight_layout()
     plt.show()

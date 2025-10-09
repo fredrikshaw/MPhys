@@ -55,8 +55,8 @@ def plot_inverse_superradiance_rate_overlay():
     l_values = [1, 2, 3, 4, 5]
     
     m_bh_sm = 1e1
-    m_bh_ev = m_bh_sm * 1.116e66  # 10^-11 solar masses in kg
-    G_N = 6.708e-57  # m^3 kg^-1 s^-2
+    m_bh_ev = m_bh_sm * 1.116e66
+    G_N = 6.708e-57
     r_g = G_N * m_bh_ev
     print(r_g)
     spins = [0.90, 0.99, 0.999]
@@ -72,8 +72,8 @@ def plot_inverse_superradiance_rate_overlay():
         a = a_star * r_g
         
         for l_idx, l in enumerate(l_values):
-            m = l  # m = l
-            n = l  # n = l
+            m = l
+            n = l + 1
             
             gamma_vals = []
             gamma_years = []
@@ -89,10 +89,11 @@ def plot_inverse_superradiance_rate_overlay():
                 if m * omega_plus > mu_a:
                     try:
                         gamma = Gamma(l, m, n, a, r_g, mu_a)
-                        # Calculate Gamma^{-1} instead of Gamma
+                        # Gamma is in units of [eV] (rate in natural units)
+                        # Convert to years^-1: multiply by (ℏ in eV·s) × (s/year)
                         if gamma > 0 and np.isfinite(gamma):
                             gamma_vals.append(gamma)
-                            gamma_years.append(gamma * 6.58e-16 * 3.154e7)  # Convert eV^-1 to years
+                            gamma_years.append(gamma * 6.58e-16 * 3.154e7)  # Convert eV to years^-1
                             valid_alpha.append(alpha)
                             velocity_vals.append(alpha / l)  # v = alpha / l
                             mu_vals.append(mu_a)

@@ -12,6 +12,32 @@ warnings.filterwarnings('ignore')  # Suppress all Python warnings
 SOLAR_MASS = 1.988e30  # [kg]
 
 # ---------------------------------------------------------------
+#  UTILITY FUNCTIONS
+# ---------------------------------------------------------------
+
+def quantum_numbers_to_spectroscopic(n, l):
+    """
+    Convert quantum numbers to spectroscopic notation (e.g., 5g, 6h).
+    
+    Args:
+        n: principal quantum number
+        l: orbital angular momentum quantum number
+        
+    Returns:
+        String in spectroscopic notation (e.g., "5g")
+    """
+    # Spectroscopic notation letters for l values
+    l_to_letter = {
+        0: 's', 1: 'p', 2: 'd', 3: 'f', 4: 'g', 5: 'h',
+        6: 'i', 7: 'k', 8: 'l', 9: 'm', 10: 'n', 11: 'o', 12: 'q'
+    }
+    
+    if l not in l_to_letter:
+        return f"{n}(l={l})"  # Fallback for l > 12
+    
+    return f"{n}{l_to_letter[l]}"
+
+# ---------------------------------------------------------------
 #  PHYSICS FUNCTIONS
 # ---------------------------------------------------------------
 
@@ -85,8 +111,9 @@ def run_simulation(bh_mass_sm=10, bh_spin=0.9, alpha=1,
     gamma_g = gamma_g_ev / inv_ev_to_years
 
     # === set override values if applicable ===
-    if gamma_e_override is not None and gamma_g_override is not None:
+    if gamma_e_override is not None:
         gamma_e = gamma_e_override
+    if gamma_g_override is not None:
         gamma_g = gamma_g_override
 
     omega_tr = calc_omega_tr(n_g=n_g, 
@@ -181,6 +208,7 @@ def plot_results(results):
     num_g = results['num_g']
     num_e = results['num_e']
     h = results['h']
+    params = results['parameters']
 
     # Detect collapse of N_e (minimum)
     collapse_index = np.argmin(num_e)
@@ -190,9 +218,13 @@ def plot_results(results):
 
     print(f"Excited-state population collapse at ~{collapse_time:.2f} years.")
 
-    fig, ax1 = plt.subplots(figsize=(8, 10))
-    line1 = ax1.plot(times, num_g, label=r'$N_g$ (5g)', color='blue', linestyle='dashed')
-    line2 = ax1.plot(times, num_e, label=r'$N_e$ (6g)', color='orange')
+    # Get spectroscopic notation for transitions
+    level_e = quantum_numbers_to_spectroscopic(params['n_e'], params['l_e'])
+    level_g = quantum_numbers_to_spectroscopic(params['n_g'], params['l_g'])
+
+    fig, ax1 = plt.subplots(figsize=(10, 10))
+    line1 = ax1.plot(times, num_g, label=f'$N_g$ ({level_g})', color='blue', linestyle='dashed')
+    line2 = ax1.plot(times, num_e, label=f'$N_e$ ({level_e})', color='orange')
     ax1.set_yscale('log')
     ax1.set_ylabel(r'$N$')
     ax1.set_xlabel("Time [years]")
@@ -207,7 +239,36 @@ def plot_results(results):
 
     lines = line1 + line2 + line3
     labels = [l.get_label() for l in lines]
-    ax1.legend(lines, labels, framealpha=0)
+    ax1.legend(lines, labels, loc='lower right', framealpha=0.9)
+
+    # Create transition label for text box
+    transition_label = f'{level_e} → {level_g}'
+
+    # Create parameter text box
+    param_text = (
+        r'$\mathbf{System\ Parameters}$' + '\n'
+        + '─' * 30 + '\n'
+        + f'$M_{{\\rm BH}} = {params["bh_mass_sm"]:.2g}\\ M_{{\\odot}}$' + '\n'
+        + f'$a^* = {params["bh_spin"]:.3f}$' + '\n'
+        + f'$d = {params["distance_kpc"]:.1f}\\ {{\\rm kpc}}$' + '\n'
+        + f'$\\alpha = {params["alpha"]:.3f}$' + '\n'
+        + f'$\\mu_a = {params["axion_mass"]:.3e}\\ {{\\rm eV}}$' + '\n'
+        + '─' * 30 + '\n'
+        + f'Transition: ${transition_label}$' + '\n'
+        + '─' * 30 + '\n'
+        + f'$\\Gamma^{{{{\\rm SR}}}}_g = {params["gamma_g"]:.3e}\\ {{\\rm yr}}^{{-1}}$' + '\n'
+        + f'$\\Gamma^{{{{\\rm SR}}}}_e = {params["gamma_e"]:.3e}\\ {{\\rm yr}}^{{-1}}$' + '\n'
+        + f'$\\Gamma^{{{{\\rm tr}}}} = {params["transition_rate"]:.3e}\\ {{\\rm yr}}^{{-1}}$'
+    )
+    
+    # Add text box in upper left corner
+    ax1.text(0.02, 0.98, param_text,
+             transform=ax1.transAxes,
+             fontsize=10,
+             verticalalignment='top',
+             horizontalalignment='left',
+             bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='black', linewidth=1.5),
+             family='monospace')
 
     plt.tight_layout()
     filename = f"LevelTransitions_LogIntegration.png"
@@ -222,9 +283,7 @@ def plot_results(results):
 if __name__ == "__main__":
     results = run_simulation(
         transition_rate_override=1e-72, 
-        alpha=1, 
+        alpha=1,
         bh_spin=0.9,
-        gamma_e_override=0.2,
-        gamma_g_override=0.18
     )
     plot_results(results)

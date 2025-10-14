@@ -47,7 +47,7 @@ def calc_gamma(l, m, n, a, r_g, mu_a):
     r_plus = calc_r_plus(r_g, a)
     w_plus = calc_w_plus(r_g, a)
     C_lmn = calc_clmn(l, m, n, a, r_g, mu_a)
-    return 2 * mu_a * alpha ** (4 * l + 4) * r_plus * (m * w_plus - mu_a) * C_lmn
+    return 2 * mu_a * alpha ** (4 * l + 4) * r_plus * (m * w_plus - mu_a) * C_lmn  # 
 
 
 def compute_superradiance_data(blackholemass: float):

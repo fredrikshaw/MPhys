@@ -85,7 +85,7 @@ def compute_superradiance_data(blackholemass: float):
             m = l
             n = l + 1
 
-            mu_vals, gamma_years, gamma_rg = [], [], []
+            mu_vals, gamma_time, gamma_rg = [], [], []
 
             for alpha in alpha_vals:
                 mu_a = alpha / r_g
@@ -94,7 +94,7 @@ def compute_superradiance_data(blackholemass: float):
                         # Gamma is in units of [eV] (rate in natural units)
                         gamma = calc_gamma(l, m, n, a, r_g, mu_a) # [eV]
                         if gamma > 0 and np.isfinite(gamma):
-                            gamma_years.append((1 / gamma) * 2.086e-23 * 3.154e7)  # [seconds]
+                            gamma_time.append((1 / gamma) * 2.086e-23 * 3.154e7)  # [seconds]
                             gamma_rg.append(gamma * r_g) # [dimensionless]
                             mu_vals.append(mu_a) # [eV]
                     except (OverflowError, ValueError, ZeroDivisionError):
@@ -104,7 +104,7 @@ def compute_superradiance_data(blackholemass: float):
                 "l": l,
                 "a_star": a_star,
                 "mu_vals": np.array(mu_vals),
-                "gamma_years": np.array(gamma_years),
+                "gamma_time": np.array(gamma_time),
                 "gamma_rg": np.array(gamma_rg),
                 "r_g": r_g,
                 "bh_mass": blackholemass,
@@ -135,7 +135,7 @@ def plot_superradiance_data(data):
         spin_idx = spins.index(d["a_star"])
 
         # Plot Gamma^{-1} [years] on the left axis
-        ax1.semilogy(d["mu_vals"], d["gamma_years"],
+        ax1.semilogy(d["mu_vals"], d["gamma_time"],
                      color=colors[l_idx % len(colors)],
                      linestyle=linestyles[spin_idx % len(linestyles)],
                      linewidth=2)
@@ -204,7 +204,7 @@ def plot_superradiance_data(data):
 
 
 def main():
-    blackholemass = 1e-11  # [solar masses]
+    blackholemass = 10  # [solar masses]
     data = compute_superradiance_data(blackholemass)
     plot_superradiance_data(data)
 

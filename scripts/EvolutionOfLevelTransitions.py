@@ -69,25 +69,31 @@ def run_simulation(bh_mass_sm=10, bh_spin=0.9, alpha=1,
     m_bh_J = bh_mass_sm * SOLAR_MASS * constants.c ** 2  # [J]
     m_bh_ev = m_bh_J / constants.e                        # [eV]
     r_g = G_N * m_bh_ev                                   # [eV^-1]
-    axion_mass = alpha / r_g
+    axion_mass = alpha / r_g                              # [eV]
 
     inv_ev_to_years = 2.09e-23  # conversion factor
 
-    a = bh_spin * r_g
+    # --- Convert a* (bh_spin) to a (not dimensionless) ---
+    a = bh_spin * r_g # [eV]^-1
 
     # --- Gamma values ---
     gamma_e_ev = calc_gamma(l=l_e, m=m_e, n=n_e, a=a, r_g=r_g, mu_a=axion_mass)
     gamma_g_ev = calc_gamma(l=l_g, m=m_g, n=n_g, a=a, r_g=r_g, mu_a=axion_mass)
+
     ## === Conversion of gamma into inverse years ===
     gamma_e = gamma_e_ev / inv_ev_to_years
     gamma_g = gamma_g_ev / inv_ev_to_years
 
-
+    # === set override values if applicable ===
     if gamma_e_override is not None and gamma_g_override is not None:
         gamma_e = gamma_e_override
         gamma_g = gamma_g_override
 
-    omega_tr = calc_omega_tr(n_g=n_g, n_e=n_e, mu_a=axion_mass, alpha=alpha)
+    omega_tr = calc_omega_tr(n_g=n_g, 
+                             n_e=n_e, 
+                             mu_a=axion_mass, 
+                             alpha=alpha)
+    
     transition_rate = transition_rate_override  # years^-1
 
     # --- Time setup ---
@@ -136,7 +142,7 @@ def run_simulation(bh_mass_sm=10, bh_spin=0.9, alpha=1,
     # --- Check for early termination ---
     if sol.t_events[0].size > 0:
         t_stop = sol.t_events[0][0]
-        print(f"\n [WARNING] Integer Overflow: solve_ivp stopped early, N_g exceeded 1e100 at t ≈ {t_stop:.2f} years.\n")
+        print(f"\n[WARNING] Integer Overflow: solve_ivp stopped early, N_g exceeded 1e100 at t ≈ {t_stop:.2f} years.\n")
     else:
         t_stop = times[-1]
 
@@ -157,8 +163,6 @@ def run_simulation(bh_mass_sm=10, bh_spin=0.9, alpha=1,
             'l_e': l_e, 'm_e': m_e, 'n_e': n_e,
             'gamma_g': gamma_g,
             'gamma_e': gamma_e,
-             # 'gamma_g_calc': gamma_g_calc,
-             # 'gamma_e_calc': gamma_e_calc,
             'transition_rate': transition_rate,
             'axion_mass': axion_mass,
             'omega_tr': omega_tr,
@@ -193,7 +197,7 @@ def plot_results(results):
     ax1.set_ylabel(r'$N$')
     ax1.set_xlabel("Time [years]")
     ax1.set_ylim(1e50, 1e75)
-    # ax1.set_xlim(xlim)
+    ax1.set_xlim(xlim)
 
     ax2 = ax1.twinx()
     line3 = ax2.plot(times, h, label=r'$h$', color='black', linestyle="dotted")
@@ -219,6 +223,8 @@ if __name__ == "__main__":
     results = run_simulation(
         transition_rate_override=1e-72, 
         alpha=1, 
-        bh_spin=0.9
+        bh_spin=0.9,
+        gamma_e_override=0.2,
+        gamma_g_override=0.18
     )
     plot_results(results)

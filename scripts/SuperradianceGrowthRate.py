@@ -204,7 +204,7 @@ def plot_superradiance_data(data):
 
 
 def main():
-    blackholemass = 10  # [solar masses]
+    blackholemass = 1e-11  # [solar masses]
     data = compute_superradiance_data(blackholemass)
     plot_superradiance_data(data)
 

@@ -167,7 +167,6 @@ def calculate_alpha_ann(omega_ann, r_g, n, tol_imag=1e-8):
         raise ValueError("No positive real root found for alpha (check inputs).")
 
     # choose the smallest positive real root (physically alpha is typically small)
-    print(real_candidates)
     alpha = min(real_candidates)
     return alpha
 
@@ -220,8 +219,8 @@ if __name__ == "__main__":
     # ============================================================
     # INPUT PARAMETERS
     # ============================================================
-    blackholemass = 1e-11 # [M_sun]
-    omega_GHz = 1  # [GHz] - used to calculate omega when alpha_override is None
+    blackholemass = 10 # [M_sun]
+    omega_GHz = 3e-8  # [GHz] - used to calculate omega when alpha_override is None
     omega = omega_GHz * 4.1357e-6  # [eV]
     alpha_override = None  # Set to a value to override alpha calculation (if None, alpha is calculated from omega)
     a_star = 0.99  # dimensionless spin parameter

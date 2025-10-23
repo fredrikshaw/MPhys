@@ -236,6 +236,13 @@ def plot_results(results):
     ax1.set_ylim(1e50, 1e75)
     ax1.set_xlim(xlim)
 
+    # Add secondary x-axis at top showing dimensionless time
+    ax_top = ax1.secondary_xaxis('top', functions=(
+        lambda t: params['gamma_e'] * t,  # Convert time to gamma_e * t
+        lambda gamma_t: gamma_t / params['gamma_e']  # Convert back
+    ))
+    ax_top.set_xlabel(r'$\Gamma^{\rm sr}_e \, t$', fontsize=12)
+
     ax2 = ax1.twinx()
     line3 = ax2.plot(times, h, label=r'$h$', color='black', linestyle="dotted")
     ax2.set_yscale('log')

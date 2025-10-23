@@ -5,6 +5,8 @@ from scipy import constants
 from scipy.integrate import solve_ivp
 
 from SuperradianceGrowthRate import calc_gamma, calc_alpha
+## Gamma calculation needs to be done analytically 
+from improved_superradiance import calc_gamma_improved_with_units
 
 np.seterr(all='ignore')  # Suppress all numpy warnings
 warnings.filterwarnings('ignore')  # Suppress all Python warnings
@@ -106,9 +108,12 @@ def run_simulation(bh_mass_sm=10, bh_spin=0.9, alpha=1,
     gamma_e_ev = calc_gamma(l=l_e, m=m_e, n=n_e, a=a, r_g=r_g, mu_a=axion_mass)
     gamma_g_ev = calc_gamma(l=l_g, m=m_g, n=n_g, a=a, r_g=r_g, mu_a=axion_mass)
 
+    _, gamma_e = calc_gamma_improved_with_units(l_e, m_e, n_e, bh_spin, bh_mass_sm, axion_mass)
+    _, gamma_g = calc_gamma_improved_with_units(l_g, m_g, n_g, bh_spin, bh_mass_sm, axion_mass) 
+
     ## === Conversion of gamma into inverse years ===
-    gamma_e = gamma_e_ev / inv_ev_to_years
-    gamma_g = gamma_g_ev / inv_ev_to_years
+    # gamma_e = gamma_e_ev / inv_ev_to_years
+    # gamma_g = gamma_g_ev / inv_ev_to_years
 
     # === set override values if applicable ===
     if gamma_e_override is not None:
@@ -213,7 +218,7 @@ def plot_results(results):
     # Detect collapse of N_e (minimum)
     collapse_index = np.argmin(num_e)
     collapse_time = times[collapse_index]
-    timewindow = 200 # [years]
+    timewindow = max(times) / 5 # [years]
     xlim = (max(0, collapse_time - timewindow), collapse_time + timewindow)
 
     print(f"Excited-state population collapse at ~{collapse_time:.2f} years.")
@@ -280,7 +285,7 @@ def plot_results(results):
     plt.tight_layout()
     filename = f"LevelTransitions_LogIntegration.png"
     plt.savefig(filename, bbox_inches='tight', dpi=300)
-    print(f"\n [OUTPUT] Figure saved as '{filename}' in the current directory.\n")
+    print(f"\n[OUTPUT] Figure saved as '{filename}' in the current directory.\n")
     plt.show()
 
 # ---------------------------------------------------------------
@@ -290,9 +295,8 @@ def plot_results(results):
 if __name__ == "__main__":
     results = run_simulation(
         transition_rate_override=1e-72, 
-        alpha=1,
+        alpha=1.25,
         bh_spin=0.9,
-        gamma_e_override=0.08,
-        gamma_g_override=0.1
+
     )
     plot_results(results)

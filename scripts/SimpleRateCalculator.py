@@ -36,6 +36,7 @@
 
 import numpy as np
 from scipy import constants
+from SuperradianceGrowthRate import calc_gamma
 
 SOLAR_MASS = 1.988e30  # [kg]
 
@@ -48,7 +49,7 @@ def solid_angle_integral_from_dPdOmega(dPdtheta_func, Ntheta=10000):
     theta = np.linspace(0.0, np.pi, Ntheta)
     dP_dOmega = dPdtheta_func(theta)
     integrand = np.sin(theta) * dP_dOmega  # integrand for polar integral
-    P = 2 * np.pi * np.trapz(integrand, theta)
+    P = 2 * np.pi * np.trapezoid(integrand, theta)
     return P
 
 # Common angular polynomial that appears in many table entries:
@@ -120,12 +121,12 @@ def dPdOmega_transition(transition, alpha, theta, G_N=1.0, r_g=1.0):
     raise ValueError("Unsupported transition: " + str(transition))
 
 # ------------------------- integrate & rates -----------------------------
-def total_power_ann(level, alpha, G_N=1.0, r_g=1.0, Nnorm=1.0):
-    func = lambda th: dPdOmega_ann(level, alpha, th, G_N=G_N, r_g=r_g, Nnorm=Nnorm)
+def total_power_ann(level, alpha, G_N=1.0, r_g=1.0):
+    func = lambda th: dPdOmega_ann(level, alpha, th, G_N=G_N, r_g=r_g)
     return solid_angle_integral_from_dPdOmega(func)
 
-def total_power_transition(transition, alpha, G_N=1.0, r_g=1.0, N1=1.0, N2=1.0):
-    func = lambda th: dPdOmega_transition(transition, alpha, th, G_N=G_N, r_g=r_g, N1=N1, N2=N2)
+def total_power_transition(transition, alpha, G_N=1.0, r_g=1.0):
+    func = lambda th: dPdOmega_transition(transition, alpha, th, G_N=G_N, r_g=r_g)
     return solid_angle_integral_from_dPdOmega(func)
 
 def calculate_omega_ann(mu_a, alpha, n):
@@ -141,6 +142,55 @@ def calculate_omega_transition(mu_a, alpha, n_e, n_g):
     omega_tr = mu_a * alpha^2/2 * (1/n_g^2 - 1/n_e^2)
     """
     return 0.5 * mu_a * alpha**2 * (1.0 / n_g**2 - 1.0 / n_e**2)
+
+def calculate_alpha_ann(omega_ann, r_g, n, tol_imag=1e-8):
+    """
+    Solve for alpha from:
+        omega_ann = 2*(alpha/r_g)*(1 - alpha^2/(2 n^2))
+    which reduces to the cubic
+        alpha^3 - 2 n^2 alpha + n^2 * (omega_ann * r_g) = 0.
+    Returns the physically relevant real, positive root (if one exists).
+    """
+    # polynomial: alpha^3 + 0*alpha^2 - 2 n^2 * alpha + n^2 * omega_ann * r_g = 0
+    coeffs = [1.0, 0.0, -2.0 * (n**2), (n**2) * (omega_ann * r_g)]
+    roots = np.roots(coeffs)
+
+    # keep roots with (near-)zero imaginary part
+    real_candidates = []
+    for rt in roots:
+        if abs(np.imag(rt)) <= tol_imag:
+            re = float(np.real(rt))
+            if re > 0.0:
+                real_candidates.append(re)
+
+    if not real_candidates:
+        raise ValueError("No positive real root found for alpha (check inputs).")
+
+    # choose the smallest positive real root (physically alpha is typically small)
+    print(real_candidates)
+    alpha = min(real_candidates)
+    return alpha
+
+
+def calculate_alpha_trans(omega_tr, r_g, n_e, n_g):
+    """
+    Solve for alpha from:
+        omega_tr = (1/2) * (alpha/r_g) * alpha^2 * (1/n_g^2 - 1/n_e^2)
+    => alpha^3 = (2 * omega_tr * r_g) / Delta,  Delta = 1/n_g^2 - 1/n_e^2
+    Returns the real cube root. If Delta is negative, the returned alpha keeps sign
+    according to numerator/denominator (but physically Delta>0 when n_g < n_e).
+    """
+    Delta = (1.0 / (n_g**2)) - (1.0 / (n_e**2))
+    if Delta == 0.0:
+        raise ValueError("Delta = 0 (n_g and n_e produce identical 1/n^2); cannot solve.")
+
+    val = (2.0 * omega_tr * r_g) / Delta
+    # real cube root that handles negative arguments
+    alpha = np.sign(val) * (abs(val) ** (1.0 / 3.0))
+    if alpha < 0.0:
+        # physical alpha should be positive; if negative due to input signs, raise or take abs
+        raise ValueError("Computed alpha is negative. Check sign of inputs (Delta, omega_tr, r_g).")
+    return alpha
 
 def annihilation_rate(level, alpha, omega, G_N=1.0, r_g=1.0):
     """
@@ -167,35 +217,130 @@ def transition_rate(transition, alpha, omega, G_N=1.0, r_g=1.0):
 
 # ----------------------------- examples --------------------------------
 if __name__ == "__main__":
-    blackholemass = 10  # [M_sun]
+    # ============================================================
+    # INPUT PARAMETERS
+    # ============================================================
+    blackholemass = 1e-11 # [M_sun]
+    omega_GHz = 1  # [GHz] - used to calculate omega when alpha_override is None
+    omega = omega_GHz * 4.1357e-6  # [eV]
+    alpha_override = None  # Set to a value to override alpha calculation (if None, alpha is calculated from omega)
+    a_star = 0.99  # dimensionless spin parameter
     inv_ev_to_years = 2.09e-23  # conversion factor
 
-    # Parameters
+    # ============================================================
+    # BLACK HOLE PARAMETERS
+    # ============================================================
     m_bh_J = blackholemass * SOLAR_MASS * constants.c ** 2       # [J]
     m_bh_ev = m_bh_J / constants.e                               # [eV]
     G_N = 6.708e-57                                              # [eV^-2]
     r_g = G_N * m_bh_ev                                          # [eV^-1]
+    a = a_star * r_g                                             # [eV^-1]
 
+    print("\n" + "=" * 70)
+    print("BLACK HOLE PARAMETERS")
+    print("=" * 70)
+    print(f"Black hole mass (M_BH):          {blackholemass:.4e} M_☉")
+    print(f"                                 {m_bh_ev:.4e} eV")
+    print(f"Gravitational radius (r_g):      {r_g:.4e} eV^-1")
+    print(f"Newton's constant (G_N):         {G_N:.4e} eV^-2")
+    print(f"Dimensionless spin (a_*):        {a_star:.4e}")
+    print(f"Spin parameter (a):              {a:.4e} eV^-1")
+    print("=" * 70)
 
-    # For annihilation frequency omega_ann = 2 * mu_a * (1 - alpha^2/(2 n^2))
+    # ============================================================
+    # ANNIHILATION RATE (2p level)
+    # ============================================================
+    print("\n" + "=" * 70)
+    print("ANNIHILATION RATE: 2p → ∅")
+    print("=" * 70)
+    
     n = 2
-    alpha = 0.3
-    mu_a = alpha/r_g  # placeholder axion mass in same units as omega
-    omega_ann = calculate_omega_ann(mu_a, alpha, n)
+    
+    if alpha_override is not None:
+        # Use provided alpha and calculate omega from it
+        alpha = alpha_override
+        mu_a = alpha / r_g
+        omega_ann = calculate_omega_ann(mu_a, alpha, n)
+        omega_ann_GHz = omega_ann / 4.1357e-6  # Convert eV to GHz
+        print(f"Using alpha override:            α = {alpha:.4e}")
+        print(f"Calculated axion mass (μ_a):     {mu_a:.4e} eV")
+        print(f"Calculated frequency (ω_ann):    {omega_ann:.4e} eV")
+        print(f"                                 {omega_ann_GHz:.4e} GHz")
+    else:
+        # Calculate alpha from provided omega
+        alpha = calculate_alpha_ann(omega, r_g, n)
+        mu_a = alpha / r_g
+        omega_ann = omega
+        omega_ann_GHz = omega_ann / 4.1357e-6  # Convert eV to GHz
+        print(f"Using frequency:                 ω = {omega:.4e} eV")
+        print(f"                                 {omega_ann_GHz:.4e} GHz")
+        print(f"Calculated α:                    {alpha:.4e}")
+        print(f"Calculated axion mass (μ_a):     {mu_a:.4e} eV")
+    
+    print(f"Level:                           n = {n}")
+    print("-" * 70)
 
     # total annihilation power and Gamma_a (dropping cos terms as instructed)
     Gamma_a_2p, P_2p = annihilation_rate("2p", alpha, omega_ann, G_N=G_N, r_g=r_g)
-    print("Gamma_a (2p) [eV] =", f"{Gamma_a_2p:.2e}")
-    print("Gamma_a (2p) [years] =", f"{Gamma_a_2p / inv_ev_to_years:.2e}")
-    print("Inverse gamma (2p) [years] =", f"{(1 / Gamma_a_2p) * inv_ev_to_years:.2e}")
     
+    # Calculate superradiance rate for 2p (l=1, m=1, n=2)
+    l_ann, m_ann = 1, 1
+    Gamma_sr_2p = calc_gamma(l_ann, m_ann, n, a, r_g, mu_a)  # [eV]
+    
+    print(f"Total annihilation power (P):    {P_2p:.4e} eV^2")
+    print(f"Annihilation rate (Γ_a):         {Gamma_a_2p:.4e} eV")
+    print(f"                                 {Gamma_a_2p / inv_ev_to_years:.4e} years^-1")
+    print(f"Inverse rate (1/Γ_a):            {(1 / Gamma_a_2p) * inv_ev_to_years:.4e} years")
+    print(f"Superradiance rate (Γ_sr):       {Gamma_sr_2p:.4e} eV")
+    print(f"                                 {Gamma_sr_2p / inv_ev_to_years:.4e} years^-1")
+    print(f"Inverse rate (1/Γ_sr):           {(1 / Gamma_sr_2p) * inv_ev_to_years:.4e} years")
+    print("=" * 70)
 
-    # Transition example: 6g -> 5g
+    # ============================================================
+    # TRANSITION RATE (6g → 5g)
+    # ============================================================
+    print("\n" + "=" * 70)
+    print("TRANSITION RATE: 6g → 5g")
+    print("=" * 70)
+    
     ne, ng = 6, 5
-    alpha = 1.2
-    mu_a = alpha/r_g  # placeholder axion mass in same units as omega
-    omega_tr = calculate_omega_transition(mu_a, alpha, ne, ng)
+    
+    if alpha_override is not None:
+        # Use provided alpha and calculate omega from it
+        alpha = alpha_override
+        mu_a = alpha / r_g
+        omega_tr = calculate_omega_transition(mu_a, alpha, ne, ng)
+        omega_tr_GHz = omega_tr / 4.1357e-6  # Convert eV to GHz
+        print(f"Using alpha override:            α = {alpha:.4e}")
+        print(f"Calculated axion mass (μ_a):     {mu_a:.4e} eV")
+        print(f"Calculated frequency (ω_tr):     {omega_tr:.4e} eV")
+        print(f"                                 {omega_tr_GHz:.4e} GHz")
+    else:
+        # Calculate alpha from provided omega
+        alpha = calculate_alpha_trans(omega, r_g, ne, ng)
+        mu_a = alpha / r_g
+        omega_tr = omega
+        omega_tr_GHz = omega_tr / 4.1357e-6  # Convert eV to GHz
+        print(f"Using frequency:                 ω = {omega:.4e} eV")
+        print(f"                                 {omega_tr_GHz:.4e} GHz")
+        print(f"Calculated α:                    {alpha:.4e}")
+        print(f"Calculated axion mass (μ_a):     {mu_a:.4e} eV")
+    
+    print(f"Initial level:                   n_e = {ne} (6g)")
+    print(f"Final level:                     n_g = {ng} (5g)")
+    print("-" * 70)
+    
     Gamma_t_6g5g, P_6g5g = transition_rate("6g->5g", alpha, omega_tr, G_N=G_N, r_g=r_g)
-    print("Gamma_t (6g->5g) [eV] =", f"{Gamma_t_6g5g:.2e}")
-    print("Gamma_t (6g->5g) [years] =", f"{Gamma_t_6g5g / inv_ev_to_years:.2e}")
-    print("Inverse gamma (6g->5g) [years] =", f"{(1 / Gamma_t_6g5g) * inv_ev_to_years:.2e}")
+    
+    # Calculate superradiance rate for 6g (l=4, m=4, n=6)
+    l_tr, m_tr = 4, 4
+    Gamma_sr_6g5g = calc_gamma(l_tr, m_tr, ne, a, r_g, mu_a)  # [eV]
+    
+    print(f"Total transition power (P):      {P_6g5g:.4e} eV^2")
+    print(f"Transition rate (Γ_t):           {Gamma_t_6g5g:.4e} eV")
+    print(f"                                 {Gamma_t_6g5g / inv_ev_to_years:.4e} years^-1")
+    print(f"Inverse rate (1/Γ_t):            {(1 / Gamma_t_6g5g) * inv_ev_to_years:.4e} years")
+    print(f"Superradiance rate (Γ_sr):       {Gamma_sr_6g5g:.4e} eV")
+    print(f"                                 {Gamma_sr_6g5g / inv_ev_to_years:.4e} years^-1")
+    print(f"Inverse rate (1/Γ_sr):           {(1 / Gamma_sr_6g5g) * inv_ev_to_years:.4e} years")
+    print("=" * 70 + "\n")

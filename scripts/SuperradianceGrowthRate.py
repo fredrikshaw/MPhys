@@ -116,7 +116,7 @@ def compute_superradiance_data(blackholemass: float):
 
 def plot_superradiance_data(data):
     """Plot the superradiance rates with dual y-axes and BH mass annotation."""
-    fig, ax1 = plt.subplots(figsize=(12, 8))
+    fig, ax1 = plt.subplots(figsize=(6, 4))
 
     # Extract BH mass (solar masses) and gravitational radius
     bh_mass = data[0]["bh_mass"]
@@ -135,14 +135,14 @@ def plot_superradiance_data(data):
         spin_idx = spins.index(d["a_star"])
 
         # Plot Gamma^{-1} [years] on the left axis
-        ax1.semilogy(d["mu_vals"], d["gamma_si"],
+        ax1.semilogy(d["mu_vals"] * r_g, d["gamma_si"],
                      color=colors[l_idx % len(colors)],
                      linestyle=linestyles[spin_idx % len(linestyles)],
                      linewidth=2)
 
     # --- Axis configuration ---
-    ax1.set_xlabel(r'$\mu_a$ Axion mass [eV]', fontsize=14)
-    ax1.set_ylabel(r'$\Gamma_{lmn}^{-1}$ [s]', fontsize=14)
+    ax1.set_xlabel(r'$\alpha$', fontsize=14)
+    ax1.set_ylabel(r'$\Gamma_{n\ell m}^{-1}$ (s)', fontsize=14)
     #ax2.set_ylabel(r'$\Gamma_{lmn} r_g$', fontsize=14)
 
     # Invert the left y-axis (so longer timescales are higher)
@@ -151,7 +151,7 @@ def plot_superradiance_data(data):
     ax1.invert_yaxis()
 
     # Set desired limits on left axis
-    ax1.set_ylim(1e1, 1e-10)
+    ax1.set_ylim(1e1, 1e-9)
 
     # Compute matching limits for the right axis
     year_to_ev_inv = 1 / 2.086e-23  # conversion from years to eV^-1
@@ -161,8 +161,7 @@ def plot_superradiance_data(data):
     #ax2.set_ylim(y2_max, y2_min)
 
     # --- Titles and labels ---
-    ax1.set_title(r'Superradiance Growth Rate, $\Gamma_{nm\ell}$', 
-                  fontsize=16)
+    #ax1.set_title(r'Superradiance Growth Rate, $\Gamma_{nm\ell}$',fontsize=16)
     ax1.grid(True, which="both", ls="-", alpha=0.2)
 
     # --- Legends ---
@@ -177,13 +176,19 @@ def plot_superradiance_data(data):
                             linestyle=linestyles[i % len(linestyles)])
                      for i in range(len(spins))]
     style_labels = [f"a*={a_star:.3f}" for a_star in spins]
-    legend2 = ax1.legend(style_handles, style_labels,
-                         title=r'spin ($a^*$)',
-                         loc='upper left', frameon=True)
+    legend2 = ax1.legend(
+                style_handles,
+                style_labels,
+                title=r'Spin ($a_*$)',
+                loc='upper right',          # anchor point used for bbox
+                bbox_to_anchor=(0.8, 1.0),  # (x, y) relative to axes
+                frameon=True
+            )
 
     ax1.add_artist(legend1)
     ax1.add_artist(legend2)
-
+    
+    """
     # --- Annotate BH mass on the plot ---
     ax1.text(0.15, 0.95,
         fr"$M_{{BH}} = {bh_mass:.1e}\ M_\odot$",
@@ -192,6 +197,7 @@ def plot_superradiance_data(data):
         verticalalignment='top',
         bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none')
     )
+    """
 
     # --- Save the figure ---
     filename = f"SuperradianceRates_{int(bh_mass)}.png"
@@ -204,7 +210,7 @@ def plot_superradiance_data(data):
 
 
 def main():
-    blackholemass = 1e-11  # [solar masses]
+    blackholemass = 1e-10  # [solar masses]
     data = compute_superradiance_data(blackholemass)
     plot_superradiance_data(data)
 

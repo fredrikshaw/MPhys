@@ -1,3 +1,5 @@
+import sys
+from os.path import dirname, abspath, join
 import warnings
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,10 +10,55 @@ from SuperradianceGrowthRate import calc_gamma, calc_alpha
 ## Gamma calculation needs to be done analytically 
 from improved_superradiance import calc_gamma_improved_with_units
 
+
+
+# Add the "Results Pipeline" sub-folder to the Python path
+current_dir = dirname(abspath(__file__))
+results_pipeline_dir = join(current_dir, "Results Pipeline")
+sys.path.append(results_pipeline_dir)
+
+# Import the required function or class from ParamCalculator
+from ParamCalculator import calc_superradiance_rate
+
 np.seterr(all='ignore')  # Suppress all numpy warnings
 warnings.filterwarnings('ignore')  # Suppress all Python warnings
 
 SOLAR_MASS = 1.988e30  # [kg]
+
+# === IMPORT TRANSITION RATE EXPRESSIONS FROM SIMPLE CALCULATOR ===
+from SimpleRateCalculator import (
+    dPdOmega_transition,
+    solid_angle_integral_from_dPdOmega,
+    calculate_omega_transition
+)
+
+def transition_rate_from_tables(transition, alpha, r_g, G_N, n_e, n_g, mu_a):
+    """
+    Compute the transition rate Γ_tr using the same expressions
+    as SimpleRateCalculator.py (Table VII, integrated over solid angle).
+
+    Returns Γ_tr in units of years^{-1}.
+    """
+
+    # Energy of emitted graviton:
+    omega_tr = calculate_omega_transition(mu_a, alpha, n_e, n_g)  # [eV]
+
+    # Differential power ->
+    func = lambda th: dPdOmega_transition(transition, alpha, th, G_N=G_N, r_g=r_g)
+
+    # Integrate over angles:
+    P = solid_angle_integral_from_dPdOmega(func)   # [eV^2]
+
+    # Transition rate from eq. A12 (annihilation uses 1/(2ω), transition uses 1/ω):
+    Gamma_tr_eV = P / omega_tr
+
+    # Convert to years^{-1}
+    inv_ev_to_years = 2.09e-23
+    Gamma_tr_year = Gamma_tr_eV / inv_ev_to_years
+
+    return Gamma_tr_year
+
+
 
 # ---------------------------------------------------------------
 #  UTILITY FUNCTIONS
@@ -74,11 +121,11 @@ def rhs_log(t, y, gamma_g, gamma_e, transition_rate):
 #  MAIN SIMULATION
 # ---------------------------------------------------------------
 
-def run_simulation(bh_mass_sm=10, bh_spin=0.9, alpha=1,
+def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=1,
                    l_g=4, m_g=4, n_g=5,
                    l_e=4, m_e=4, n_e=6,
                    gamma_g_override=None, gamma_e_override=None,
-                   transition_rate_override=1e-72,
+                   transition_rate_override=None,
                    distance_kpc=10, t_max_years=1e5, n_points=int(1e5)):
     """
     Run the simulation with logarithmic variable integration.
@@ -104,12 +151,17 @@ def run_simulation(bh_mass_sm=10, bh_spin=0.9, alpha=1,
     # --- Convert a* (bh_spin) to a (not dimensionless) ---
     a = bh_spin * r_g # [eV]^-1
 
-    # --- Gamma values ---
-    gamma_e_ev = calc_gamma(l=l_e, m=m_e, n=n_e, a=a, r_g=r_g, mu_a=axion_mass)
-    gamma_g_ev = calc_gamma(l=l_g, m=m_g, n=n_g, a=a, r_g=r_g, mu_a=axion_mass)
+    
 
-    _, gamma_e = calc_gamma_improved_with_units(l_e, m_e, n_e, bh_spin, bh_mass_sm, axion_mass)
-    _, gamma_g = calc_gamma_improved_with_units(l_g, m_g, n_g, bh_spin, bh_mass_sm, axion_mass) 
+    # Calculate gamma values using ParamCalculator
+    gamma_e = calc_superradiance_rate(l=l_e, m=m_e, n=n_e, a_star=bh_spin, r_g=r_g, alpha=alpha)
+    gamma_g = calc_superradiance_rate(l=l_g, m=m_g, n=n_g, a_star=bh_spin, r_g=r_g, alpha=alpha)
+
+    gamma_e *= 31556926/6.582119569e-16 # Convert from eV to years^-1
+    gamma_g *= 31556926/6.582119569e-16 # Convert from eV to years^-1
+
+    #_, gamma_e = calc_gamma_improved_with_units(l_e, m_e, n_e, bh_spin, bh_mass_sm, axion_mass)
+    #_, gamma_g = calc_gamma_improved_with_units(l_g, m_g, n_g, bh_spin, bh_mass_sm, axion_mass) 
 
     ## === Conversion of gamma into inverse years ===
     # gamma_e = gamma_e_ev / inv_ev_to_years
@@ -126,7 +178,20 @@ def run_simulation(bh_mass_sm=10, bh_spin=0.9, alpha=1,
                              mu_a=axion_mass, 
                              alpha=alpha)
     
-    transition_rate = transition_rate_override  # years^-1
+    # --- Transition rate ----
+    if transition_rate_override is None:
+        transition_rate = transition_rate_from_tables(
+            transition="6g->5g",
+            alpha=alpha,
+            r_g=r_g,
+            G_N=G_N,
+            n_e=n_e,
+            n_g=n_g,
+            mu_a=axion_mass
+        )
+    else:
+        transition_rate = transition_rate_override
+
 
     # --- Time setup ---
     times = np.linspace(0, t_max_years, n_points)
@@ -208,7 +273,19 @@ def run_simulation(bh_mass_sm=10, bh_spin=0.9, alpha=1,
 #  PLOTTING
 # ---------------------------------------------------------------
 
+# ---------------------------------------------------------------
+#  PLOTTING
+# ---------------------------------------------------------------
+
 def plot_results(results):
+    
+    plt.rcParams.update({
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.serif": ["Computer Modern Roman"],
+        "text.latex.preamble": r"\usepackage{amsmath}"
+    })
+
     times = results['times']
     num_g = results['num_g']
     num_e = results['num_e']
@@ -218,85 +295,108 @@ def plot_results(results):
     # Detect collapse of N_e (minimum)
     collapse_index = np.argmin(num_e)
     collapse_time = times[collapse_index]
-    timewindow = max(times) / 5 # [years]
-    xlim = (max(0, collapse_time - timewindow), collapse_time + timewindow)
+    timewindow = max(times) / 10  # [years]
+    xlim = (max(0, collapse_time - timewindow), collapse_time + timewindow - 500)
 
+    # Print to terminal (no box)
+    print("\n" + "="*60)
+    print("SIMULATION RESULTS")
+    print("="*60)
     print(f"Excited-state population collapse at ~{collapse_time:.2f} years.")
-
+    
     # Get spectroscopic notation for transitions
     level_e = quantum_numbers_to_spectroscopic(params['n_e'], params['l_e'])
     level_g = quantum_numbers_to_spectroscopic(params['n_g'], params['l_g'])
-
-    fig, ax1 = plt.subplots(figsize=(10, 10))
-    line1 = ax1.plot(times, num_g, label=f'$N_g$ ({level_g})', color='blue', linestyle='dashed')
-    line2 = ax1.plot(times, num_e, label=f'$N_e$ ({level_e})', color='orange')
-    ax1.set_yscale('log')
-    ax1.set_ylabel(r'$N$')
-    ax1.set_xlabel("Time [years]")
-    ax1.set_ylim(1e50, 1e75)
-    ax1.set_xlim(xlim)
-
-    # Add secondary x-axis at top showing dimensionless time
-    ax_top = ax1.secondary_xaxis('top', functions=(
-        lambda t: params['gamma_e'] * t,  # Convert time to gamma_e * t
-        lambda gamma_t: gamma_t / params['gamma_e']  # Convert back
-    ))
-    ax_top.set_xlabel(r'$\Gamma^{\rm sr}_e \, t$', fontsize=12)
-
-    ax2 = ax1.twinx()
-    line3 = ax2.plot(times, h, label=r'$h$', color='black', linestyle="dotted")
-    ax2.set_yscale('log')
-    ax2.set_ylabel(r'$h$')
-    ax2.set_ylim(1e-35, 1e-23)
-
-    lines = line1 + line2 + line3
-    labels = [l.get_label() for l in lines]
-    ax1.legend(lines, labels, loc='lower right', framealpha=0.9)
-
-    # Create transition label for text box
-    transition_label = f'{level_e} → {level_g}'
-
-    # Create parameter text box
-    param_text = (
-        r'$\mathbf{System\ Parameters}$' + '\n'
-        + '─' * 30 + '\n'
-        + f'$M_{{\\rm BH}} = {params["bh_mass_sm"]:.2g}\\ M_{{\\odot}}$' + '\n'
-        + f'$a^* = {params["bh_spin"]:.3f}$' + '\n'
-        + f'$d = {params["distance_kpc"]:.1f}\\ {{\\rm kpc}}$' + '\n'
-        + f'$\\alpha = {params["alpha"]:.3f}$' + '\n'
-        + f'$\\mu_a = {params["axion_mass"]:.3e}\\ {{\\rm eV}}$' + '\n'
-        + '─' * 30 + '\n'
-        + f'Transition: ${transition_label}$' + '\n'
-        + '─' * 30 + '\n'
-        + f'$\\Gamma^{{{{\\rm SR}}}}_g = {params["gamma_g"]:.3e}\\ {{\\rm yr}}^{{-1}}$' + '\n'
-        + f'$\\Gamma^{{{{\\rm SR}}}}_e = {params["gamma_e"]:.3e}\\ {{\\rm yr}}^{{-1}}$' + '\n'
-        + f'$\\Gamma^{{{{\\rm tr}}}} = {params["transition_rate"]:.3e}\\ {{\\rm yr}}^{{-1}}$'
-    )
+    print(f"\nTransition: {level_e} → {level_g}")
+    print(f"BH mass: {params['bh_mass_sm']} M☉")
+    print(f"BH spin: {params['bh_spin']}")
+    print(f"Alpha: {params['alpha']}")
+    print(f"Axion mass: {params['axion_mass']:.2e} eV")
+    print(f"Distance: {params['distance_kpc']} kpc")
     
-    # Add text box in upper left corner
-    ax1.text(0.02, 0.98, param_text,
-             transform=ax1.transAxes,
-             fontsize=10,
-             verticalalignment='top',
-             horizontalalignment='left',
-             bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, edgecolor='black', linewidth=1.5),
-             family='monospace')
+    # Compare Gamma_e and Gamma_g
+    gamma_e = params.get('gamma_e')
+    gamma_g = params.get('gamma_g')
+    
+    if gamma_e is not None and gamma_g is not None:
+        print(f"\nSuperradiance rates:")
+        print(f"  Gamma_e ({level_e}): {gamma_e:.2e} years⁻¹")
+        print(f"  Gamma_g ({level_g}): {gamma_g:.2e} years⁻¹")
+        
+        if gamma_e > gamma_g:
+            comparison_text = "Gamma_e > Gamma_g"
+        elif gamma_e < gamma_g:
+            comparison_text = "Gamma_e < Gamma_g"
+        else:
+            comparison_text = "Gamma_e = Gamma_g"
+        print(f"\nComparison: {comparison_text}")
+    else:
+        print("\nWarning: Gamma values missing from parameters")
+    
+    print(f"\nTransition rate: {params['transition_rate']:.2e} years⁻¹")
+    print(f"Transition frequency: {params['omega_tr']:.2e} eV")
+    print("="*60 + "\n")
 
+    fig, ax1 = plt.subplots(figsize=(3, 4))
+    
+    # Plot with clear labels for legend
+    line1 = ax1.plot(times, num_g, label=r'$N_g$', color='blue')
+    line2 = ax1.plot(times, num_e, label=r'$N_e$', color='orange')
+    
+    # Create second y-axis for strain h
+    ax2 = ax1.twinx()
+    line3 = ax2.plot(times, h, label=r'$h$', color='black', alpha=0.7, linestyle="dashed")
+    
+    # Set scales and labels
+    ax1.set_yscale('log')
+    ax1.set_ylabel(r'Occupation Number $N$')
+    ax1.set_xlabel("Time [years]")
+    ax1.set_ylim(1e25, 1e45)
+    ax1.set_xlim(xlim)
+    ax1.grid()
+    
+    ax2.set_ylabel(r'Strain $h$', color='black')
+    ax2.tick_params(axis='y', labelcolor='black')
+    ax2.set_yscale('log')
+    ax2.set_ylim(1e-65, 1e-22)
+    for label in ax2.get_yticklabels()[::2]:
+        label.set_visible(False)
+    
+    # Combine legends from both axes
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, 
+               loc='best', frameon=False)
+    
+    # Add comparison text as annotation on plot
+    if gamma_e is not None and gamma_g is not None:
+        if gamma_e > gamma_g:
+            comp_text = r'$\Gamma_e > \Gamma_g$'
+        elif gamma_e < gamma_g:
+            comp_text = r'$\Gamma_e < \Gamma_g$'
+        else:
+            comp_text = r'$\Gamma_e = \Gamma_g$'
+        
+        # Place text in upper left corner
+        ax1.text(0.02, 0.98, comp_text,
+                transform=ax1.transAxes,
+                fontsize=14,
+                verticalalignment='top')
+    
     plt.tight_layout()
-    filename = f"LevelTransitions_LogIntegration.png"
-    plt.savefig(filename, bbox_inches='tight', dpi=300)
-    print(f"\n[OUTPUT] Figure saved as '{filename}' in the current directory.\n")
+    plt.savefig('plot_output.png', dpi=300)  # Save the figure with high resolution
     plt.show()
+
 
 # ---------------------------------------------------------------
 #  MAIN EXECUTION
 # ---------------------------------------------------------------
 
+
 if __name__ == "__main__":
     results = run_simulation(
-        transition_rate_override=1e-72, 
-        alpha=1.25,
-        bh_spin=0.9,
-
+        alpha=0.2,
+        bh_spin=0.687,
+        bh_mass_sm=1e-11,
     )
     plot_results(results)

@@ -4,14 +4,15 @@ Plot superradiance rates with log scale to see negative values near boundary
 
 import numpy as np
 import matplotlib.pyplot as plt
-from improved_superradiance import calc_gamma_improved_with_units, calc_w_plus
+from improved_superradiance import calc_gamma_improved_with_units, calc_w_plus, calc_gamma_small_alpha
+from improved_superradiance import calc_r_plus, calc_clmn  # Import needed functions
 
 def plot_gamma_with_log_condition():
     """
     Plot superradiance rates and show the superradiance condition on log scale
     """
     # Fixed parameters
-    M_bh_solar = 10.0
+    M_bh_solar = 1e-1
     a_star = 0.9
     
     # Quantum numbers
@@ -19,27 +20,36 @@ def plot_gamma_with_log_condition():
     n_e, l_e, m_e = 6, 4, 4  # 6g level
     
     # Extended alpha range to see where it breaks
-    alpha_min, alpha_max = 0.1, 2.0
+    alpha_min, alpha_max = 0.001, 1.5
     alpha_values = np.linspace(alpha_min, alpha_max, 5000)
     
     # Calculate r_g
     G_N = 6.708e-57
     SOLAR_MASS = 1.988e30
-    m_bh_J = M_bh_solar * SOLAR_MASS * (3e8)**2
+    c = 3e8
+    m_bh_J = M_bh_solar * SOLAR_MASS * c**2
     m_bh_ev = m_bh_J / 1.602e-19
     r_g = G_N * m_bh_ev
+    a = a_star * r_g  # Spin parameter in eV^-1
     
     print(f"Black hole parameters:")
     print(f"  M = {M_bh_solar} M⊙, a* = {a_star}")
     print(f"  r_g = {r_g:.3e} eV⁻¹")
+    print(f"  a = {a:.3e} eV⁻¹")
     
     # Calculate ω₊ for this black hole
-    a = a_star * r_g
     w_plus = calc_w_plus(r_g, a)
     print(f"  ω₊ = {w_plus:.3e} eV")
     print(f"  Maximum μₐ for superradiance (m=4): {4*w_plus:.3e} eV")
     print(f"  Corresponding α_max: {4*w_plus*r_g:.3f}")
-    print()
+    
+    # Check if a^2 > r_g^2 (this would cause sqrt issues)
+    diff = r_g**2 - a**2
+    print(f"  r_g^2 - a^2 = {diff:.6e}")
+    if diff < 0:
+        print(f"  WARNING: a^2 > r_g^2! This is physically impossible.")
+        print(f"  a^2 = {(a**2):.6e}, r_g^2 = {(r_g**2):.6e}")
+        return
     
     # Arrays to store results
     gamma_g_values = []
@@ -52,7 +62,7 @@ def plot_gamma_with_log_condition():
     w_eff_e_values = []
     
     # Calculate for each alpha
-    for alpha in alpha_values:
+    for i, alpha in enumerate(alpha_values):
         mu_a = alpha / r_g
         
         # Calculate exact energies (including binding energy)
@@ -70,19 +80,26 @@ def plot_gamma_with_log_condition():
         
         # Only calculate rates if condition is satisfied
         if condition_value_g > 0 and condition_value_e > 0:
-            gamma_g_ev, gamma_g_yr = calc_gamma_improved_with_units(
-                l_g, m_g, n_g, a_star, M_bh_solar, mu_a, verbose=False
-            )
-            gamma_e_ev, gamma_e_yr = calc_gamma_improved_with_units(
-                l_e, m_e, n_e, a_star, M_bh_solar, mu_a, verbose=False
-            )
-            
-            if gamma_g_yr > 0 and gamma_e_yr > 0:
-                gamma_g_values.append(gamma_g_yr)
-                gamma_e_values.append(gamma_e_yr)
+            try:
+                # Calculate C_lmn coefficients first to debug
+                r_plus = calc_r_plus(r_g, a)
+                w_plus_local = calc_w_plus(r_g, a)
+                
+                # Calculate C_lmn for ground state
+                C_lmn_g = calc_clmn(l_g, m_g, n_g, a, r_g, w_eff_g)  # Note: using w_eff_g not mu_a
+                gamma_g = 2 * mu_a * (2 * mu_a * r_plus) ** (4 * l_g + 4) * r_plus * (m_g * w_plus_local - w_eff_g) * C_lmn_g
+                
+                # Calculate C_lmn for excited state
+                C_lmn_e = calc_clmn(l_e, m_e, n_e, a, r_g, w_eff_e)  # Note: using w_eff_e not mu_a
+                gamma_e = 2 * mu_a * (2 * mu_a * r_plus) ** (4 * l_e + 4) * r_plus * (m_e * w_plus_local - w_eff_e) * C_lmn_e
+                
+                gamma_g_values.append(gamma_g)
+                gamma_e_values.append(gamma_e)
                 mu_a_values.append(mu_a)
                 valid_alpha.append(alpha)
-            else:
+                
+            except Exception as e:
+                print(f"Error at α = {alpha:.3f}, μ_a = {mu_a:.3e} eV: {e}")
                 gamma_g_values.append(0)
                 gamma_e_values.append(0)
                 mu_a_values.append(mu_a)
@@ -93,6 +110,10 @@ def plot_gamma_with_log_condition():
             gamma_e_values.append(0)
             mu_a_values.append(mu_a)
             valid_alpha.append(alpha)
+        
+        # Progress indicator
+        if i % 500 == 0:
+            print(f"Progress: {i/len(alpha_values)*100:.1f}%")
     
     # Convert to numpy arrays
     alpha_values = np.array(alpha_values)
@@ -111,8 +132,13 @@ def plot_gamma_with_log_condition():
         gamma_g_plot = np.array(gamma_g_values)[mask_valid]
         gamma_e_plot = np.array(gamma_e_values)[mask_valid]
         
-        ax1.semilogy(valid_alpha_plot, gamma_g_plot, 'b-', linewidth=2, label=r'$\Gamma_g$ (5g)')
-        ax1.semilogy(valid_alpha_plot, gamma_e_plot, 'r--', linewidth=2, label=r'$\Gamma_e$ (6g)')
+        # Convert from eV to yr^-1
+        ev_to_yr = 1.52e15  # 1 eV = 1.52e15 yr⁻¹
+        gamma_g_plot_yr = gamma_g_plot * ev_to_yr
+        gamma_e_plot_yr = gamma_e_plot * ev_to_yr
+        
+        ax1.semilogy(valid_alpha_plot, gamma_g_plot_yr, 'b-', linewidth=2, label=r'$\Gamma_g$ (5g)')
+        ax1.semilogy(valid_alpha_plot, gamma_e_plot_yr, 'r--', linewidth=2, label=r'$\Gamma_e$ (6g)')
     
     # Mark the theoretical boundary
     boundary_alpha = 4 * w_plus * r_g
@@ -214,6 +240,8 @@ def plot_gamma_with_log_condition():
     print(f"  ω_g = {w_eff_g_values[boundary_idx]:.2e} eV")
     print(f"  ω_e = {w_eff_e_values[boundary_idx]:.2e} eV")
     print(f"  mω₊ = {m_g * w_plus:.2e} eV")
+
+    plt.savefig("valid_alpha_plot.png", dpi=300) 
     
     plt.show()
 

@@ -383,8 +383,27 @@ def plot_results(results):
                 fontsize=14,
                 verticalalignment='top')
     
+    # Extract parameters for the file name
+    alpha = params.get('alpha', 'unknown')
+    gamma_g = params.get('gamma_g', 'unknown')
+    gamma_e = params.get('gamma_e', 'unknown')
+    bh_mass = params.get('bh_mass_sm', 'unknown')
+    spin = params.get('bh_spin', 'unknown')
+    transtrate = params.get('transition_rate', 'unknown')
+
+    # Construct the file name dynamically
+    file_name = f"plot_alpha={alpha}_gamma_g={gamma_g}_gamma_e={gamma_e}_bhmass={bh_mass}_spin={spin}_transtrate={transtrate}.pdf"
+
+    # Replace invalid characters in the file name (e.g., '/', ':', etc.)
+    import re
+    file_name = re.sub(r'[^\w\-.]', '_', file_name)
+
+    # Save the plot with the dynamic file name
     plt.tight_layout()
-    plt.savefig('plot_output.png', dpi=300)  # Save the figure with high resolution
+    plt.savefig(file_name, dpi=300)  # Save the figure with high resolution
+    print(f"Plot saved as: {file_name}")
+
+    # Show the plot
     plt.show()
 
 

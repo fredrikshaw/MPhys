@@ -20,6 +20,8 @@ from ParamCalculator import (
     calc_delta_astar,
     calc_n_max,
     calc_superradiance_rate,
+    calc_char_t_ann,
+    calc_char_t_tran,
     G_N
 )
 from ConvertedFunctions import diff_power_ann_dict, diff_power_trans_dict
@@ -102,7 +104,7 @@ def calculate_strain_for_level(level_str, bh_mass_solar, alpha, astar_init, dist
     if delta_astar <= 0:
         if debug:
             print(f"    INVALID: delta_astar <= 0")
-        return None, None, None, None
+        return None, None, None, None, None
     
     # Calculate maximum occupation number
     n_max = calc_n_max(bh_mass_eV, delta_astar, m)
@@ -126,7 +128,7 @@ def calculate_strain_for_level(level_str, bh_mass_solar, alpha, astar_init, dist
         print(f"    h_peak={h_peak:.3e}")
         print(f"    sr_rate={sr_rate:.3e} eV")
     
-    return omega_GHz, h_peak, ann_rate, sr_rate
+    return omega_GHz, h_peak, ann_rate, sr_rate, n_max
 
 
 def calculate_strain_for_transition(trans_str, bh_mass_solar, alpha, astar_init, distance, debug=False):
@@ -168,7 +170,7 @@ def calculate_strain_for_transition(trans_str, bh_mass_solar, alpha, astar_init,
     if delta_astar <= 0:
         if debug:
             print(f"    INVALID: delta_astar <= 0")
-        return None, None, None, None
+        return None, None, None, None, None
     
     # Calculate superradiance rate (for excited state: l = m)
     sr_rate = calc_superradiance_rate(m, m, n, astar_init, r_g, alpha)  # [eV]
@@ -188,7 +190,7 @@ def calculate_strain_for_transition(trans_str, bh_mass_solar, alpha, astar_init,
     if debug:
         print(f"    h_peak={h_peak:.3e}")
     
-    return omega_GHz, h_peak, trans_rate, sr_rate
+    return omega_GHz, h_peak, trans_rate, sr_rate, None  # None for n_max (not used in transitions)
 
 
 def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='annihilation', astar_init=0.687, distance_kpc=10, exclude_processes=None):
@@ -239,11 +241,12 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
     strains = []
     rates = []
     sr_rates = []
+    char_times = []
     valid_processes = []
     
     print(f"\nChecking {len(processes)} {process}s...")
     for proc in processes:
-        freq, strain, rate, sr_rate = calc_func(
+        freq, strain, rate, sr_rate, n_max = calc_func(
             proc, bh_mass_solar, alpha, astar_init, distance, debug=False
         )
         if freq is not None and strain is not None and strain > 0:
@@ -252,6 +255,16 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
             # Convert rates from eV to yr^-1
             rates.append(rate * 31556926 / 6.582119569e-16)
             sr_rates.append(sr_rate * 31556926 / 6.582119569e-16)
+            
+            # Calculate characteristic time in years
+            if process == 'annihilation':
+                char_t = calc_char_t_ann(rate, n_max)  # [eV^-1]
+            else:  # transition
+                char_t = calc_char_t_tran(sr_rate)  # [eV^-1]
+            # Convert from eV^-1 to years: t[yr] = t[eV^-1] / (31556926 / 6.582119569e-16)
+            char_t_yr = char_t / (31556926 / 6.582119569e-16)
+            char_times.append(char_t_yr)
+            
             valid_processes.append(proc)
     
     if len(valid_processes) == 0:
@@ -267,20 +280,24 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
         y_data = rates
         y_label = f'{rate_name} Rate [yr$^{{-1}}$]'
         title_text = f'{rate_name} Rate vs Frequency for {rate_name} Processes'
+        color_data = sr_rates
+        color_label = 'Superradiance Rate $\\Gamma$ [yr$^{-1}$]'
     else:
         y_data = strains
         y_label = 'Peak Strain $h_\\mathrm{peak}$'
         title_text = f'Peak GW Strain vs Frequency for {rate_name} Processes'
+        color_data = char_times
+        color_label = 'Characteristic Time $\\tau$ [yr]'
     
-    # Create plot with color coding by superradiance rate
+    # Create plot with color coding
     plt.figure(figsize=(8, 5))
-    scatter = plt.scatter(frequencies, y_data, c=sr_rates, s=50, alpha=0.8, 
+    scatter = plt.scatter(frequencies, y_data, c=color_data, s=50, alpha=0.8, 
                          cmap='viridis',
                          norm=plt.matplotlib.colors.LogNorm())
     
     # Add colorbar
     cbar = plt.colorbar(scatter)
-    cbar.set_label('Superradiance Rate $\\Gamma$ [yr$^{-1}$]', fontsize=17)
+    cbar.set_label(color_label, fontsize=17)
     cbar.ax.tick_params(labelsize=12)
     
     # Label each point
@@ -363,7 +380,7 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
 
 if __name__ == "__main__":
     # Input parameters
-    bh_mass_solar = 1e-11  # Black hole mass in solar masses
+    bh_mass_solar = 1e-6  # Black hole mass in solar masses
     alpha = 0.1         # Fine structure constant (typical range: 0.01 - 0.5)
     plot_type = 'strain' # 'strain' or 'rate' - what to plot on y-axis
     process = 'transition'  # 'annihilation' or 'transition'

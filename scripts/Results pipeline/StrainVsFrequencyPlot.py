@@ -299,14 +299,19 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
         
         # Shift p labels up, others down
         if process == 'transition':
-            xytext = (0, 5)  # Directly above for transitions
-            ha = 'center'
+            # Check if transition starts at n=7 level
+            if proc.startswith('7') and not proc == "7f 4f":
+                xytext = (-8, 5)  # Shift left for n=7 transitions
+                ha = 'right'
+            else:
+                xytext = (0, 5)  # Directly above for other transitions
+                ha = 'center'
         else:
             xytext = (3, 5)  # Offset for annihilations
             ha = 'left'
         plt.annotate(label, (freq, y_val), 
                     textcoords="offset points", xytext=xytext, 
-                    ha=ha, va='center', fontsize=12, color='black')
+                    ha=ha, va='center', fontsize=11.5, color='black')
     
     plt.xlabel('Frequency [GHz]', fontsize=17)
     plt.ylabel(y_label, fontsize=17)

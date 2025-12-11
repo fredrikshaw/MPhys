@@ -14,8 +14,8 @@ bh_mass_solar = 1e-11  # Black hole mass in solar masses
 alpha = 0.1           # Fine structure constant
 astar_init = 0.687    # Initial spin parameter
 distance_kpc = 10     # Distance in kpc
-excluded_processes_strain = ["5p 2p", "6p 2p", "6p 3p", "6d 3d", "7p 5p", "7d 5d", "7f 5f", "6f 4f", "6d 4d", "6p 4p", "7p 4p", "7d 4d", "4p 2p", "4p 3p", "7p 3p", "5d 3d"]  # Excluded transitions
-excluded_processes_rate = ["5f 4f", "6d 5d", "6f 5f", "5p 2p", "6p 2p", "6p 3p", "6d 3d", "7p 5p", "7d 5d", "7f 5f", "6f 4f", "6d 4d", "6p 4p", "7p 4p", "7d 4d", "4p 2p", "4p 3p", "7p 3p", "5d 3d"]  # Excluded transitions
+excluded_processes_strain = ["8p 3p", "7d 3d", "7p 2p", "5p 2p", "6p 2p", "6p 3p", "6d 3d", "7p 5p", "7d 5d", "7f 5f", "6f 4f", "6d 4d", "6p 4p", "7p 4p", "7d 4d", "4p 2p", "4p 3p", "7p 3p", "5d 3d"]  # Excluded transitions
+excluded_processes_rate = ["7g 6g", "8d 3d", "5f 4f", "6d 5d", "6f 5f", "5p 2p", "6p 2p", "6p 3p", "6d 3d", "7p 5p", "7d 5d", "7f 5f", "6f 4f", "6d 4d", "6p 4p", "7p 4p", "7d 4d", "4p 2p", "4p 3p", "7p 3p", "5d 3d"]  # Excluded transitions
 
 print("=" * 80)
 print("STRAIN VS FREQUENCY PLOT DEMONSTRATION")

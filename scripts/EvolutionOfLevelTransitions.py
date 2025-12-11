@@ -295,7 +295,7 @@ def plot_results(results):
     # Detect collapse of N_e (minimum)
     collapse_index = np.argmin(num_e)
     collapse_time = times[collapse_index]
-    timewindow = max(times) / 10  # [years]
+    timewindow = max(times) / 30  # [years]
     xlim = (max(0, collapse_time - timewindow), collapse_time + timewindow - 500)
 
     # Print to terminal (no box)
@@ -358,7 +358,7 @@ def plot_results(results):
     ax2.set_ylabel(r'Strain $h$', color='black')
     ax2.tick_params(axis='y', labelcolor='black')
     ax2.set_yscale('log')
-    ax2.set_ylim(1e-65, 1e-22)
+    ax2.set_ylim(1e-52, 1e-43)
     for label in ax2.get_yticklabels()[::2]:
         label.set_visible(False)
     

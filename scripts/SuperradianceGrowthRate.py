@@ -1,9 +1,10 @@
+import os
 import math
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from scipy import constants
-
+from matplotlib.ticker import LogLocator, LogFormatterSciNotation
 SOLAR_MASS = 1.988e30  # [kg]
 
 
@@ -53,7 +54,7 @@ def calc_gamma(l, m, n, a, r_g, mu_a):
 def compute_superradiance_data(blackholemass: float):
     """Compute arrays for plotting superradiance growth rates."""
     l_values = [1, 2, 3, 4, 5]
-    spins = [0.90, 0.99, 0.999]
+    spins = [0.687, 0.99, 0.999]
     alpha_vals = np.logspace(-2, 1, 500)
 
     # --- Convert BH mass ---
@@ -94,7 +95,7 @@ def compute_superradiance_data(blackholemass: float):
                         # Gamma is in units of [eV] (rate in natural units)
                         gamma = calc_gamma(l, m, n, a, r_g, mu_a) # [eV]
                         if gamma > 0 and np.isfinite(gamma):
-                            gamma_si.append((1 / gamma) * 2.086e-23 * 3.154e7)  # [seconds]
+                            gamma_si.append((gamma) / 2.086e-23 / 3.154e7)  # [seconds]
                             gamma_rg.append(gamma * r_g) # [dimensionless]
                             mu_vals.append(mu_a) # [eV]
                     except (OverflowError, ValueError, ZeroDivisionError):
@@ -115,8 +116,15 @@ def compute_superradiance_data(blackholemass: float):
 
 
 def plot_superradiance_data(data):
-    """Plot the superradiance rates with dual y-axes and BH mass annotation."""
-    fig, ax1 = plt.subplots(figsize=(6, 4))
+    """Plot the superradiance rates with dual y-axes and a top x-axis."""
+    plt.rcParams.update({
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.serif": ["Computer Modern Roman"],
+        "text.latex.preamble": r"\usepackage{amsmath}"
+    })
+
+    fig, ax1 = plt.subplots(figsize=(5.5, 5))
 
     # Extract BH mass (solar masses) and gravitational radius
     bh_mass = data[0]["bh_mass"]
@@ -129,88 +137,100 @@ def plot_superradiance_data(data):
     l_values = sorted(list({d["l"] for d in data}))
     spins = sorted(list({d["a_star"] for d in data}))
 
-    # --- Plot data ---
+    # --- Main plot (left axis): Gamma^{-1} [seconds] ---
     for d in data:
         l_idx = l_values.index(d["l"])
         spin_idx = spins.index(d["a_star"])
 
-        # Plot Gamma^{-1} [years] on the left axis
-        ax1.semilogy(d["mu_vals"] * r_g, d["gamma_si"],
-                     color=colors[l_idx % len(colors)],
-                     linestyle=linestyles[spin_idx % len(linestyles)],
-                     linewidth=2)
+        ax1.semilogy(
+            d["mu_vals"] * r_g,     # alpha
+            d["gamma_si"],          # Gamma^{-1} in seconds
+            color=colors[l_idx % len(colors)],
+            linestyle=linestyles[spin_idx % len(linestyles)],
+            linewidth=1
+        )
 
     # --- Axis configuration ---
     ax1.set_xlabel(r'$\alpha$', fontsize=14)
-    ax1.set_ylabel(r'$\Gamma_{n\ell m}^{-1}$ (s)', fontsize=14)
-    #ax2.set_ylabel(r'$\Gamma_{lmn} r_g$', fontsize=14)
-
-    # Invert the left y-axis (so longer timescales are higher)
+    ax1.set_ylabel(r'$\Gamma_{n\ell m}^{\rm sr}$ [s$^{-1}$]', fontsize=14)
     ax1.set_yscale('log')
-    #ax2.set_yscale('log')
-    ax1.invert_yaxis()
-
-    # Set desired limits on left axis
-    ax1.set_ylim(1e1, 1e-9)
-
-    # Compute matching limits for the right axis
-    year_to_ev_inv = 1 / 2.086e-23  # conversion from years to eV^-1
-    y1_min, y1_max = ax1.get_ylim()
-    y2_min = (2.086e-23 * r_g) / y1_max
-    y2_max = (2.086e-23 * r_g) / y1_min
-    #ax2.set_ylim(y2_max, y2_min)
-
-    # --- Titles and labels ---
-    #ax1.set_title(r'Superradiance Growth Rate, $\Gamma_{nm\ell}$',fontsize=16)
+    ax1.set_ylim(1e-6, 1e5)
+    ax1.set_yticks([10**k for k in range(-6, 6)])
+    ax1.set_xlim(0, 2.3)
     ax1.grid(True, which="both", ls="-", alpha=0.2)
 
+    ####################################################################
+    #                     NEW RIGHT–HAND AXIS                          #
+    ####################################################################
+    ax2 = ax1.twinx()
+    ax2.set_yscale("log")
+
+    # Convert Gamma[s^-1] → Gamma*r_g (dimensionless)
+    y1_min, y1_max = ax1.get_ylim()
+    gamma_dimless_min = y1_min * r_g
+    gamma_dimless_max = y1_max * r_g
+
+    ax2.set_ylim(gamma_dimless_min, gamma_dimless_max)
+    ax2.set_ylabel(r'$\Gamma_{n\ell m}^{\rm sr}\, r_g$', fontsize=14)
+
+    ####################################################################
+    #                         NEW TOP AXIS                             #
+    ####################################################################
+    ax_top = ax1.twiny()
+
+    # α = μ r_g  →  μ = α / r_g
+    alpha_min, alpha_max = ax1.get_xlim()
+    mu_min = alpha_min / r_g
+    mu_max = alpha_max / r_g
+
+    ax_top.set_xlim(mu_min, mu_max)
+    ax_top.set_xlabel(r'$\mu_a$  [eV]', fontsize=14)
+
+    # Use scientific notation ticks on top
+    ax_top.ticklabel_format(axis='x', style='sci', scilimits=(-2, 2))
+
+    ####################################################################
+
     # --- Legends ---
-    color_handles = [Line2D([0], [0], color=colors[i % len(colors)], lw=4)
+    color_handles = [Line2D([0], [0], color=colors[i % len(colors)], lw=1)
                      for i in range(len(l_values))]
     color_labels = [fr"$\ell$={l}" for l in l_values]
     legend1 = ax1.legend(color_handles, color_labels,
-                         title=r'orbital ($\ell$)',
+                         title=r'Orbital, $\ell$',
                          loc='upper right', frameon=True)
 
-    style_handles = [Line2D([0], [0], color='black', lw=2,
+    style_handles = [Line2D([0], [0], color='black', lw=1,
                             linestyle=linestyles[i % len(linestyles)])
                      for i in range(len(spins))]
     style_labels = [f"a*={a_star:.3f}" for a_star in spins]
-    legend2 = ax1.legend(
-                style_handles,
-                style_labels,
-                title=r'Spin ($a_*$)',
-                loc='upper right',          # anchor point used for bbox
-                bbox_to_anchor=(0.8, 1.0),  # (x, y) relative to axes
-                frameon=True
-            )
+    legend2 = ax1.legend(style_handles, style_labels,
+                         title=r'Spin ($a_*$)',
+                         loc='upper right',
+                         bbox_to_anchor=(0.8, 1.0),
+                         frameon=True)
 
     ax1.add_artist(legend1)
     ax1.add_artist(legend2)
-    
-    """
-    # --- Annotate BH mass on the plot ---
-    ax1.text(0.15, 0.95,
-        fr"$M_{{BH}} = {bh_mass:.1e}\ M_\odot$",
-        transform=ax1.transAxes,
-        fontsize=13,
-        verticalalignment='top',
-        bbox=dict(boxstyle='round', facecolor='white', alpha=0.7, edgecolor='none')
-    )
-    """
 
     # --- Save the figure ---
-    filename = f"SuperradianceRates_{int(bh_mass)}.png"
-    plt.tight_layout()
-    plt.savefig(filename, bbox_inches='tight', dpi=300)
-    print(f"\n✅ Figure saved as '{filename}' in the current directory.\n")
+    save_dir = "scripts/SRplots"
+    os.makedirs(save_dir, exist_ok=True)
 
+    filename = f"SR_BHMass_1e{int(np.log10(bh_mass))}.pdf"
+    filepath = os.path.join(save_dir, filename)
+
+    plt.tight_layout()
+    plt.savefig(filepath, format='pdf', bbox_inches='tight')
+
+    print(f"\n✅ Figure saved as '{filepath}'.\n")
     plt.show()
 
 
 
+
+
 def main():
-    blackholemass = 1e-10  # [solar masses]
+    blackholemass = 1e-6 # [solar masses]
     data = compute_superradiance_data(blackholemass)
     plot_superradiance_data(data)
 

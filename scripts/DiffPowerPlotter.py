@@ -148,8 +148,8 @@ def dP_6gto5g(theta, rg=1.0, alpha=1.0, N=1.0):
 # ANGULAR GRID
 # ============================================================
 
-theta = np.linspace(0, np.pi, 500)
-phi = np.linspace(0, 2*np.pi, 1000)
+theta = np.linspace(0, np.pi, 250)
+phi = np.linspace(0, 2*np.pi, 2)
 theta_grid, phi_grid = np.meshgrid(theta, phi)
 
 lon = phi_grid - np.pi
@@ -176,7 +176,7 @@ power_2p_normalized = power_2p / np.max(power_2p)
 fig1 = plt.figure(figsize=(5, 2.5))
 ax1 = fig1.add_subplot(111, projection='mollweide')
 
-im1 = ax1.pcolormesh(lon, lat, power_2p_normalized, shading='auto', cmap='inferno', vmin=0, vmax=1)
+im1 = ax1.pcolormesh(lon, lat, power_2p_normalized, shading='auto', cmap='inferno', vmin=0, vmax=1, rasterized=True)
 ax1.grid(True)
 ax1.set_xticklabels([])  # Remove x-tick labels
 
@@ -201,7 +201,7 @@ power_3d_normalized = power_3d / np.max(power_3d)
 fig2 = plt.figure(figsize=(5, 2.5))
 ax2 = fig2.add_subplot(111, projection='mollweide')
 
-im2 = ax2.pcolormesh(lon, lat, power_3d_normalized, shading='auto', cmap='inferno', vmin=0, vmax=1)
+im2 = ax2.pcolormesh(lon, lat, power_3d_normalized, shading='auto', cmap='inferno', vmin=0, vmax=1, rasterized=True)
 ax2.grid(True)
 ax2.set_xticklabels([])  # Remove x-tick labels
 
@@ -226,7 +226,7 @@ power_4f_normalized = power_4f / np.max(power_4f)
 fig3 = plt.figure(figsize=(5, 2.5))
 ax3 = fig3.add_subplot(111, projection='mollweide')
 
-im3 = ax3.pcolormesh(lon, lat, power_4f_normalized, shading='auto', cmap='inferno', vmin=0, vmax=1)
+im3 = ax3.pcolormesh(lon, lat, power_4f_normalized, shading='auto', cmap='inferno', vmin=0, vmax=1, rasterized=True)
 ax3.grid(True)
 ax3.set_xticklabels([])  # Remove x-tick labels
 
@@ -251,7 +251,7 @@ power_6gto5g_normalized = power_6gto5g / np.max(power_6gto5g)
 fig4 = plt.figure(figsize=(5, 2.5))
 ax4 = fig4.add_subplot(111, projection='mollweide')
 
-im4 = ax4.pcolormesh(lon, lat, power_6gto5g_normalized, shading='auto', cmap='inferno', vmin=0, vmax=1)
+im4 = ax4.pcolormesh(lon, lat, power_6gto5g_normalized, shading='auto', cmap='inferno', vmin=0, vmax=1, rasterized=True)
 ax4.grid(True)
 ax4.set_xticklabels([])  # Remove x-tick labels
 

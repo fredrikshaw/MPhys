@@ -151,8 +151,6 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=1,
     # --- Convert a* (bh_spin) to a (not dimensionless) ---
     a = bh_spin * r_g # [eV]^-1
 
-    
-
     # Calculate gamma values using ParamCalculator
     gamma_e = calc_superradiance_rate(l=l_e, m=m_e, n=n_e, a_star=bh_spin, r_g=r_g, alpha=alpha)
     gamma_g = calc_superradiance_rate(l=l_g, m=m_g, n=n_g, a_star=bh_spin, r_g=r_g, alpha=alpha)
@@ -283,7 +281,15 @@ def plot_results(results):
         "text.usetex": True,
         "font.family": "serif",
         "font.serif": ["Computer Modern Roman"],
-        "text.latex.preamble": r"\usepackage{amsmath}"
+        "text.latex.preamble": r"\usepackage{amsmath}",
+        # Add these font size settings:
+        "font.size": 14,               # Base font size
+        "axes.titlesize": 16,          # Axis title size
+        "axes.labelsize": 15,          # Axis label size
+        "xtick.labelsize": 14,         # X-tick label size
+        "ytick.labelsize": 14,         # Y-tick label size
+        "legend.fontsize": 13,         # Legend font size
+        "figure.titlesize": 18         # Figure title size (if you add one)
     })
 
     times = results['times']
@@ -295,7 +301,7 @@ def plot_results(results):
     # Detect collapse of N_e (minimum)
     collapse_index = np.argmin(num_e)
     collapse_time = times[collapse_index]
-    timewindow = max(times) / 30  # [years]
+    timewindow = max(times) / 17  # [years]
     xlim = (max(0, collapse_time - timewindow), collapse_time + timewindow - 500)
 
     # Print to terminal (no box)
@@ -396,12 +402,20 @@ def plot_results(results):
 
     # Replace invalid characters in the file name (e.g., '/', ':', etc.)
     import re
+    import os
     file_name = re.sub(r'[^\w\-.]', '_', file_name)
+    
+    # Create subdirectory if it doesn't exist
+    subdirectory = "scripts/tranistionplots"
+    os.makedirs(subdirectory, exist_ok=True)
+    
+    # Create full path for saving
+    full_path = os.path.join(subdirectory, file_name)
 
     # Save the plot with the dynamic file name
     plt.tight_layout()
-    plt.savefig(file_name, dpi=300)  # Save the figure with high resolution
-    print(f"Plot saved as: {file_name}")
+    plt.savefig(full_path, dpi=300)  # Save the figure with high resolution
+    print(f"Plot saved as: {full_path}")
 
     # Show the plot
     plt.show()
@@ -414,7 +428,7 @@ def plot_results(results):
 
 if __name__ == "__main__":
     results = run_simulation(
-        alpha=0.2,
+        alpha=0.1,
         bh_spin=0.687,
         bh_mass_sm=1e-11,
     )

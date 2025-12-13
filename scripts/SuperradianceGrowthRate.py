@@ -121,7 +121,15 @@ def plot_superradiance_data(data):
         "text.usetex": True,
         "font.family": "serif",
         "font.serif": ["Computer Modern Roman"],
-        "text.latex.preamble": r"\usepackage{amsmath}"
+        "text.latex.preamble": r"\usepackage{amsmath}",
+        # Add these font size settings:
+        "font.size": 15,               # Base font size
+        "axes.titlesize": 16,          # Axis title size
+        "axes.labelsize": 15,          # Axis label size
+        "xtick.labelsize": 15,         # X-tick label size
+        "ytick.labelsize": 15,         # Y-tick label size
+        "legend.fontsize": 11,         # Legend font size
+        "figure.titlesize": 18         # Figure title size (if you add one)
     })
 
     fig, ax1 = plt.subplots(figsize=(5.5, 5))
@@ -139,23 +147,42 @@ def plot_superradiance_data(data):
 
     # --- Main plot (left axis): Gamma^{-1} [seconds] ---
     for d in data:
-        l_idx = l_values.index(d["l"])
+        l = d["l"]
+        l_idx = l_values.index(l)
         spin_idx = spins.index(d["a_star"])
 
-        ax1.semilogy(
-            d["mu_vals"] * r_g,     # alpha
-            d["gamma_si"],          # Gamma^{-1} in seconds
+        x = d["mu_vals"] * r_g
+        y = d["gamma_si"]
+
+        line, = ax1.semilogy(
+            x, y,
             color=colors[l_idx % len(colors)],
             linestyle=linestyles[spin_idx % len(linestyles)],
             linewidth=1
         )
 
+        # --- Label ℓ ONLY for a* = 0.999 ---
+        if d["a_star"] == 0.999 and len(y) > 0:
+            peak_idx = np.argmax(y)
+            x_peak = x[peak_idx]
+            y_peak = y[peak_idx]
+
+            ax1.text(
+                x_peak+0.1,
+                y_peak * 1.25,   # vertical offset (safe for log scale)
+                rf"$\ell={l}$",
+                color=colors[l_idx % len(colors)],
+                fontsize=13,
+                ha="center",
+                va="bottom"
+            )
+
     # --- Axis configuration ---
     ax1.set_xlabel(r'$\alpha$', fontsize=14)
     ax1.set_ylabel(r'$\Gamma_{n\ell m}^{\rm sr}$ [s$^{-1}$]', fontsize=14)
     ax1.set_yscale('log')
-    ax1.set_ylim(1e-6, 1e5)
-    ax1.set_yticks([10**k for k in range(-6, 6)])
+    ax1.set_ylim(1e-1, 1e10)
+    ax1.set_yticks([10**k for k in range(-1, 11, 2)])
     ax1.set_xlim(0, 2.3)
     ax1.grid(True, which="both", ls="-", alpha=0.2)
 
@@ -192,24 +219,23 @@ def plot_superradiance_data(data):
     ####################################################################
 
     # --- Legends ---
-    color_handles = [Line2D([0], [0], color=colors[i % len(colors)], lw=1)
+    """color_handles = [Line2D([0], [0], color=colors[i % len(colors)], lw=1)
                      for i in range(len(l_values))]
     color_labels = [fr"$\ell$={l}" for l in l_values]
     legend1 = ax1.legend(color_handles, color_labels,
                          title=r'Orbital, $\ell$',
-                         loc='upper right', frameon=True)
+                         loc='upper right', frameon=True)"""
 
     style_handles = [Line2D([0], [0], color='black', lw=1,
                             linestyle=linestyles[i % len(linestyles)])
                      for i in range(len(spins))]
     style_labels = [f"a*={a_star:.3f}" for a_star in spins]
     legend2 = ax1.legend(style_handles, style_labels,
-                         title=r'Spin ($a_*$)',
                          loc='upper right',
-                         bbox_to_anchor=(0.8, 1.0),
-                         frameon=True)
+                         bbox_to_anchor=(1, 1.0),
+                         frameon=False)
 
-    ax1.add_artist(legend1)
+    #ax1.add_artist(legend1)
     ax1.add_artist(legend2)
 
     # --- Save the figure ---
@@ -230,7 +256,7 @@ def plot_superradiance_data(data):
 
 
 def main():
-    blackholemass = 1e-6 # [solar masses]
+    blackholemass = 1e-11 # [solar masses]
     data = compute_superradiance_data(blackholemass)
     plot_superradiance_data(data)
 

@@ -1,4 +1,4 @@
-from RateDefs import diff_power_ann_dict, diff_power_trans_dict
+from ConvertedFunctions import diff_power_ann_dict, diff_power_trans_dict
 import numpy as np
 from scipy import constants
 

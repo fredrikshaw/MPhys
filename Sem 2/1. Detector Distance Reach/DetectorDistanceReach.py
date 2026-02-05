@@ -136,14 +136,15 @@ def parse_process(process):
 def extract_quantum_numbers(process):
     """
     Extract quantum numbers from process string.
+    Enforces m=l (maximum azimuthal quantum number for the orbital).
     
     Args:
         process (str): Process specification (e.g., '2p', '5f', '7h 6h')
     
     Returns:
         dict: Dictionary with quantum numbers
-            For annihilation: {'n': int, 'l': int}
-            For transition: {'n_e': int, 'l_e': int, 'n_g': int, 'l_g': int}
+            For annihilation: {'n': int, 'l': int, 'm': int} where m=l
+            For transition: {'n_e': int, 'l_e': int, 'm_e': int, 'n_g': int, 'l_g': int, 'm_g': int} where m=l
     """
     orbital_to_l = {'s': 0, 'p': 1, 'd': 2, 'f': 3, 'g': 4, 'h': 5, 'i': 6, 'k': 7}
     
@@ -152,26 +153,30 @@ def extract_quantum_numbers(process):
         parts = process.split()
         n_e = int(parts[0][0])
         l_e_char = parts[0][1]
+        l_e = orbital_to_l[l_e_char]
         n_g = int(parts[1][0])
         l_g_char = parts[1][1]
+        l_g = orbital_to_l[l_g_char]
         
         return {
-            'n_e': n_e, 'l_e': orbital_to_l[l_e_char],
-            'n_g': n_g, 'l_g': orbital_to_l[l_g_char]
+            'n_e': n_e, 'l_e': l_e, 'm_e': l_e,  # m = l
+            'n_g': n_g, 'l_g': l_g, 'm_g': l_g   # m = l
         }
     else:
         # Annihilation
         n = int(process[0])
         l_char = process[1]
-        return {'n': n, 'l': orbital_to_l[l_char]}
+        l = orbital_to_l[l_char]
+        return {'n': n, 'l': l, 'm': l}  # m = l
 
 
 # ==================== Distance Calculation Functions ====================
 
 def calc_distance_reach_ann(h_det, alpha, process, bh_mass_solar, 
-                            delta_a_star=0.01, m_quantum=1):
+                            delta_a_star=0.01):
     """
     Calculate detector distance reach for annihilation process.
+    Note: Automatically uses m=l (maximum azimuthal quantum number for the orbital).
     
     Args:
         h_det (float): Detection threshold strain (dimensionless)
@@ -179,7 +184,6 @@ def calc_distance_reach_ann(h_det, alpha, process, bh_mass_solar,
         process (str): Annihilation process (e.g., '2p', '3d', '4f')
         bh_mass_solar (float): Black hole mass [M_☉]
         delta_a_star (float): Spin parameter difference (default: 0.01)
-        m_quantum (int): Azimuthal quantum number (default: 1)
     
     Returns:
         float: Maximum detectable distance [kpc]
@@ -188,6 +192,10 @@ def calc_distance_reach_ann(h_det, alpha, process, bh_mass_solar,
     process_type, process_key, n = parse_process(process)
     if process_type != 'annihilation':
         raise ValueError(f"Process '{process}' is not an annihilation process")
+    
+    # Extract quantum numbers (m=l enforced)
+    qn = extract_quantum_numbers(process)
+    m = qn['m']  # m = l
     
     # Calculate gravitational radius
     r_g = calc_rg_from_bh_mass(bh_mass_solar)
@@ -198,9 +206,9 @@ def calc_distance_reach_ann(h_det, alpha, process, bh_mass_solar,
     # Calculate annihilation rate
     ann_rate = calc_annihilation_rate(process_key, alpha, omega_ann, G_N=G_N, r_g=r_g)
     
-    # Calculate n_max
+    # Calculate n_max (using m=l)
     bh_mass_eV = r_g / G_N
-    n_max = calc_n_max(bh_mass_eV, delta_a_star, m_quantum)
+    n_max = calc_n_max(bh_mass_eV, delta_a_star, m)
     
     # Calculate detectable radius in eV^-1
     r_max_eV_inv = calc_detectable_radius_ann(h_det, ann_rate, omega_ann, n_max, G_N=G_N)
@@ -212,9 +220,10 @@ def calc_distance_reach_ann(h_det, alpha, process, bh_mass_solar,
 
 
 def calc_distance_reach_trans(h_det, alpha, process, bh_mass_solar,
-                               a_star=0.9, m_quantum=1):
+                               a_star=0.9):
     """
     Calculate detector distance reach for transition process.
+    Note: Automatically uses m=l (maximum azimuthal quantum number for the orbital).
     
     Args:
         h_det (float): Detection threshold strain (dimensionless)
@@ -222,7 +231,6 @@ def calc_distance_reach_trans(h_det, alpha, process, bh_mass_solar,
         process (str): Transition process (e.g., '3p 2p', '5f 4f')
         bh_mass_solar (float): Black hole mass [M_☉]
         a_star (float): Dimensionless spin parameter (default: 0.9)
-        m_quantum (int): Azimuthal quantum number (default: 1)
     
     Returns:
         float: Maximum detectable distance [kpc]
@@ -232,9 +240,10 @@ def calc_distance_reach_trans(h_det, alpha, process, bh_mass_solar,
     if process_type != 'transition':
         raise ValueError(f"Process '{process}' is not a transition process")
     
-    # Get quantum numbers
+    # Get quantum numbers (m=l enforced)
     qn = extract_quantum_numbers(process)
     l = qn['l_e']  # Use excited state l for superradiance
+    m = qn['m_e']  # m = l for excited state
     n = n_e  # Use excited state n
     
     # Calculate gravitational radius
@@ -246,8 +255,8 @@ def calc_distance_reach_trans(h_det, alpha, process, bh_mass_solar,
     # Calculate transition rate
     trans_rate = calc_transition_rate(process_key, alpha, omega_trans, G_N=G_N, r_g=r_g)
     
-    # Calculate superradiance rate
-    sr_rate = calc_superradiance_rate(l, m_quantum, n, a_star, r_g, alpha)
+    # Calculate superradiance rate (using m=l)
+    sr_rate = calc_superradiance_rate(l, m, n, a_star, r_g, alpha)
     
     # Calculate detectable radius in eV^-1
     r_max_eV_inv = calc_detectable_radius_trans(h_det, trans_rate, omega_trans, 
@@ -262,10 +271,11 @@ def calc_distance_reach_trans(h_det, alpha, process, bh_mass_solar,
 # ==================== Plotting Functions ====================
 
 def plot_distance_reach(h_det, alpha, process, bh_mass_range=None,
-                        delta_a_star=0.01, a_star=0.9, m_quantum=1,
+                        delta_a_star=0.01, a_star=0.9,
                         num_points=100, save_path=None, show_plot=True):
     """
     Create distance reach plot: detector reach [kpc] vs black hole mass [M_☉].
+    Note: Automatically uses m=l (maximum azimuthal quantum number for the orbital).
     
     Args:
         h_det (float): Detection threshold strain (dimensionless)
@@ -274,7 +284,6 @@ def plot_distance_reach(h_det, alpha, process, bh_mass_range=None,
         bh_mass_range (tuple): (min_mass, max_mass) in M_☉ (default: auto)
         delta_a_star (float): Spin parameter diff for annihilation (default: 0.01)
         a_star (float): Spin parameter for transition (default: 0.9)
-        m_quantum (int): Azimuthal quantum number (default: 1)
         num_points (int): Number of points to plot (default: 100)
         save_path (str): Path to save figure (optional)
         show_plot (bool): Whether to display plot (default: True)
@@ -308,12 +317,12 @@ def plot_distance_reach(h_det, alpha, process, bh_mass_range=None,
             if process_type == 'annihilation':
                 distances[i] = calc_distance_reach_ann(
                     h_det, alpha, process, bh_mass, 
-                    delta_a_star=delta_a_star, m_quantum=m_quantum
+                    delta_a_star=delta_a_star
                 )
             else:  # transition
                 distances[i] = calc_distance_reach_trans(
                     h_det, alpha, process, bh_mass,
-                    a_star=a_star, m_quantum=m_quantum
+                    a_star=a_star
                 )
         except Exception as e:
             print(f"Warning: Could not calculate distance for M_BH = {bh_mass:.3e} M_☉: {e}")
@@ -352,10 +361,11 @@ def plot_distance_reach(h_det, alpha, process, bh_mass_range=None,
 
 
 def plot_multiple_processes(h_det, alpha, processes, bh_mass_range=None,
-                           delta_a_star=0.01, a_star=0.9, m_quantum=1,
+                           delta_a_star=0.01, a_star=0.9,
                            num_points=100, save_path=None, show_plot=True):
     """
     Plot distance reach for multiple processes on the same plot.
+    Note: Automatically uses m=l (maximum azimuthal quantum number for the orbital).
     
     Args:
         h_det (float): Detection threshold strain (dimensionless)
@@ -364,7 +374,6 @@ def plot_multiple_processes(h_det, alpha, processes, bh_mass_range=None,
         bh_mass_range (tuple): (min_mass, max_mass) in M_☉ (default: auto)
         delta_a_star (float): Spin parameter diff for annihilation (default: 0.01)
         a_star (float): Spin parameter for transition (default: 0.9)
-        m_quantum (int): Azimuthal quantum number (default: 1)
         num_points (int): Number of points to plot (default: 100)
         save_path (str): Path to save figure (optional)
         show_plot (bool): Whether to display plot (default: True)
@@ -400,12 +409,12 @@ def plot_multiple_processes(h_det, alpha, processes, bh_mass_range=None,
                 if process_type == 'annihilation':
                     distances[i] = calc_distance_reach_ann(
                         h_det, alpha, process, bh_mass,
-                        delta_a_star=delta_a_star, m_quantum=m_quantum
+                        delta_a_star=delta_a_star
                     )
                 else:  # transition
                     distances[i] = calc_distance_reach_trans(
                         h_det, alpha, process, bh_mass,
-                        a_star=a_star, m_quantum=m_quantum
+                        a_star=a_star
                     )
             except Exception as e:
                 distances[i] = np.nan

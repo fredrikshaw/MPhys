@@ -33,6 +33,7 @@ from ParamCalculator import (
     calc_annihilation_rate, calc_transition_rate,
     calc_n_max, calc_superradiance_rate,
     calc_detectable_radius_ann, calc_detectable_radius_trans,
+    calc_delta_astar,
     G_N
 )
 
@@ -294,6 +295,9 @@ def plot_distance_reach(h_det, alpha, process, bh_mass_range=None,
     # Parse process to determine type
     process_type, _, _ = parse_process(process)
     
+    # Get quantum numbers for delta_a_star calculation
+    qn = extract_quantum_numbers(process)
+    
     # Set default mass range if not provided
     if bh_mass_range is None:
         # Default ranges based on typical values for different alphas
@@ -303,6 +307,20 @@ def plot_distance_reach(h_det, alpha, process, bh_mass_range=None,
             bh_mass_range = (0.01, 10)
         else:
             bh_mass_range = (0.001, 1)
+    
+    # Calculate delta_a_star for the middle of the mass range (for display purposes)
+    # Use geometric mean of mass range
+    mid_mass = np.sqrt(bh_mass_range[0] * bh_mass_range[1])
+    r_g_mid = calc_rg_from_bh_mass(mid_mass)
+    
+    if process_type == 'annihilation':
+        n = qn['n']
+        m = qn['m']
+        delta_a_star_calc = calc_delta_astar(a_star, r_g_mid, alpha, n, m)
+    else:  # transition
+        n_e = qn['n_e']
+        m_e = qn['m_e']
+        delta_a_star_calc = calc_delta_astar(a_star, r_g_mid, alpha, n_e, m_e)
     
     # Generate black hole mass array (log scale)
     bh_masses = np.logspace(np.log10(bh_mass_range[0]), 
@@ -339,9 +357,9 @@ def plot_distance_reach(h_det, alpha, process, bh_mass_range=None,
     title = f'Detector Distance Reach\n'
     title += f'Process: {process}, α = {alpha:.3f}, $h_{{det}}$ = {h_det:.2e}'
     if process_type == 'annihilation':
-        title += f', Δa* = {delta_a_star:.3f}'
+        title += f'\n$a_*^{{init}}$ = {a_star:.3f}, Δa* = {delta_a_star_calc:.4f} (at {mid_mass:.2e} $M_\odot$)'
     else:
-        title += f', a* = {a_star:.2f}'
+        title += f'\n$a_*$ = {a_star:.3f}, Δa* = {delta_a_star_calc:.4f} (at {mid_mass:.2e} $M_\odot$)'
     plt.title(title, fontsize=12)
     
     plt.grid(True, which='both', alpha=0.3)
@@ -453,9 +471,10 @@ if __name__ == "__main__":
     print("=" * 70)
     
     # Test parameters
-    h_det = 1e-37  # Detection threshold
+    h_det = 1e-22  # Detection threshold
     alpha = 0.1    # Fine structure constant
     bh_mass_range = (1e-12, 1e-5)
+    a_star = 0.687
     
     print(f"\nTest Parameters:")
     print(f"  Detection threshold (h_det): {h_det:.2e}")
@@ -470,6 +489,7 @@ if __name__ == "__main__":
         bh_masses, distances = plot_distance_reach(
             h_det=h_det,
             alpha=alpha,
+            a_star=a_star,
             process='2p',
             bh_mass_range=bh_mass_range,
             num_points=50,
@@ -488,20 +508,20 @@ if __name__ == "__main__":
     
     # Test 2: Single transition process
     print("-" * 70)
-    print("Test 2: Transition Process (6f 5f)")
+    print("Test 2: Transition Process (7p 6p)")
     print("-" * 70)
     try:
         bh_masses, distances = plot_distance_reach(
             h_det=h_det,
             alpha=alpha,
-            a_star=0.687,
-            process='6f 5f',
+            a_star=a_star,
+            process='7p 6p',
             bh_mass_range=bh_mass_range,
             num_points=50,
-            save_path='distance_reach_6f5f_transition.png',
+            save_path='distance_reach_7p6p_transition.png',
             show_plot=False
         )
-        print(f"✓ Successfully plotted 3p 2p transition")
+        print(f"✓ Successfully plotted 7p 6p transition")
         print(f"  Mass range: {bh_masses[0]:.2e} to {bh_masses[-1]:.2e} M_☉")
         valid_distances = distances[~np.isnan(distances)]
         if len(valid_distances) > 0:
@@ -521,6 +541,7 @@ if __name__ == "__main__":
             h_det=h_det,
             alpha=alpha,
             processes=processes,
+            a_star=a_star,
             bh_mass_range=bh_mass_range,
             num_points=50,
             save_path='distance_reach_multiple_annihilation.png',

@@ -49,7 +49,7 @@ def solid_angle_integral_from_dPdOmega(dPdtheta_func, Ntheta=10000):
     theta = np.linspace(0.0, np.pi, Ntheta)
     dP_dOmega = dPdtheta_func(theta)
     integrand = np.sin(theta) * dP_dOmega  # integrand for polar integral
-    P = 2 * np.pi * np.trapezoid(integrand, theta)
+    P = 2 * np.pi * np.trapz(integrand, theta)
     return P
 
 # Common angular polynomial that appears in many table entries:

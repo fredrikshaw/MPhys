@@ -212,9 +212,17 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
         "text.usetex": True,
         "font.family": "serif",
         "font.serif": ["Computer Modern Roman"],
-        "text.latex.preamble": r"\usepackage{amsmath}"
+        "text.latex.preamble": r"\usepackage{amsmath}",
+        # Add these font size settings:
+        "font.size": 16,               # Base font size
+        "axes.titlesize": 16,          # Axis title size
+        "axes.labelsize": 15,          # Axis label size
+        "xtick.labelsize": 14,         # X-tick label size
+        "ytick.labelsize": 14,         # Y-tick label size
+        "legend.fontsize": 14,         # Legend font size
+        "figure.titlesize": 18         # Figure title size (if you add one)
     })
-
+    
     # Convert distance to natural units
     distance_m = distance_kpc * 3.086e19  # [m]
     distance = distance_m / (1.9732705e-7)  # [eV^-1]
@@ -288,10 +296,10 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
         y_label = 'Peak Strain $h_\\mathrm{peak}$'
         title_text = f'Peak GW Strain vs Frequency for {rate_name} Processes'
         color_data = char_times
-        color_label = 'Characteristic Time $\\tau$ [yr]'
+        color_label = 'Characteristic Time [yr]'
     
     # Create plot with color coding
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=(5, 5))
     scatter = plt.scatter(frequencies, y_data, c=color_data, s=50, alpha=0.8, 
                          cmap='viridis',
                          norm=plt.matplotlib.colors.LogNorm())
@@ -321,19 +329,29 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
             if proc.startswith('7') and not proc == "7f 4f":
                 xytext = (-8, 5)  # Shift left for n=7 transitions
                 ha = 'right'
+ 
             else:
                 xytext = (0, 5)  # Directly above for other transitions
                 ha = 'center'
+        
+        elif 'd' in proc:  # Check if the transition involves 'd'
+            xytext = (1, -6)  # Shift down for d transitions
+            ha = 'left'
         else:
-            xytext = (3, 5)  # Offset for annihilations
+            xytext = (1, 6)  # Offset for annihilations
             ha = 'left'
         plt.annotate(label, (freq, y_val), 
                     textcoords="offset points", xytext=xytext, 
-                    ha=ha, va='center', fontsize=11.5, color='black')
+                    ha=ha, va='center', fontsize=12.5, color='black')
     
     plt.xlabel('Frequency [GHz]', fontsize=17)
     plt.ylabel(y_label, fontsize=17)
     plt.yscale('log')
+    
+ 
+
+    plt.xticks()  # Keep every other tick
+
     
     # Use log scale for x-axis if plotting transitions
     if process == 'transition':
@@ -342,6 +360,8 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
     # Reduce ticks and increase tick label size
     ax = plt.gca()
     ax.tick_params(axis='both', which='major', labelsize=12)
+    for label in ax.get_xticklabels()[::2]:
+        label.set_visible(False)
     
     # Configure x-axis formatting based on scale
     if process == 'transition':
@@ -376,22 +396,22 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
     plt.savefig(filepath, format='pdf', bbox_inches='tight')
     print(f"\nPlot saved to: {filepath}")
     
-    return plt.gcf(), frequencies, strains, rates, valid_processes
+    return plt.gcf(), frequencies, strains, rates, valid_processes, char_times
 
 
 if __name__ == "__main__":
     # Input parameters
-    bh_mass_solar = 1e-6  # Black hole mass in solar masses
+    bh_mass_solar = 1e-11  # Black hole mass in solar masses
     alpha = 0.1         # Fine structure constant (typical range: 0.01 - 0.5)
-    plot_type = 'strain' # 'strain' or 'rate' - what to plot on y-axis
-    process = 'transition'  # 'annihilation' or 'transition'
+    plot_type = 'rate' # 'strain' or 'rate' - what to plot on y-axis
+    process = 'annihilation'  # 'annihilation' or 'transition'
     astar_init = 0.687    # Initial spin parameter
     distance_kpc = 10     # Distance in kpc
     
     # Exclude specific processes (optional)
     # For annihilations: e.g., ["5g", "2p"]
     # For transitions: e.g., ["3p 2p", "7f 6f", "6g 5g"]
-    exclude_processes = ["5p 2p", "6p 2p", "6p 3p", "6d 3d", "7p 5p", "7d 5d", "7f 5f", "6f 4f", "6d 4d", "6p 4p", "7p 4p", "7d 4d", "4p 2p", "4p 3p", "7p 3p", "5d 3d"]  # Example for transitions
+    exclude_processes = ["7h 6h", "6p 5p", "7g 6g", "6d 5d", "5f 4f", "7p 2p", "7d 3d", "8p 2p",  "8p 3p", "8d 3d", "5p 2p", "6p 2p", "6p 3p", "6d 3d", "7p 5p", "7d 5d", "7f 5f", "6f 4f", "6d 4d", "6p 4p", "7p 4p", "7d 4d", "4p 2p", "4p 3p", "7p 3p", "5d 3d"]  # Example for transitions
     
     # Create plot
     print(f"Calculating peak strain and rates for all {process}s...")
@@ -407,10 +427,10 @@ if __name__ == "__main__":
     print("NOTE: Alpha must be small enough that astar_init > astar_crit for superradiance.")
     print()
     
-    fig, freqs, strains, rates, processes_list = plot_strain_vs_frequency(
-        bh_mass_solar, alpha, plot_type, process, astar_init, distance_kpc, exclude_processes
-    )
-    
+    fig, freqs, strains, rates, processes_list, char_times = plot_strain_vs_frequency(
+            bh_mass_solar, alpha, plot_type, process, astar_init, distance_kpc, exclude_processes
+        )
+        
     if fig is None:
         print("\nPlot generation failed. Exiting.")
     else:
@@ -423,9 +443,15 @@ if __name__ == "__main__":
         else:
             rate_label = 'Trans. Rate [yr^-1]'
         
-        print(f"{'Process':<12} {'Frequency [GHz]':<18} {'Peak Strain':<15} {rate_label:<20}")
-        print("-" * 70)
-        for proc, freq, strain, rate in zip(processes_list, freqs, strains, rates):
-            print(f"{proc:<12} {freq:<18.6e} {strain:<15.6e} {rate:<20.6e}")
+        print(f"{'Process':<12} {'Frequency [GHz]':<18} {'Peak Strain':<15} {rate_label:<20} {'Char. Time [s]':<20} {'Char. Time [yr]':<20}")
+        print("-" * 110)
+        SECONDS_IN_YEAR = 3.154e7  # Approximate number of seconds in a year
+        
+        for proc, freq, strain, rate, char_time_years in zip(processes_list, freqs, strains, rates, char_times):
+            # Convert seconds to years
+            char_time_seconds= char_time_years * SECONDS_IN_YEAR
+            
+            # Print the results in scientific notation
+            print(f"{proc:<12} {freq:<18.6e} {strain:<15.6e} {rate:<20.6e} {char_time_seconds:<20.6e} {char_time_years:<20.6e}")
         
         plt.show()

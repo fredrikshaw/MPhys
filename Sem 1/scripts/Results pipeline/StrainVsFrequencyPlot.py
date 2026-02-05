@@ -264,6 +264,7 @@ def plot_strain_vs_frequency(bh_mass_solar, alpha, plot_type='strain', process='
             # Convert from eV^-1 to years: t[yr] = t[eV^-1] / (31556926 / 6.582119569e-16)
             char_t_yr = char_t / (31556926 / 6.582119569e-16)
             char_times.append(char_t_yr)
+            print(f"Process: {proc}, Char_time (years): {char_t_yr}, Char_time (seconds): {char_t_yr * 31556926}")
             
             valid_processes.append(proc)
     

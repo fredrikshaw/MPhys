@@ -6,57 +6,25 @@ import matplotlib.pyplot as plt
 from scipy import constants
 from scipy.integrate import solve_ivp
 
-from SuperradianceGrowthRate import calc_gamma, calc_alpha
-## Gamma calculation needs to be done analytically 
-from improved_superradiance import calc_gamma_improved_with_units
-
-
 
 # Add the "Results Pipeline" sub-folder to the Python path
 current_dir = dirname(abspath(__file__))
 results_pipeline_dir = join(current_dir, "Results Pipeline")
 sys.path.append(results_pipeline_dir)
 
-# Import the required function or class from ParamCalculator
-from ParamCalculator import calc_superradiance_rate
+# Import the required functions from ParamCalculator
+from ParamCalculator import (
+    calc_superradiance_rate,
+    calc_omega_transition,
+    calc_transition_rate,
+    calc_rg_from_bh_mass,
+    G_N
+)
 
 np.seterr(all='ignore')  # Suppress all numpy warnings
 warnings.filterwarnings('ignore')  # Suppress all Python warnings
 
 SOLAR_MASS = 1.988e30  # [kg]
-
-# === IMPORT TRANSITION RATE EXPRESSIONS FROM SIMPLE CALCULATOR ===
-from SimpleRateCalculator import (
-    dPdOmega_transition,
-    solid_angle_integral_from_dPdOmega,
-    calculate_omega_transition
-)
-
-def transition_rate_from_tables(transition, alpha, r_g, G_N, n_e, n_g, mu_a):
-    """
-    Compute the transition rate Γ_tr using the same expressions
-    as SimpleRateCalculator.py (Table VII, integrated over solid angle).
-
-    Returns Γ_tr in units of years^{-1}.
-    """
-
-    # Energy of emitted graviton:
-    omega_tr = calculate_omega_transition(mu_a, alpha, n_e, n_g)  # [eV]
-
-    # Differential power ->
-    func = lambda th: dPdOmega_transition(transition, alpha, th, G_N=G_N, r_g=r_g)
-
-    # Integrate over angles:
-    P = solid_angle_integral_from_dPdOmega(func)   # [eV^2]
-
-    # Transition rate from eq. A12 (annihilation uses 1/(2ω), transition uses 1/ω):
-    Gamma_tr_eV = P / omega_tr
-
-    # Convert to years^{-1}
-    inv_ev_to_years = 2.09e-23
-    Gamma_tr_year = Gamma_tr_eV / inv_ev_to_years
-
-    return Gamma_tr_year
 
 
 
@@ -93,9 +61,6 @@ def quantum_numbers_to_spectroscopic(n, l):
 def calc_omega_tr(n_g, n_e, mu_a, alpha):
     return 0.5 * mu_a * alpha**2 * (1/n_g**2 - 1/n_e**2)
 
-def calc_transition_rate_APPROX(G_N, alpha, r_g):
-    return 1e-7 * G_N * alpha**9 / r_g**3
-
 # ---------------------------------------------------------------
 #  LOGARITHMIC DIFFERENTIAL EQUATIONS
 # ---------------------------------------------------------------
@@ -121,51 +86,80 @@ def rhs_log(t, y, gamma_g, gamma_e, transition_rate):
 #  MAIN SIMULATION
 # ---------------------------------------------------------------
 
-def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=1,
-                   l_g=4, m_g=4, n_g=5,
-                   l_e=4, m_e=4, n_e=6,
+def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
+                   transition="3p 2p",
                    gamma_g_override=None, gamma_e_override=None,
                    transition_rate_override=None,
-                   distance_kpc=10, t_max_years=1e5, n_points=int(1e5)):
+                   distance_kpc=10, t_max_years=1e6, n_points=int(1e5),
+                   swap_sr_rates=False):
     """
     Run the simulation with logarithmic variable integration.
 
-    bh_spin is a* not a
+    Args:
+        bh_mass_sm: Black hole mass in solar masses
+        bh_spin: a* (dimensionless spin parameter)
+        alpha: fine structure constant
+        transition: Transition specification like "3p 2p" or "6g 5g"
+        gamma_g_override: Override for ground state SR rate (years^-1)
+        gamma_e_override: Override for excited state SR rate (years^-1)
+        transition_rate_override: Override for transition rate (years^-1)
+        distance_kpc: Distance in kiloparsecs
+        t_max_years: Maximum simulation time in years
+        n_points: Number of time points
+        swap_sr_rates: If True, swap gamma_e and gamma_g (for fake plot)
     
     """
+    
+    # Parse transition string (e.g., "3p 2p" or "6g 5g")
+    parts = transition.strip().split()
+    if len(parts) != 2:
+        raise ValueError(f"Transition must be in format 'ne_level ng_level' (e.g., '3p 2p'), got: {transition}")
+    
+    level_e_str = parts[0]
+    level_g_str = parts[1]
+    
+    # Extract n and l from spectroscopic notation
+    def parse_level(level_str):
+        l_to_number = {
+            's': 0, 'p': 1, 'd': 2, 'f': 3, 'g': 4, 'h': 5,
+            'i': 6, 'j': 7, 'k': 8, 'l': 9, 'm': 10, 'n': 11, 'o': 12, 'q': 13
+        }
+        n = int(level_str[:-1])
+        l_letter = level_str[-1]
+        l = l_to_number.get(l_letter)
+        if l is None:
+            raise ValueError(f"Unknown orbital letter: {l_letter}")
+        return n, l
+    
+    n_e, l_e = parse_level(level_e_str)
+    n_g, l_g = parse_level(level_g_str)
+    
+    # For superradiance with l=m constraint
+    m_e = l_e
+    m_g = l_g
 
     # --- Constants and conversions ---
-    G_N = 6.708e-57  # eV^-2
     kpc_to_meters = 3.085677581e19
     meters_to_ev = 1 / 1.973269804e-7
     r = distance_kpc * kpc_to_meters * meters_to_ev
 
-    # --- Convert BH mass ---
-    m_bh_J = bh_mass_sm * SOLAR_MASS * constants.c ** 2  # [J]
-    m_bh_ev = m_bh_J / constants.e                        # [eV]
-    r_g = G_N * m_bh_ev                                   # [eV^-1]
-    axion_mass = alpha / r_g                              # [eV]
+    # --- Calculate r_g using ParamCalculator ---
+    r_g = calc_rg_from_bh_mass(bh_mass_sm)
+    axion_mass = alpha / r_g  # [eV]
 
     inv_ev_to_years = 2.09e-23  # conversion factor
-
-    # --- Convert a* (bh_spin) to a (not dimensionless) ---
-    a = bh_spin * r_g # [eV]^-1
-
-    
+    ev_to_years = 31556926/6.582119569e-16  # conversion factor
 
     # Calculate gamma values using ParamCalculator
     gamma_e = calc_superradiance_rate(l=l_e, m=m_e, n=n_e, a_star=bh_spin, r_g=r_g, alpha=alpha)
     gamma_g = calc_superradiance_rate(l=l_g, m=m_g, n=n_g, a_star=bh_spin, r_g=r_g, alpha=alpha)
 
-    gamma_e *= 31556926/6.582119569e-16 # Convert from eV to years^-1
-    gamma_g *= 31556926/6.582119569e-16 # Convert from eV to years^-1
+    gamma_e *= ev_to_years # Convert from eV to years^-1
+    gamma_g *= ev_to_years # Convert from eV to years^-1
 
-    #_, gamma_e = calc_gamma_improved_with_units(l_e, m_e, n_e, bh_spin, bh_mass_sm, axion_mass)
-    #_, gamma_g = calc_gamma_improved_with_units(l_g, m_g, n_g, bh_spin, bh_mass_sm, axion_mass) 
-
-    ## === Conversion of gamma into inverse years ===
-    # gamma_e = gamma_e_ev / inv_ev_to_years
-    # gamma_g = gamma_g_ev / inv_ev_to_years
+    # Swap if requested (for fake plot)
+    if swap_sr_rates:
+        gamma_e, gamma_g = gamma_g, gamma_e
 
     # === set override values if applicable ===
     if gamma_e_override is not None:
@@ -173,22 +167,21 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=1,
     if gamma_g_override is not None:
         gamma_g = gamma_g_override
 
-    omega_tr = calc_omega_tr(n_g=n_g, 
-                             n_e=n_e, 
-                             mu_a=axion_mass, 
-                             alpha=alpha)
+    # Calculate transition frequency using ParamCalculator
+    omega_tr = calc_omega_transition(r_g, alpha, n_e, n_g)
     
-    # --- Transition rate ----
+    # --- Transition rate using ParamCalculator ----
     if transition_rate_override is None:
-        transition_rate = transition_rate_from_tables(
-            transition="6g->5g",
+        # Get transition rate in eV
+        transition_rate_ev = calc_transition_rate(
+            transition=transition,
             alpha=alpha,
-            r_g=r_g,
+            omega=omega_tr,
             G_N=G_N,
-            n_e=n_e,
-            n_g=n_g,
-            mu_a=axion_mass
+            r_g=r_g
         )
+        # Convert to years^-1
+        transition_rate = transition_rate_ev * ev_to_years
     else:
         transition_rate = transition_rate_override
 
@@ -256,6 +249,7 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=1,
             'bh_mass_sm': bh_mass_sm,
             'bh_spin': bh_spin,
             'alpha': alpha,
+            'transition': transition,
             'l_g': l_g, 'm_g': m_g, 'n_g': n_g,
             'l_e': l_e, 'm_e': m_e, 'n_e': n_e,
             'gamma_g': gamma_g,
@@ -263,7 +257,8 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=1,
             'transition_rate': transition_rate,
             'axion_mass': axion_mass,
             'omega_tr': omega_tr,
-            'distance_kpc': distance_kpc
+            'distance_kpc': distance_kpc,
+            'swap_sr_rates': swap_sr_rates
         }
     }
 
@@ -277,7 +272,7 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=1,
 #  PLOTTING
 # ---------------------------------------------------------------
 
-def plot_results(results):
+def plot_results(results, save_filename=None, h_ylim=None):
     
     plt.rcParams.update({
         "text.usetex": True,
@@ -297,6 +292,11 @@ def plot_results(results):
     collapse_time = times[collapse_index]
     timewindow = max(times) / 30  # [years]
     xlim = (max(0, collapse_time - timewindow), collapse_time + timewindow - 500)
+    
+    # Calculate h_ylim if not provided (from peak h value)
+    if h_ylim is None:
+        h_peak = np.max(h)
+        h_ylim = (h_peak * 1e-8, h_peak * 10)
 
     # Print to terminal (no box)
     print("\n" + "="*60)
@@ -317,6 +317,7 @@ def plot_results(results):
     # Compare Gamma_e and Gamma_g
     gamma_e = params.get('gamma_e')
     gamma_g = params.get('gamma_g')
+    swap_sr_rates = params.get('swap_sr_rates', False)
     
     if gamma_e is not None and gamma_g is not None:
         print(f"\nSuperradiance rates:")
@@ -330,6 +331,7 @@ def plot_results(results):
         else:
             comparison_text = "Gamma_e = Gamma_g"
         print(f"\nComparison: {comparison_text}")
+        print(f"Rates swapped: {swap_sr_rates}")
     else:
         print("\nWarning: Gamma values missing from parameters")
     
@@ -351,14 +353,14 @@ def plot_results(results):
     ax1.set_yscale('log')
     ax1.set_ylabel(r'Occupation Number $N$')
     ax1.set_xlabel("Time [years]")
-    ax1.set_ylim(1e25, 1e45)
-    ax1.set_xlim(xlim)
+    # ax1.set_ylim(1e25, 1e45)
+    # ax1.set_xlim(xlim)
     ax1.grid()
     
     ax2.set_ylabel(r'Strain $h$', color='black')
     ax2.tick_params(axis='y', labelcolor='black')
     ax2.set_yscale('log')
-    ax2.set_ylim(1e-52, 1e-43)
+    # ax2.set_ylim(h_ylim)
     for label in ax2.get_yticklabels()[::2]:
         label.set_visible(False)
     
@@ -368,14 +370,14 @@ def plot_results(results):
     ax1.legend(lines1 + lines2, labels1 + labels2, 
                loc='best', frameon=False)
     
-    # Add comparison text as annotation on plot
+    # Add comparison text as annotation on plot with LaTeX formatting
     if gamma_e is not None and gamma_g is not None:
         if gamma_e > gamma_g:
-            comp_text = r'$\Gamma_e > \Gamma_g$'
+            comp_text = r'$\Gamma_e^{\text{sr}} > \Gamma_g^{\text{sr}}$'
         elif gamma_e < gamma_g:
-            comp_text = r'$\Gamma_e < \Gamma_g$'
+            comp_text = r'$\Gamma_g^{\text{sr}} > \Gamma_e^{\text{sr}}$'
         else:
-            comp_text = r'$\Gamma_e = \Gamma_g$'
+            comp_text = r'$\Gamma_e^{\text{sr}} = \Gamma_g^{\text{sr}}$'
         
         # Place text in upper left corner
         ax1.text(0.02, 0.98, comp_text,
@@ -383,20 +385,29 @@ def plot_results(results):
                 fontsize=14,
                 verticalalignment='top')
     
-    # Extract parameters for the file name
-    alpha = params.get('alpha', 'unknown')
-    gamma_g = params.get('gamma_g', 'unknown')
-    gamma_e = params.get('gamma_e', 'unknown')
-    bh_mass = params.get('bh_mass_sm', 'unknown')
-    spin = params.get('bh_spin', 'unknown')
-    transtrate = params.get('transition_rate', 'unknown')
+    # Use provided filename or construct one
+    if save_filename is None:
+        # Extract parameters for the file name
+        alpha = params.get('alpha', 'unknown')
+        bh_mass = params.get('bh_mass_sm', 'unknown')
+        spin = params.get('bh_spin', 'unknown')
+        transition = params.get('transition', 'unknown').replace(' ', '_')
+        swap_label = "_swapped" if swap_sr_rates else "_original"
 
-    # Construct the file name dynamically
-    file_name = f"plot_alpha={alpha}_gamma_g={gamma_g}_gamma_e={gamma_e}_bhmass={bh_mass}_spin={spin}_transtrate={transtrate}.pdf"
+        # Construct the file name dynamically
+        file_name = f"plot_{transition}_alpha={alpha}_bhmass={bh_mass}_spin={spin}{swap_label}.pdf"
 
-    # Replace invalid characters in the file name (e.g., '/', ':', etc.)
-    import re
-    file_name = re.sub(r'[^\w\-.]', '_', file_name)
+        # Replace invalid characters in the file name (e.g., '/', ':', etc.)
+        import re
+        file_name = re.sub(r'[^\w\-.]', '_', file_name)
+        
+        # Save to Final plots folder
+        import os
+        final_plots_dir = join(current_dir, "Results Pipeline", "Final plots")
+        os.makedirs(final_plots_dir, exist_ok=True)
+        file_name = join(final_plots_dir, file_name)
+    else:
+        file_name = save_filename
 
     # Save the plot with the dynamic file name
     plt.tight_layout()
@@ -413,9 +424,46 @@ def plot_results(results):
 
 
 if __name__ == "__main__":
-    results = run_simulation(
-        alpha=0.2,
+    # Run simulation with original SR rates to determine h_ylim
+    results_original = run_simulation(
+        alpha=0.1,
         bh_spin=0.687,
         bh_mass_sm=1e-11,
+        transition="6g 5g",
+        swap_sr_rates=False
     )
-    plot_results(results)
+    
+    # Determine which case has gamma_e > gamma_g
+    gamma_e_orig = results_original['parameters']['gamma_e']
+    gamma_g_orig = results_original['parameters']['gamma_g']
+    
+    # Calculate h_ylim based on the gamma_e > gamma_g case
+    if gamma_e_orig > gamma_g_orig:
+        # Original case has gamma_e > gamma_g, use it for h_ylim
+        h_peak = np.max(results_original['h'])
+    else:
+        # Swapped case will have gamma_e > gamma_g, run it first
+        results_temp = run_simulation(
+            alpha=0.1,
+            bh_spin=0.687,
+            bh_mass_sm=1e-11,
+            transition="6g 5g",
+            swap_sr_rates=True
+        )
+        h_peak = np.max(results_temp['h'])
+    
+    # Set h_ylim: 8 orders of magnitude below peak to 1 order above peak
+    h_ylim = (h_peak * 1e-8, h_peak * 10)
+    
+    # Plot original results
+    plot_results(results_original, h_ylim=h_ylim)
+    
+    # Run simulation with swapped SR rates
+    results_swapped = run_simulation(
+        alpha=0.1,
+        bh_spin=0.687,
+        bh_mass_sm=1e-11,
+        transition="6g 5g",
+        swap_sr_rates=True
+    )
+    plot_results(results_swapped, h_ylim=h_ylim)

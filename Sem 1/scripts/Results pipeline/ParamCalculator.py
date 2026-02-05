@@ -1,4 +1,4 @@
-from RateDefs import diff_power_ann_dict, diff_power_trans_dict
+from ConvertedFunctions import diff_power_ann_dict, diff_power_trans_dict
 import numpy as np
 from scipy import constants
 
@@ -503,6 +503,48 @@ def calc_merger_rate(f_supress, f_pbh, r_g1, r_g2, f_m1, f_m2):
     return 1.6e6 * f_supress * f_pbh**(53/37) * normalised_mass**(-32/37) * symm_mass_ratio**(-34/37) * f_m1 * f_m2
 
 
+def calc_detectable_radius_ann(h_det, ann_rate, omega, n_max, G_N=6.708e-57):
+    """
+    Calculate maximum distance at which annihilation event is detectable.
+    
+    Args:
+        h_det (float): Detector strain threshold (dimensionless)
+        ann_rate (float): Annihilation rate [eV]
+        omega (float): Annihilation frequency [eV]
+        n_max (float): Maximum occupation number (dimensionless)
+        G_N (float, optional): Gravitational constant [eV^-2]. Defaults to 6.708e-57.
+    
+    Returns:
+        float: Maximum detectable distance [eV^-1]
+    
+    Notes:
+        Derived from h_peak = sqrt(8*G_N*ann_rate/(r^2*omega)) * n_max >= h_det.
+        Solving for r gives r_max = sqrt(8*G_N*ann_rate/omega) * n_max / h_det.
+    """
+    return np.sqrt(8 * G_N * ann_rate / omega) * n_max / h_det
+
+
+def calc_detectable_radius_trans(h_det, trans_rate, omega, sr_rate, G_N=6.708e-57):
+    """
+    Calculate maximum distance at which transition event is detectable.
+    
+    Args:
+        h_det (float): Detector strain threshold (dimensionless)
+        trans_rate (float): Transition rate [eV]
+        omega (float): Transition frequency [eV]
+        sr_rate (float): Superradiance rate [eV]
+        G_N (float, optional): Gravitational constant [eV^-2]. Defaults to 6.708e-57.
+    
+    Returns:
+        float: Maximum detectable distance [eV^-1]
+    
+    Notes:
+        Derived from h_peak = sqrt(4*G_N*sr_rate^2/(r^2*omega*trans_rate)) >= h_det.
+        Solving for r gives r_max = sqrt(4*G_N*sr_rate^2/(omega*trans_rate)) / h_det.
+    """
+    return np.sqrt(4 * G_N * sr_rate**2 / (omega * trans_rate)) / h_det
+
+
 def calc_event_rate_ann(r_g, delta_astar, m, h_det, G_N, ann_rate, omega, merger_rate):
     """
     Calculate event rate for annihilation-based gravitational wave detection.
@@ -523,10 +565,12 @@ def calc_event_rate_ann(r_g, delta_astar, m, h_det, G_N, ann_rate, omega, merger
     Notes:
         All units are in natural units (ℏ = c = 1).
         To convert to SI: multiply by ℏ [eV·s] to get events per second.
+        Uses n_max = r_g^2 * delta_astar / m for maximum occupation number.
     """
-    root = np.sqrt(8*ann_rate/(omega*G_N))  # [eV]
-    parentheses = r_g**2 * delta_astar/(m*h_det) * root  # [eV^-1]
-    return 4/3 * np.pi * parentheses**3 * merger_rate  # [eV^-1]
+    n_max = r_g**2 * delta_astar / m  # Maximum occupation number (dimensionless)
+    r_max = calc_detectable_radius_ann(h_det, ann_rate, omega, n_max, G_N)  # [eV^-1]
+    detection_volume = 4/3 * np.pi * r_max**3  # [eV^-3]
+    return detection_volume * merger_rate  # [eV^-1]
 
 def calc_event_rate_tran(h_det, G_N, tran_rate, sr_rate, omega, merger_rate):
     """
@@ -546,7 +590,7 @@ def calc_event_rate_tran(h_det, G_N, tran_rate, sr_rate, omega, merger_rate):
     Notes:
         All units are in natural units (ℏ = c = 1).
         To convert to SI: multiply by ℏ [eV·s] to get events per second.
-        Formula computes detection volume from h_peak = sqrt(4*G_N*sr_rate^2 / (r^2*omega*tran_rate))
     """
-    parentheses = 4*G_N * sr_rate**2 / (h_det**2 * omega * tran_rate)  # [eV^-2] (r^2 in natural units)
-    return 4/3 * np.pi * parentheses**(3/2) * merger_rate  # [eV^-1] (events per unit time)
+    r_max = calc_detectable_radius_trans(h_det, tran_rate, omega, sr_rate, G_N)  # [eV^-1]
+    detection_volume = 4/3 * np.pi * r_max**3  # [eV^-3]
+    return detection_volume * merger_rate  # [eV^-1]

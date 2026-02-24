@@ -19,7 +19,7 @@ def parse_mathematica_number(s):
         return None
 
 # Load file
-data_path = "Mathematica/SR_n2l1m1_at0.99_aMin0.17_aMax0.20.dat"
+data_path = "Mathematica/SR_n2l1m1_at0.99_aMin0.10_aMax0.50.dat"
 df = pd.read_csv(data_path, sep="\t")
 
 # Strip whitespace and quotes from column names
@@ -40,18 +40,26 @@ print("\nParsed data:")
 print(df.head())
 
 # Plot
-fig, ax = plt.subplots(figsize=(8, 5))
+plt.rcParams.update({
+    "text.usetex": True,
+    "font.family": "serif",
+    "font.serif": ["Computer Modern Roman"],
+    "text.latex.preamble": r"\usepackage{amsmath}"
+})
+fig, ax = plt.subplots(figsize=(5.5, 5))
 
-ax.plot(df["alpha"], df["CF_Gamma"],    color="red",  marker="o", markersize=4, linewidth=1.5, label="CF $\\Gamma$")
-ax.plot(df["alpha"], df["Hydro_Gamma"], color="blue", linestyle="dashed",       linewidth=1.5, label="Hydrogen-like $\\Gamma$")
+ax.plot(df["alpha"], df["CF_Gamma"],    color="#7842f5", linestyle="solid", linewidth=1.5, label="CF $\\Gamma$")
+ax.plot(df["alpha"], df["Hydro_Gamma"], color="#7842f5", linestyle="dashed",       linewidth=1.5, label="Hydrogen-like $\\Gamma$")
 
 ax.set_yscale("log")
-ax.set_xlabel(r"$\alpha = GM\mu$", fontsize=13)
-ax.set_ylabel(r"$|\Gamma \cdot GM|$", fontsize=13)
-ax.set_title(r"$|211\rangle$   $\tilde{a} = 0.99$", fontsize=13)
-ax.legend(fontsize=11)
+ax.set_xlabel(r"$\alpha$", fontsize=13)
+ax.set_ylabel(r"$\Gamma^\textrm{sr} r_g$", fontsize=13)
+#ax.set_title(r"$|211\rangle$   $\tilde{a} = 0.99$", fontsize=13)
+ax.legend(fontsize=11, frameon=False)
 ax.grid(True, which="both", linestyle="--", alpha=0.5)
 
+plt.text(0.4, 2e-8, r"$|211\rangle$", color='#7842f5')
+
 plt.tight_layout()
-plt.savefig("superradiance_plot.png", dpi=150)
+plt.savefig("Plots/superradiance_plot.png", dpi=150)
 plt.show()

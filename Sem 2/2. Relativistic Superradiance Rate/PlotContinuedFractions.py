@@ -6,7 +6,8 @@ import re
 
 # ── Configuration ────────────────────────────────────────────────────────────
 FILES = [
-    "Mathematica/SR_n2l1m1_at0.99_aMin0.05_aMax0.50.dat"
+    "Mathematica/SR_n2l1m1_at0.99_aMin0.05_aMax0.50.dat",
+    "Mathematica/SR_n3l2m2_at0.99_aMin0.18_aMax1.dat"
 ]
 
 COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#2a9d8f"]

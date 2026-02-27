@@ -7,7 +7,8 @@ import re
 # ── Configuration ────────────────────────────────────────────────────────────
 FILES = [
     "Mathematica/SR_n2l1m1_at0.99_aMin0.05_aMax0.50.dat",
-    "Mathematica/SR_n3l2m2_at0.99_aMin0.18_aMax1.dat"
+    "Mathematica/SR_n3l2m2_at0.99_aMin0.18_aMax1.dat",
+    "Mathematica/SR_n4l3m3_at0.99_aMin0.50_aMax1.50.dat"
 ]
 
 COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#2a9d8f"]
@@ -93,6 +94,8 @@ ax.set_yscale("log")
 ax.set_xlabel(r"$\alpha$", fontsize=13)
 ax.set_ylabel(r"$\Gamma^{\mathrm{sr}} r_g$", fontsize=13)
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
+ax.set_ylim(1e-13, 1e-6)
+ax.set_xlim(0, 1.5)
 
 plt.tight_layout()
 

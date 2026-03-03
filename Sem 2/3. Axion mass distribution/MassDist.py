@@ -8,8 +8,8 @@ from tqdm import tqdm
 import pickle
 import os
 
-h11=100
-n_polys=10
+h11=20
+n_polys=50
 
 M_pl_in_ev = 1.22e28
 
@@ -80,27 +80,58 @@ def axion_potential(theta: Sequence[float],
     V_phys = V * M_pl_in_ev**4
     return float(V_phys)
 
+def axion_potential_optimized(theta: np.ndarray,
+                              q: np.ndarray,
+                              W0: float,
+                              prefactor: float,
+                              qa_dot_tau_precomp: np.ndarray,
+                              exp_qa_dot_tau_precomp: np.ndarray,
+                              qsum_dot_tau_precomp: np.ndarray,
+                              exp_qsum_dot_tau_precomp: np.ndarray,
+                              qa_ginv_qb_precomp: np.ndarray) -> float:
+    """
+    Optimized version of axion_potential with pre-computed expensive operations.
+    Only theta-dependent terms are computed here.
+    """
+    theta = np.asarray(theta, dtype=float)
+    n_inst = len(q)
+    
+    # First sum: only compute theta-dependent parts
+    qa_dot_theta = q.dot(theta)
+    term1 = np.sum(qa_dot_tau_precomp * W0 * exp_qa_dot_tau_precomp * np.cos(2*np.pi * qa_dot_theta))
+    
+    # Second double-sum: only compute theta-dependent parts
+    term2 = 0.0
+    idx = 0
+    for a in range(n_inst):
+        for b in range(a):
+            qdiff_dot_theta = qa_dot_theta[a] - qa_dot_theta[b]
+            bracket = qa_ginv_qb_precomp[idx] + qsum_dot_tau_precomp[idx]
+            term2 += bracket * exp_qsum_dot_tau_precomp[idx] * np.cos(2*np.pi * qdiff_dot_theta)
+            idx += 1
+    
+    V = prefactor * (term1 + term2)
+    V_phys = V * M_pl_in_ev**4
+    return float(V_phys)
+
 def numerical_hessian(f, x0, eps=1e-5):
     x0 = np.asarray(x0, dtype=float)
     n = x0.size
     H = np.zeros((n, n))
-
-    # Exploit symmetry: only compute upper triangle (j >= i)
+    
     for i in tqdm(range(n), desc="Computing Hessian"):
-        for j in range(i, n):  # Only j >= i
-            dx_i = np.zeros(n)
+        dx_i = np.zeros(n)
+        dx_i[i] = eps
+        for j in range(i, n):
             dx_j = np.zeros(n)
-            dx_i[i] = eps
             dx_j[j] = eps
-
+            
             f_pp = f(x0 + dx_i + dx_j)
             f_pm = f(x0 + dx_i - dx_j)
             f_mp = f(x0 - dx_i + dx_j)
             f_mm = f(x0 - dx_i - dx_j)
-
-            H[i, j] = (f_pp - f_pm - f_mp + f_mm) / (4 * eps**2)
             
-            # Copy to lower triangle (exploit symmetry)
+            H[i, j] = (f_pp - f_pm - f_mp + f_mm) / (4 * eps**2)
             if i != j:
                 H[j, i] = H[i, j]
 
@@ -155,14 +186,42 @@ def find_masses(polytope, silent=True, return_masses=True, return_potential=Fals
         print(q_list)
         print(f"\n tau: {tau}")
 
+    # Pre-compute expensive operations that don't depend on theta
+    W0 = 1  # Approximation for classical flux superpotential used in 1808.0282
+    prefactor = -8.0 * np.pi / (V**2)
+    
+    # Pre-compute q·tau and its exponential (used in term1)
+    qa_dot_tau = q_list @ tau
+    exp_qa_dot_tau = np.exp(-2*np.pi * qa_dot_tau)
+    
+    # Pre-compute all metric products and (q_a + q_b)·tau for term2
+    n_inst = len(q_list)
+    n_pairs = n_inst * (n_inst - 1) // 2
+    qa_ginv_qb = np.zeros(n_pairs)
+    qsum_dot_tau = np.zeros(n_pairs)
+    exp_qsum_dot_tau = np.zeros(n_pairs)
+    
+    idx = 0
+    for a in range(n_inst):
+        qa = q_list[a]
+        for b in range(a):
+            qb = q_list[b]
+            qa_ginv_qb[idx] = np.pi * (qa @ g_inv @ qb)
+            qsum_dot_tau[idx] = qa_dot_tau[a] + qa_dot_tau[b]
+            exp_qsum_dot_tau[idx] = np.exp(-2*np.pi * qsum_dot_tau[idx])
+            idx += 1
+    
     def pot_wrapper(theta):
         theta = np.asarray(theta).reshape(-1)
-        return axion_potential(theta=theta,
-                               q=q_list,
-                               tau=tau,
-                               W0=1, # Approximation for classical flux superpotential used in 1808.0282
-                               g_inv=g_inv,
-                               V_vol=V)
+        return axion_potential_optimized(theta=theta,
+                                         q=q_list,
+                                         W0=W0,
+                                         prefactor=prefactor,
+                                         qa_dot_tau_precomp=qa_dot_tau,
+                                         exp_qa_dot_tau_precomp=exp_qa_dot_tau,
+                                         qsum_dot_tau_precomp=qsum_dot_tau,
+                                         exp_qsum_dot_tau_precomp=exp_qsum_dot_tau,
+                                         qa_ginv_qb_precomp=qa_ginv_qb)
 
     theta0 = np.zeros(h11)
     H = numerical_hessian(pot_wrapper, theta0)

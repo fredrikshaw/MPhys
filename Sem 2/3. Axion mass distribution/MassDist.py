@@ -5,9 +5,11 @@ from scipy.differentiate import hessian
 from scipy.linalg import eigh
 from typing import Sequence
 from tqdm import tqdm
+import pickle
+import os
 
 h11=100
-n_polys=1
+n_polys=10
 
 M_pl_in_ev = 1.22e28
 
@@ -105,10 +107,7 @@ def numerical_hessian(f, x0, eps=1e-5):
     return H
 
 
-# Get all the polytopes we want, I think these are drawn randomly from KS database
-polytopes = fetch_polytopes(h11=h11, lattice="N", favorable=True, limit=n_polys)
-
-for polytope in polytopes:
+def find_masses(polytope, silent=True, return_masses=True, return_potential=False, plot_hessian=False, plot_potential=False):
     # First find CY manifold for each polytope, we need to do this via triangulation
     t = polytope.triangulate(backend="topcom")
     cy = t.get_cy()
@@ -128,7 +127,6 @@ for polytope in polytopes:
     V = cy.compute_cy_volume(point)
     # Find the saxion field (is this literally just a number?)
     tau = cy.compute_divisor_volumes(point, in_basis=True)
-    print(f"tau before fake normalisation: {tau}")
     # Seems to return list of 14 floats if in_basis=False, otherwise it returns list of 10
     # tau = tau/np.mean(tau)
 
@@ -145,8 +143,6 @@ for polytope in polytopes:
     prime_divisors = cy.prime_toric_divisors() # We can use prime toric divisors as they're basically always rigid
     basis = cy.divisor_basis(as_matrix=True)
 
-    print(f"This should be h11 (10 atm at least): {basis.shape[0]}")
-
     # Now we need the charge matrix (whatever that is)
     q_list = []
 
@@ -154,9 +150,10 @@ for polytope in polytopes:
         q_list.append(basis[:, div_index])
     
     q_list = np.array(q_list)
-    print("Charge matrix shape:", q_list.shape)
-    print(q_list)
-    print(f"\n tau: {tau}")
+    if not silent:
+        print("Charge matrix shape:", q_list.shape)
+        print(q_list)
+        print(f"\n tau: {tau}")
 
     def pot_wrapper(theta):
         theta = np.asarray(theta).reshape(-1)
@@ -169,51 +166,90 @@ for polytope in polytopes:
 
     theta0 = np.zeros(h11)
     H = numerical_hessian(pot_wrapper, theta0)
-    print(f"Printing Hessian:")
-    for line in H:
-        print(str(line).replace("\n", ""))
-    print("\n")
 
     # Plot 1: Potential along diagonal (all thetas equal)
-    theta_vals = np.linspace(-2*np.pi, 2*np.pi, 500)
-    V_diagonal = [pot_wrapper(t * np.ones(h11)) for t in theta_vals]
+    if plot_potential:
+        theta_vals = np.linspace(-2*np.pi, 2*np.pi, 500)
+        V_diagonal = [pot_wrapper(t * np.ones(h11)) for t in theta_vals]
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(theta_vals, V_diagonal, 'b-', linewidth=2)
+        plt.xlabel(r'$\theta$ (all $\theta_i$ equal) [radians]', fontsize=12)
+        plt.ylabel(r'$V(\theta)$ [eV$^4$]', fontsize=12)
+        plt.title(f'Axion Potential Along Diagonal (h$^{{1,1}}$ = {h11})', fontsize=14, fontweight='bold')
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+
+    eigvals, eigvecs = eigh(H, g)  # This is solving the generalised eigenvalue problem which avoids the need to actively transform to canonical basis
+
+    sqrt_lambda = np.where(eigvals >= 0, np.sqrt(eigvals), np.nan)
+    masses_ev = sqrt_lambda / M_pl_in_ev
+    if not silent:
+        print(f"Mean mass [eV]: {np.mean(masses_ev)}")
+        print(f"Mass range [eV]: {np.min(masses_ev)} - {np.max(np.masses_ev)}, min non-zero val: {np.min([m for m in masses_ev if m!=0])}")
+
+        print("Rank(q):", np.linalg.matrix_rank(q_list))
+        print("Min exp suppression:", np.min(np.exp(-2*np.pi * q_list @ tau)))
+        print("Hessian norm:", np.linalg.norm(H))
+        qa_dot_tau = q_list @ tau
+        print("q·tau stats:", np.min(qa_dot_tau), np.max(qa_dot_tau))
+
+    if plot_hessian:
+        # Plot the Hessian matrix
+        plt.figure(figsize=(10, 8))
+        im = plt.imshow(H, cmap='RdBu_r', aspect='auto', interpolation='nearest')
+        plt.colorbar(im, label=r'Hessian Element Value [eV$^4$]')
+        plt.xlabel('Axion Index $j$', fontsize=12)
+        plt.ylabel('Axion Index $i$', fontsize=12)
+        plt.title(r'Hessian Matrix $H_{ij} = \frac{\partial^2 V}{\partial \theta_i \partial \theta_j}$', 
+                fontsize=14, fontweight='bold')
+        plt.tight_layout()
+        plt.show()
     
-    plt.figure(figsize=(10, 6))
-    plt.plot(theta_vals, V_diagonal, 'b-', linewidth=2)
-    plt.xlabel(r'$\theta$ (all $\theta_i$ equal) [radians]', fontsize=12)
-    plt.ylabel(r'$V(\theta)$ [eV$^4$]', fontsize=12)
-    plt.title(f'Axion Potential Along Diagonal (h$^{{1,1}}$ = {h11})', fontsize=14, fontweight='bold')
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.show()
+    if return_masses and return_potential:
+        return masses_ev, pot_wrapper
+    elif return_masses:
+        return masses_ev
+    elif return_potential:
+        return pot_wrapper
+    else:
+        return None
 
-    eigvals, eigvecs = eigh(H, g)
+# Get all the polytopes we want, I think these are drawn randomly from KS database
+polytopes = fetch_polytopes(h11=h11, lattice="N", favorable=True, limit=n_polys)
 
-    # print(f"Printing M^2:")
-    # for line in M_squared:
-    #     print(str(line).replace("\n", ""))
-    # print("\n")
+mass_list = []  # Just have a big ol' chunky list of all the masses to histogram
+for polytope in tqdm(polytopes, desc="Processing polytopes"):
+    mass_list.append(find_masses(polytope))
 
-    # eigvals = np.linalg.eigvalsh(M_squared)
-    masses_planck = np.sqrt(np.abs(eigvals))
-    masses_ev = masses_planck / M_pl_in_ev
-    print(f"Masses [M_pl]: {masses_planck}")
-    print(f"Masses [eV]: {masses_ev}")
+# Flatten the list of arrays and remove NaNs
+all_masses = np.concatenate([m[~np.isnan(m)] for m in mass_list if m is not None])
 
-    print("Rank(q):", np.linalg.matrix_rank(q_list))
-    print("Min exp suppression:", np.min(np.exp(-2*np.pi * q_list @ tau)))
-    print("Hessian norm:", np.linalg.norm(H))
-    qa_dot_tau = q_list @ tau
-    print("q·tau stats:", np.min(qa_dot_tau), np.max(qa_dot_tau))
+# Save masses to pickle file (in same directory as this script)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+pickle_dir = os.path.join(script_dir, 'mass_dist_pickles')
+os.makedirs(pickle_dir, exist_ok=True)
+pickle_filename = os.path.join(pickle_dir, f'masses_h11_{h11}_npolys_{n_polys}_nmasses_{len(all_masses)}.pkl')
+with open(pickle_filename, 'wb') as f:
+    pickle.dump(all_masses, f)
+print(f"Saved masses to {pickle_filename}")
 
-    # Plot the Hessian matrix
-    plt.figure(figsize=(10, 8))
-    im = plt.imshow(H, cmap='RdBu_r', aspect='auto', interpolation='nearest')
-    plt.colorbar(im, label=r'Hessian Element Value [eV$^4$]')
-    plt.xlabel('Axion Index $j$', fontsize=12)
-    plt.ylabel('Axion Index $i$', fontsize=12)
-    plt.title(r'Hessian Matrix $H_{ij} = \frac{\partial^2 V}{\partial \theta_i \partial \theta_j}$', 
-              fontsize=14, fontweight='bold')
-    plt.tight_layout()
-    plt.show()
+# Plot histogram with logarithmic x-axis and normalized y-axis
+plt.figure(figsize=(12, 7))
+# Create logarithmically spaced bins
+mass_min = np.min(all_masses[all_masses > 0])  # Exclude zeros for log scale
+mass_max = np.max(all_masses)
+log_bins = np.logspace(np.log10(mass_min), np.log10(mass_max), 51)  # 51 edges = 50 bins
+plt.hist(all_masses, bins=log_bins, edgecolor='black', alpha=0.7, color='steelblue')
+plt.xlabel('Axion Mass [eV]', fontsize=12)
+plt.ylabel('N', fontsize=12)
+plt.title(f'Distribution of Axion Masses (N = {len(all_masses)} masses from {n_polys} polytopes with h11={h11})', 
+          fontsize=14, fontweight='bold')
+plt.xscale('log')
+plt.grid(True, alpha=0.3, which='both')
+plt.tight_layout()
+plt.show()
+
+
 

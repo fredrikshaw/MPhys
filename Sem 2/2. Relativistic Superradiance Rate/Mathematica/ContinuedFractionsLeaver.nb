@@ -10,10 +10,10 @@
 NotebookFileLineBreakTest
 NotebookFileLineBreakTest
 NotebookDataPosition[       154,          7]
-NotebookDataLength[    163528,       4090]
-NotebookOptionsPosition[    153828,       3976]
-NotebookOutlinePosition[    154228,       3992]
-CellTagsIndexPosition[    154185,       3989]
+NotebookDataLength[     85527,       2026]
+NotebookOptionsPosition[     84323,       2000]
+NotebookOutlinePosition[     84724,       2016]
+CellTagsIndexPosition[     84681,       2013]
 WindowFrame->Normal*)
 
 (* Beginning of Notebook Content *)
@@ -329,7 +329,8 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
        "\[IndentingNewLine]", 
        RowBox[{"{", 
         RowBox[{"\[Alpha]n", ",", " ", "\[Beta]n", ",", " ", "\[Gamma]n"}], 
-        "}"}]}]}], "\[IndentingNewLine]", "]"}]}], ";"}], "\n"}], "\[IndentingNewLine]", 
+        "}"}]}]}], "\[IndentingNewLine]", "]"}]}], ";"}], 
+  "\[IndentingNewLine]"}], "\n", 
  RowBox[{
   RowBox[{
    RowBox[{
@@ -477,8 +478,7 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
          RowBox[{"b0", "-", 
           RowBox[{"a0", " ", 
            RowBox[{"g1", "/", "R"}]}]}], ",", "prec"}], "]"}]}]}], 
-     "\[IndentingNewLine]", "]"}]}], ";"}], "\[IndentingNewLine]", 
-  "\[IndentingNewLine]", 
+     "\[IndentingNewLine]", "]"}]}], ";"}], "\[IndentingNewLine]", "\n", 
   RowBox[{"(*", 
    RowBox[{
     RowBox[{"\[HorizontalLine]\[HorizontalLine]", " ", "Hydrogen"}], "-", 
@@ -487,7 +487,7 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
      "guess", " ", 
      RowBox[{"(", 
       RowBox[{"Eq", ".", "16"}], ")"}], " ", 
-     "\[HorizontalLine]\[HorizontalLine]"}]}], "*)"}]}], "\n", 
+     "\[HorizontalLine]\[HorizontalLine]"}]}], "*)"}]}], "\[IndentingNewLine]", 
  RowBox[{
   RowBox[{
    RowBox[{
@@ -583,8 +583,7 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
          RowBox[{"(", 
           RowBox[{
            RowBox[{"4", "l"}], "+", "5"}], ")"}]}]}]}]}], 
-     "\[IndentingNewLine]", "]"}]}], ";"}], "\[IndentingNewLine]", 
-  "\[IndentingNewLine]"}], "\n", 
+     "\[IndentingNewLine]", "]"}]}], ";"}], "\[IndentingNewLine]", "\n"}], "\[IndentingNewLine]", 
  RowBox[{
   RowBox[{"(*", 
    RowBox[{
@@ -671,27 +670,194 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
          RowBox[{
           RowBox[{"Im", "[", "sol", "]"}], "<=", "0"}]}], ",", 
         RowBox[{"Return", "[", "$Failed", "]"}]}], "]"}], ";", 
-      "\[IndentingNewLine]", "sol"}]}], "]"}]}], "\[IndentingNewLine]", 
-  "\[IndentingNewLine]", 
+      "\[IndentingNewLine]", "sol"}]}], "]"}]}], "\[IndentingNewLine]", "\n", 
   RowBox[{"(*", 
    RowBox[{
     RowBox[{"--", 
      RowBox[{"--", "Plot"}]}], " ", "function", " ", "using", " ", "CF", " ", 
     "continuation", " ", "as", " ", 
     RowBox[{
-     RowBox[{"seed", "--"}], "--"}]}], "*)"}], "\[IndentingNewLine]"}], "\n", 
+     RowBox[{"seed", "--"}], "--"}]}], "*)"}], "\[IndentingNewLine]"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"FindQBSFromSeed", "[", 
+    RowBox[{"n_", ",", "l_", ",", "m_", ",", 
+     RowBox[{"\[Alpha]_", "?", "NumericQ"}], ",", 
+     RowBox[{"at_", "?", "NumericQ"}], ",", 
+     RowBox[{"seedRe_", "?", "NumericQ"}], ",", 
+     RowBox[{"seedIm_", "?", "NumericQ"}], ",", 
+     RowBox[{"Nmax_", ":", "1000"}], ",", 
+     RowBox[{"prevImVal_", ":", "Null"}]}], "]"}], ":=", 
+   RowBox[{"Module", "[", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"\[Omega]Re", ",", "\[Omega]Im", ",", "soln", ",", "sol"}], 
+      "}"}], ",", 
+     RowBox[{
+      RowBox[{"soln", "=", 
+       RowBox[{"Quiet", "@", 
+        RowBox[{"FindRoot", "[", 
+         RowBox[{
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"Re", "@", 
+             RowBox[{"LeaverCF", "[", 
+              RowBox[{
+              "\[Omega]Re", ",", "\[Omega]Im", ",", "at", ",", "m", ",", "l", 
+               ",", "\[Alpha]", ",", "Nmax"}], "]"}]}], ",", 
+            RowBox[{"Im", "@", 
+             RowBox[{"LeaverCF", "[", 
+              RowBox[{
+              "\[Omega]Re", ",", "\[Omega]Im", ",", "at", ",", "m", ",", "l", 
+               ",", "\[Alpha]", ",", "Nmax"}], "]"}]}]}], "}"}], ",", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"{", 
+             RowBox[{"\[Omega]Re", ",", "seedRe"}], "}"}], ",", 
+            RowBox[{"{", 
+             RowBox[{"\[Omega]Im", ",", "seedIm"}], "}"}]}], "}"}], ",", 
+          RowBox[{"MaxIterations", "->", "1000"}], ",", 
+          RowBox[{"AccuracyGoal", "->", "8"}], ",", 
+          RowBox[{"PrecisionGoal", "->", "8"}], ",", 
+          RowBox[{"WorkingPrecision", "->", "prec"}]}], "]"}]}]}], ";", 
+      "\[IndentingNewLine]", 
+      RowBox[{"If", "[", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"Head", "[", "soln", "]"}], "=!=", "List"}], ",", 
+        RowBox[{"Return", "[", "$Failed", "]"}]}], "]"}], ";", 
+      "\[IndentingNewLine]", 
+      RowBox[{"sol", "=", 
+       RowBox[{
+        RowBox[{"(", 
+         RowBox[{"\[Omega]Re", "+", 
+          RowBox[{"I", "*", "\[Omega]Im"}]}], ")"}], "/.", " ", "soln"}]}], ";",
+       "\[IndentingNewLine]", 
+      RowBox[{"If", "[", 
+       RowBox[{
+        RowBox[{
+         RowBox[{
+          RowBox[{"Re", "[", "sol", "]"}], "<", "0"}], "||", 
+         RowBox[{
+          RowBox[{"Re", "[", "sol", "]"}], ">", 
+          RowBox[{"1.05", "*", "\[Alpha]"}]}], "||", 
+         RowBox[{
+          RowBox[{"Im", "[", "sol", "]"}], "<=", "0"}]}], ",", 
+        RowBox[{"Return", "[", "$Failed", "]"}]}], "]"}], ";", 
+      "\[IndentingNewLine]", 
+      RowBox[{"If", "[", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"prevImVal", "=!=", "Null"}], "&&", 
+         RowBox[{"(", 
+          RowBox[{
+           RowBox[{
+            RowBox[{
+             RowBox[{"Im", "[", "sol", "]"}], "/", "prevImVal"}], ">", "3"}], 
+           "||", 
+           RowBox[{
+            RowBox[{
+             RowBox[{"Im", "[", "sol", "]"}], "/", "prevImVal"}], "<", 
+            RowBox[{"1", "/", "3"}]}]}], ")"}]}], ",", 
+        RowBox[{"Return", "[", "$Failed", "]"}]}], "]"}], ";", 
+      "\[IndentingNewLine]", "sol"}]}], "]"}]}], "\[IndentingNewLine]", 
+  "\[IndentingNewLine]"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"FindQBSFromSeed", "[", 
+    RowBox[{"n_", ",", "l_", ",", "m_", ",", 
+     RowBox[{"\[Alpha]_", "?", "NumericQ"}], ",", 
+     RowBox[{"at_", "?", "NumericQ"}], ",", 
+     RowBox[{"seedRe_", "?", "NumericQ"}], ",", 
+     RowBox[{"seedIm_", "?", "NumericQ"}], ",", 
+     RowBox[{"Nmax_", ":", "1000"}], ",", 
+     RowBox[{"prevImVal_", ":", "Null"}]}], "]"}], ":=", 
+   RowBox[{"Module", "[", 
+    RowBox[{
+     RowBox[{"{", 
+      RowBox[{"\[Omega]Re", ",", "\[Omega]Im", ",", "soln", ",", "sol"}], 
+      "}"}], ",", 
+     RowBox[{
+      RowBox[{"soln", "=", 
+       RowBox[{"Quiet", "@", 
+        RowBox[{"FindRoot", "[", 
+         RowBox[{
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"Re", "@", 
+             RowBox[{"LeaverCF", "[", 
+              RowBox[{
+              "\[Omega]Re", ",", "\[Omega]Im", ",", "at", ",", "m", ",", "l", 
+               ",", "\[Alpha]", ",", "Nmax"}], "]"}]}], ",", 
+            RowBox[{"Im", "@", 
+             RowBox[{"LeaverCF", "[", 
+              RowBox[{
+              "\[Omega]Re", ",", "\[Omega]Im", ",", "at", ",", "m", ",", "l", 
+               ",", "\[Alpha]", ",", "Nmax"}], "]"}]}]}], "}"}], ",", 
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"{", 
+             RowBox[{"\[Omega]Re", ",", "seedRe"}], "}"}], ",", 
+            RowBox[{"{", 
+             RowBox[{"\[Omega]Im", ",", "seedIm"}], "}"}]}], "}"}], ",", 
+          RowBox[{"MaxIterations", "->", "1000"}], ",", 
+          RowBox[{"AccuracyGoal", "->", "8"}], ",", 
+          RowBox[{"PrecisionGoal", "->", "8"}], ",", 
+          RowBox[{"WorkingPrecision", "->", "prec"}]}], "]"}]}]}], ";", 
+      "\[IndentingNewLine]", 
+      RowBox[{"If", "[", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"Head", "[", "soln", "]"}], "=!=", "List"}], ",", 
+        RowBox[{"Return", "[", "$Failed", "]"}]}], "]"}], ";", 
+      "\[IndentingNewLine]", 
+      RowBox[{"sol", "=", 
+       RowBox[{
+        RowBox[{"(", 
+         RowBox[{"\[Omega]Re", "+", 
+          RowBox[{"I", "*", "\[Omega]Im"}]}], ")"}], "/.", " ", "soln"}]}], ";",
+       "\[IndentingNewLine]", 
+      RowBox[{"If", "[", 
+       RowBox[{
+        RowBox[{
+         RowBox[{
+          RowBox[{"Re", "[", "sol", "]"}], "<", "0"}], "||", 
+         RowBox[{
+          RowBox[{"Re", "[", "sol", "]"}], ">", 
+          RowBox[{"1.05", "*", "\[Alpha]"}]}], "||", 
+         RowBox[{
+          RowBox[{"Im", "[", "sol", "]"}], "<=", "0"}]}], ",", 
+        RowBox[{"Return", "[", "$Failed", "]"}]}], "]"}], ";", 
+      "\[IndentingNewLine]", 
+      RowBox[{"If", "[", 
+       RowBox[{
+        RowBox[{
+         RowBox[{"prevImVal", "=!=", "Null"}], "&&", 
+         RowBox[{"(", 
+          RowBox[{
+           RowBox[{
+            RowBox[{
+             RowBox[{"Im", "[", "sol", "]"}], "/", "prevImVal"}], ">", "3"}], 
+           "||", 
+           RowBox[{
+            RowBox[{
+             RowBox[{"Im", "[", "sol", "]"}], "/", "prevImVal"}], "<", 
+            RowBox[{"1", "/", "3"}]}]}], ")"}]}], ",", 
+        RowBox[{"Return", "[", "$Failed", "]"}]}], "]"}], ";", 
+      "\[IndentingNewLine]", "sol"}]}], "]"}]}], "\n", 
+  "\[IndentingNewLine]"}], "\[IndentingNewLine]", 
  RowBox[{
   RowBox[{
    RowBox[{
-    RowBox[{"PlotSuperradiance", "[", "\[IndentingNewLine]", 
-     RowBox[{"l_", ",", "m_", ",", "at_", ",", "\[IndentingNewLine]", 
-      RowBox[{"\[Alpha]Min_", ":", "0.05"}], ",", "\[IndentingNewLine]", 
-      RowBox[{"\[Alpha]Max_", ":", "1.5"}], ",", "\[IndentingNewLine]", 
-      RowBox[{"nPoints_", ":", "20"}], ",", "\[IndentingNewLine]", 
-      RowBox[{"Nmax_", ":", "100"}], ",", "\[IndentingNewLine]", 
-      RowBox[{"manualSeedRe_", ":", "Null"}], ",", "\[IndentingNewLine]", 
+    RowBox[{"PlotSuperradiance", "[", 
+     RowBox[{"l_", ",", "m_", ",", "at_", ",", 
+      RowBox[{"\[Alpha]Min_", ":", "0.05"}], ",", 
+      RowBox[{"\[Alpha]Max_", ":", "1.5"}], ",", 
+      RowBox[{"nPoints_", ":", "20"}], ",", 
+      RowBox[{"Nmax_", ":", "100"}], ",", 
+      RowBox[{"manualSeedRe_", ":", "Null"}], ",", 
       RowBox[{"manualSeedIm_", ":", "Null"}]}], "]"}], ":=", 
-    RowBox[{"Module", "[", "\[IndentingNewLine]", 
+    RowBox[{"Module", "[", 
      RowBox[{
       RowBox[{"{", 
        RowBox[{
@@ -702,11 +868,57 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
         "prevPrevPrevIm", ",", "prevPrevPrevAlpha", ",", "sol", ",", "hydro", 
         ",", "seedRe", ",", "seedIm", ",", "dGdA", ",", "dRdA", ",", "d2GdA2",
          ",", "d2RdA2", ",", "h", ",", "dAlpha", ",", "hydroData", ",", 
-        "exportData", ",", "filename", ",", "k", ",", "\[Alpha]", ",", 
-        "stop"}], "}"}], ",", "\[IndentingNewLine]", "\[IndentingNewLine]", 
+        "exportData", ",", "filename", ",", "k", ",", "\[Alpha]", ",", "stop",
+         ",", "consecutiveFailures", ",", "progressBar", ",", "progressLabel",
+         ",", "tStart", ",", "tPoint", ",", "tElapsed", ",", "tPerPoint", ",",
+         "tRemaining", ",", "pointTimes", ",", "nCompleted", ",", 
+        "formatTime"}], "}"}], ",", 
+      RowBox[{"(*", 
+       RowBox[{"Helper", ":", 
+        RowBox[{
+        "format", " ", "seconds", " ", "into", " ", "h", " ", "m", " ", "s", " ",
+          "string"}]}], "*)"}], 
       RowBox[{
+       RowBox[{"formatTime", "=", 
+        RowBox[{"Function", "[", 
+         RowBox[{"secs", ",", 
+          RowBox[{"Module", "[", 
+           RowBox[{
+            RowBox[{"{", 
+             RowBox[{
+              RowBox[{"s", "=", 
+               RowBox[{"Round", "[", "secs", "]"}]}], ",", "hr", ",", "mn", ",",
+               "sc"}], "}"}], ",", 
+            RowBox[{
+             RowBox[{"hr", "=", 
+              RowBox[{"Floor", "[", 
+               RowBox[{"s", "/", "3600"}], "]"}]}], ";", 
+             "\[IndentingNewLine]", 
+             RowBox[{"mn", "=", 
+              RowBox[{"Floor", "[", 
+               RowBox[{
+                RowBox[{"Mod", "[", 
+                 RowBox[{"s", ",", "3600"}], "]"}], "/", "60"}], "]"}]}], ";",
+              "\[IndentingNewLine]", 
+             RowBox[{"sc", "=", 
+              RowBox[{"Mod", "[", 
+               RowBox[{"s", ",", "60"}], "]"}]}], ";", "\[IndentingNewLine]", 
+             RowBox[{"Which", "[", 
+              RowBox[{
+               RowBox[{"hr", ">", "0"}], ",", 
+               RowBox[{"StringForm", "[", 
+                
+                RowBox[{"\"\<``h ``m ``s\>\"", ",", "hr", ",", "mn", ",", 
+                 "sc"}], "]"}], ",", 
+               RowBox[{"mn", ">", "0"}], ",", 
+               RowBox[{"StringForm", "[", 
+                RowBox[{"\"\<``m ``s\>\"", ",", "mn", ",", "sc"}], "]"}], ",",
+                "True", ",", 
+               RowBox[{"StringForm", "[", 
+                RowBox[{"\"\<``s\>\"", ",", "sc"}], "]"}]}], "]"}]}]}], 
+           "]"}]}], "]"}]}], ";", "\[IndentingNewLine]", 
        RowBox[{"\[Alpha]List", "=", 
-        RowBox[{"Table", "[", "\[IndentingNewLine]", 
+        RowBox[{"Table", "[", 
          RowBox[{
           RowBox[{"SetPrecision", "[", 
            RowBox[{
@@ -721,12 +933,10 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
                 RowBox[{"nPoints", "-", "1"}], ")"}]}]}]}], ",", "prec"}], 
            "]"}], ",", 
           RowBox[{"{", 
-           RowBox[{"k", ",", "1", ",", "nPoints"}], "}"}]}], 
-         "\[IndentingNewLine]", "]"}]}], ";", "\[IndentingNewLine]", 
+           RowBox[{"k", ",", "1", ",", "nPoints"}], "}"}]}], "]"}]}], ";", 
        "\[IndentingNewLine]", 
        RowBox[{"cfData", "=", 
         RowBox[{"{", "}"}]}], ";", "\[IndentingNewLine]", 
-       "\[IndentingNewLine]", 
        RowBox[{"prevRe", "=", "Null"}], ";", 
        RowBox[{"prevIm", "=", "Null"}], ";", 
        RowBox[{"prevAlpha", "=", "Null"}], ";", "\[IndentingNewLine]", 
@@ -735,47 +945,121 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
        RowBox[{"prevPrevAlpha", "=", "Null"}], ";", "\[IndentingNewLine]", 
        RowBox[{"prevPrevPrevRe", "=", "Null"}], ";", 
        RowBox[{"prevPrevPrevIm", "=", "Null"}], ";", 
-       RowBox[{"prevPrevPrevAlpha", "=", "Null"}], ";", "\[IndentingNewLine]",
-        "\[IndentingNewLine]", 
+       RowBox[{"prevPrevPrevAlpha", "=", "Null"}], ";", "\[IndentingNewLine]", 
        RowBox[{"stop", "=", "False"}], ";", "\[IndentingNewLine]", 
+       RowBox[{"consecutiveFailures", "=", "0"}], ";", "\[IndentingNewLine]", 
        RowBox[{"k", "=", "1"}], ";", "\[IndentingNewLine]", 
-       RowBox[{"While", "[", "\[IndentingNewLine]", 
+       RowBox[{"(*", 
+        RowBox[{"Timing", " ", "state"}], "*)"}], 
+       RowBox[{"pointTimes", "=", 
+        RowBox[{"{", "}"}]}], ";", 
+       RowBox[{"(*", 
+        RowBox[{
+        "stores", " ", "time", " ", "taken", " ", "for", " ", "each", " ", 
+         "completed", " ", "point"}], "*)"}], 
+       RowBox[{"nCompleted", "=", "0"}], ";", "\[IndentingNewLine]", 
+       RowBox[{"tStart", "=", 
+        RowBox[{"AbsoluteTime", "[", "]"}]}], ";", "\[IndentingNewLine]", 
+       RowBox[{"tElapsed", "=", "0."}], ";", "\[IndentingNewLine]", 
+       RowBox[{"tRemaining", "=", "\"\<estimating...\>\""}], ";", 
+       "\[IndentingNewLine]", 
+       RowBox[{"(*", 
+        RowBox[{"Progress", " ", "display"}], "*)"}], 
+       RowBox[{"progressBar", "=", "0."}], ";", "\[IndentingNewLine]", 
+       RowBox[{"progressLabel", "=", "\"\<Starting...\>\""}], ";", 
+       "\[IndentingNewLine]", 
+       RowBox[{"PrintTemporary", "@", 
+        RowBox[{"Column", "[", 
+         RowBox[{
+          RowBox[{"{", 
+           RowBox[{
+            RowBox[{"Row", "[", 
+             RowBox[{"{", 
+              RowBox[{
+               RowBox[{"ProgressIndicator", "[", 
+                RowBox[{
+                 RowBox[{"Dynamic", "[", "progressBar", "]"}], ",", 
+                 RowBox[{"{", 
+                  RowBox[{"0", ",", "1"}], "}"}], ",", 
+                 RowBox[{"ImageSize", "->", 
+                  RowBox[{"{", 
+                   RowBox[{"450", ",", "20"}], "}"}]}]}], "]"}], 
+               ",", "\"\<  \>\"", ",", 
+               RowBox[{"Dynamic", "[", 
+                RowBox[{"StringForm", "[", 
+                 RowBox[{"\"\<`` / `` points\>\"", ",", 
+                  RowBox[{"k", "-", "1"}], ",", "nPoints"}], "]"}], "]"}]}], 
+              "}"}], "]"}], ",", 
+            RowBox[{"Dynamic", "[", "progressLabel", "]"}]}], "}"}], ",", 
+          RowBox[{"Spacings", "->", "0.6"}]}], "]"}]}], ";", 
+       "\[IndentingNewLine]", 
+       RowBox[{"While", "[", 
         RowBox[{
          RowBox[{
           RowBox[{"k", "<=", 
            RowBox[{"Length", "[", "\[Alpha]List", "]"}]}], "&&", 
-          RowBox[{"!", "stop"}]}], ",", "\[IndentingNewLine]", 
+          RowBox[{"!", "stop"}]}], ",", 
          RowBox[{
           RowBox[{"\[Alpha]", "=", 
            RowBox[{"\[Alpha]List", "[", 
             RowBox[{"[", "k", "]"}], "]"}]}], ";", "\[IndentingNewLine]", 
+          RowBox[{"tPoint", "=", 
+           RowBox[{"AbsoluteTime", "[", "]"}]}], ";", 
+          RowBox[{"(*", 
+           RowBox[{
+           "start", " ", "timer", " ", "for", " ", "this", " ", "point"}], 
+           "*)"}], 
+          RowBox[{"(*", 
+           RowBox[{"Update", " ", "progress"}], "*)"}], 
+          RowBox[{"progressBar", "=", 
+           RowBox[{
+            RowBox[{
+             RowBox[{"(", 
+              RowBox[{"k", "-", "1"}], ")"}], "/", 
+             RowBox[{"(", 
+              RowBox[{"nPoints", "-", "1"}], ")"}]}], "//", "N"}]}], ";", 
           "\[IndentingNewLine]", 
+          RowBox[{"tElapsed", "=", 
+           RowBox[{
+            RowBox[{"AbsoluteTime", "[", "]"}], "-", "tStart"}]}], ";", 
+          "\[IndentingNewLine]", 
+          RowBox[{"progressLabel", "=", 
+           RowBox[{"Row", "[", 
+            RowBox[{"{", 
+             RowBox[{
+              RowBox[{"StringForm", "[", 
+               
+               RowBox[{"\"\<  \[Alpha] = ``  |  Found: `` pts  |  Elapsed: ``\
+\>\"", ",", 
+                RowBox[{"NumberForm", "[", 
+                 RowBox[{
+                  RowBox[{"N", "[", 
+                   RowBox[{"\[Alpha]", ",", "5"}], "]"}], ",", 
+                  RowBox[{"{", 
+                   RowBox[{"5", ",", "4"}], "}"}]}], "]"}], ",", 
+                RowBox[{"Length", "[", "cfData", "]"}], ",", 
+                RowBox[{"formatTime", "[", "tElapsed", "]"}]}], "]"}], 
+              ",", "\"\<  |  ETA: \>\"", ",", 
+              RowBox[{"Dynamic", "[", "tRemaining", "]"}]}], "}"}], "]"}]}], ";",
+           "\[IndentingNewLine]", 
           RowBox[{"hydro", "=", 
            RowBox[{"HydrogenGamma", "[", 
             RowBox[{"n", ",", "l", ",", "m", ",", "\[Alpha]", ",", "at"}], 
             "]"}]}], ";", "\[IndentingNewLine]", 
-          RowBox[{"Which", "[", "\[IndentingNewLine]", 
+          RowBox[{"Which", "[", 
            RowBox[{"(*", 
             RowBox[{
-             RowBox[{
-              RowBox[{"Case", " ", "1"}], ":", 
-              RowBox[{
-               RowBox[{"No", " ", "history"}], "-", 
-               RowBox[{
-               "use", " ", "manual", " ", "seed", " ", "if", " ", 
-                "provided"}]}]}], ",", 
-             RowBox[{"else", " ", "hydrogenic"}]}], "*)"}], 
+             RowBox[{"Case", " ", "1"}], ":", 
+             RowBox[{"No", " ", "history"}]}], "*)"}], 
            RowBox[{
             RowBox[{
              RowBox[{"prevRe", "===", "Null"}], "||", 
              RowBox[{"prevPrevRe", "===", "Null"}]}], ",", 
-            "\[IndentingNewLine]", 
-            RowBox[{"Which", "[", "\[IndentingNewLine]", 
+            RowBox[{"Which", "[", 
              RowBox[{
               RowBox[{
                RowBox[{"k", "==", "1"}], "&&", 
                RowBox[{"manualSeedRe", "=!=", "Null"}]}], ",", 
-              "\[IndentingNewLine]", 
               RowBox[{
                RowBox[{"seedRe", "=", 
                 RowBox[{"SetPrecision", "[", 
@@ -784,8 +1068,7 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
                RowBox[{"seedIm", "=", 
                 RowBox[{"SetPrecision", "[", 
                  RowBox[{"manualSeedIm", ",", "prec"}], "]"}]}]}], ",", 
-              "\[IndentingNewLine]", "\[IndentingNewLine]", "True", ",", 
-              "\[IndentingNewLine]", 
+              "True", ",", 
               RowBox[{
                RowBox[{"seedRe", "=", 
                 RowBox[{"SetPrecision", "[", 
@@ -801,16 +1084,13 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
                   "prec"}], "]"}]}], ";", "\[IndentingNewLine]", 
                RowBox[{"seedIm", "=", 
                 RowBox[{"SetPrecision", "[", 
-                 RowBox[{"hydro", ",", "prec"}], "]"}]}]}]}], 
-             "\[IndentingNewLine]", "]"}], ",", "\[IndentingNewLine]", 
-            "\[IndentingNewLine]", 
+                 RowBox[{"hydro", ",", "prec"}], "]"}]}]}]}], "]"}], ",", 
             RowBox[{"(*", 
              RowBox[{
               RowBox[{"Case", " ", "2"}], ":", 
               RowBox[{
-               RowBox[{"Exactly", " ", "two", " ", "history", " ", "points"}],
-                "-", "first", "-", 
-               RowBox[{"order", " ", "gradient", " ", "only"}]}]}], "*)"}], 
+               RowBox[{"Two", " ", "history", " ", "points"}], "-", "first", "-",
+                "order"}]}], "*)"}], 
             RowBox[{"prevPrevPrevRe", "===", "Null"}], ",", 
             RowBox[{
              RowBox[{"h", "=", 
@@ -840,53 +1120,13 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
                RowBox[{
                 RowBox[{"prevRe", "+", 
                  RowBox[{"dRdA", "*", "dAlpha"}]}], ",", "prec"}], "]"}]}]}], 
-            ",", "\[IndentingNewLine]", "\[IndentingNewLine]", 
+            ",", 
             RowBox[{"(*", 
              RowBox[{
               RowBox[{"Case", " ", "3"}], ":", 
-              RowBox[{
-               RowBox[{
-               "Three", " ", "or", " ", "more", " ", "history", " ", 
-                "points"}], "-", "second", "-", 
-               RowBox[{
-               "order", " ", "correction", " ", "Central", " ", "first", " ", 
-                "derivative"}]}], ":", 
-              RowBox[{
-               RowBox[{
-                RowBox[{
-                 RowBox[{"f", "'"}], "~", 
-                 RowBox[{"(", 
-                  RowBox[{
-                   RowBox[{"f", "[", "n", "]"}], "-", 
-                   RowBox[{"f", "[", 
-                    RowBox[{"n", "-", "2"}], "]"}]}], ")"}]}], "/", 
-                RowBox[{"(", 
-                 RowBox[{"2", "h"}], ")"}]}], " ", "Second", " ", 
-               RowBox[{"derivative", ":", 
-                RowBox[{
-                 RowBox[{
-                  RowBox[{
-                   RowBox[{"f", "''"}], "~", 
-                   RowBox[{"(", 
-                    RowBox[{
-                    RowBox[{"f", "[", "n", "]"}], "-", 
-                    RowBox[{"2", 
-                    RowBox[{"f", "[", 
-                    RowBox[{"n", "-", "1"}], "]"}]}], "+", 
-                    RowBox[{"f", "[", 
-                    RowBox[{"n", "-", "2"}], "]"}]}], ")"}]}], "/", 
-                  RowBox[{"h", "^", "2"}]}], " ", "Taylor", " ", "seed"}], ":", 
-                RowBox[{
-                 RowBox[{
-                  RowBox[{"f", "[", 
-                   RowBox[{"n", "+", "1"}], "]"}], "~", 
-                  RowBox[{"f", "[", "n", "]"}]}], "+", 
-                 RowBox[{
-                  RowBox[{"f", "'"}], "*", "dAlpha"}], "+", 
-                 RowBox[{"0.5", "*", 
-                  RowBox[{"f", "''"}], "*", 
-                  RowBox[{"dAlpha", "^", "2"}]}]}]}]}]}], "*)"}], 
-            "\[IndentingNewLine]", "\[IndentingNewLine]", "True", ",", 
+              RowBox[{"Three", "+", 
+               RowBox[{"history", " ", "points"}], "-", "second", "-", 
+               "order"}]}], "*)"}], "True", ",", 
             RowBox[{
              RowBox[{"h", "=", 
               RowBox[{"prevAlpha", "-", "prevPrevAlpha"}]}], ";", 
@@ -937,34 +1177,23 @@ Superradiance Rate\\\\Mathematica\>\"", "]"}], "\[IndentingNewLine]"}], "\[Inden
                  RowBox[{"dRdA", "*", "dAlpha"}], "+", 
                  RowBox[{"0.5", "*", "d2RdA2", "*", 
                   RowBox[{"dAlpha", "^", "2"}]}]}], ",", "prec"}], 
-               "]"}]}]}]}], "\[IndentingNewLine]", "]"}], ";", 
-          "\[IndentingNewLine]", "\[IndentingNewLine]", 
+               "]"}]}]}]}], "]"}], ";", "\[IndentingNewLine]", 
           RowBox[{"sol", "=", 
            RowBox[{"FindQBSFromSeed", "[", 
             RowBox[{
             "n", ",", "l", ",", "m", ",", "\[Alpha]", ",", "at", ",", 
-             "seedRe", ",", "seedIm", ",", "Nmax"}], "]"}]}], ";", 
-          "\[IndentingNewLine]", 
+             "seedRe", ",", "seedIm", ",", "Nmax", ",", "prevIm"}], "]"}]}], ";",
+           "\[IndentingNewLine]", 
           RowBox[{"(*", 
            RowBox[{
-            RowBox[{
-             RowBox[{"Fallback", " ", "1"}], ":", 
-             RowBox[{
-              RowBox[{"if", " ", "second"}], "-", 
-              RowBox[{"order", " ", "failed"}]}]}], ",", 
-            RowBox[{
-             RowBox[{"try", " ", "first"}], "-", "order"}]}], "*)"}], 
-          "\[IndentingNewLine]", 
-          RowBox[{"If", "[", "\[IndentingNewLine]", 
+            RowBox[{"Fallback", " ", "1"}], ":", 
+            RowBox[{"first", "-", "order"}]}], "*)"}], 
+          RowBox[{"If", "[", 
            RowBox[{
             RowBox[{
              RowBox[{"sol", "===", "$Failed"}], "&&", 
              RowBox[{"prevPrevPrevRe", "=!=", "Null"}]}], ",", 
             RowBox[{
-             RowBox[{
-             "Print", 
-              "[", "\"\<  2nd-order seed failed, trying 1st-order \
-fallback\>\"", "]"}], ";", "\[IndentingNewLine]", 
              RowBox[{"h", "=", 
               RowBox[{"prevAlpha", "-", "prevPrevAlpha"}]}], ";", 
              "\[IndentingNewLine]", 
@@ -980,7 +1209,7 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
               "\[IndentingNewLine]", 
              RowBox[{"dAlpha", "=", 
               RowBox[{"\[Alpha]", "-", "prevAlpha"}]}], ";", 
-             "\[IndentingNewLine]", "\[IndentingNewLine]", 
+             "\[IndentingNewLine]", 
              RowBox[{"seedIm", "=", 
               RowBox[{"SetPrecision", "[", 
                RowBox[{
@@ -992,31 +1221,22 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
                RowBox[{
                 RowBox[{"prevRe", "+", 
                  RowBox[{"dRdA", "*", "dAlpha"}]}], ",", "prec"}], "]"}]}], ";",
-              "\[IndentingNewLine]", "\[IndentingNewLine]", 
+              "\[IndentingNewLine]", 
              RowBox[{"sol", "=", 
               RowBox[{"FindQBSFromSeed", "[", 
                RowBox[{
                "n", ",", "l", ",", "m", ",", "\[Alpha]", ",", "at", ",", 
-                "seedRe", ",", "seedIm", ",", "Nmax"}], "]"}]}]}]}], 
-           "\[IndentingNewLine]", "]"}], ";", "\[IndentingNewLine]", 
-          "\[IndentingNewLine]", 
+                "seedRe", ",", "seedIm", ",", "Nmax", ",", "prevIm"}], 
+               "]"}]}]}]}], "]"}], ";", "\[IndentingNewLine]", 
           RowBox[{"(*", 
            RowBox[{
-            RowBox[{
-             RowBox[{"Fallback", " ", "2"}], ":", 
-             RowBox[{"if", " ", "gradient", " ", "failed"}]}], ",", 
-            RowBox[{"try", " ", "hydrogenic"}]}], "*)"}], 
-          "\[IndentingNewLine]", 
-          RowBox[{"If", "[", "\[IndentingNewLine]", 
+            RowBox[{"Fallback", " ", "2"}], ":", "hydrogenic"}], "*)"}], 
+          RowBox[{"If", "[", 
            RowBox[{
             RowBox[{
              RowBox[{"sol", "===", "$Failed"}], "&&", 
              RowBox[{"prevRe", "=!=", "Null"}]}], ",", 
             RowBox[{
-             RowBox[{
-             "Print", 
-              "[", "\"\<  Gradient seed failed, trying hydrogenic \
-fallback\>\"", "]"}], ";", "\[IndentingNewLine]", 
              RowBox[{"seedRe", "=", 
               RowBox[{"SetPrecision", "[", 
                RowBox[{
@@ -1032,35 +1252,85 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
              RowBox[{"seedIm", "=", 
               RowBox[{"SetPrecision", "[", 
                RowBox[{"hydro", ",", "prec"}], "]"}]}], ";", 
-             "\[IndentingNewLine]", "\[IndentingNewLine]", 
+             "\[IndentingNewLine]", 
              RowBox[{"sol", "=", 
               RowBox[{"FindQBSFromSeed", "[", 
                RowBox[{
                "n", ",", "l", ",", "m", ",", "\[Alpha]", ",", "at", ",", 
-                "seedRe", ",", "seedIm", ",", "Nmax"}], "]"}]}]}]}], 
-           "\[IndentingNewLine]", "]"}], ";", "\[IndentingNewLine]", 
+                "seedRe", ",", "seedIm", ",", "Nmax", ",", "prevIm"}], 
+               "]"}]}]}]}], "]"}], ";", "\[IndentingNewLine]", 
+          RowBox[{"(*", 
+           RowBox[{
+           "Update", " ", "timing", " ", "estimate", " ", "using", " ", 
+            "rolling", " ", "average", " ", "of", " ", "last", " ", "5", " ", 
+            "points"}], "*)"}], 
+          RowBox[{"nCompleted", "++"}], ";", "\[IndentingNewLine]", 
+          RowBox[{"AppendTo", "[", 
+           RowBox[{"pointTimes", ",", 
+            RowBox[{
+             RowBox[{"AbsoluteTime", "[", "]"}], "-", "tPoint"}]}], "]"}], ";",
+           "\[IndentingNewLine]", 
+          RowBox[{"If", "[", 
+           RowBox[{
+            RowBox[{
+             RowBox[{"Length", "[", "pointTimes", "]"}], ">", "5"}], ",", 
+            RowBox[{"pointTimes", "=", 
+             RowBox[{"Take", "[", 
+              RowBox[{"pointTimes", ",", 
+               RowBox[{"-", "5"}]}], "]"}]}]}], "]"}], ";", 
+          "\[IndentingNewLine]", 
+          RowBox[{"tPerPoint", "=", 
+           RowBox[{"Mean", "[", "pointTimes", "]"}]}], ";", 
+          "\[IndentingNewLine]", 
+          RowBox[{"tRemaining", "=", 
+           RowBox[{"formatTime", "[", 
+            RowBox[{"tPerPoint", "*", 
+             RowBox[{"(", 
+              RowBox[{"nPoints", "-", "k"}], ")"}]}], "]"}]}], ";", 
+          "\[IndentingNewLine]", 
           RowBox[{"If", "[", 
            RowBox[{
             RowBox[{"sol", "=!=", "$Failed"}], ",", 
             RowBox[{"Print", "[", 
-             
-             RowBox[{"\"\<\[Alpha] = \>\"", ",", "\[Alpha]", 
+             RowBox[{"\"\<\[Alpha] = \>\"", ",", 
+              RowBox[{"NumberForm", "[", 
+               RowBox[{
+                RowBox[{"N", "[", 
+                 RowBox[{"\[Alpha]", ",", "6"}], "]"}], ",", 
+                RowBox[{"{", 
+                 RowBox[{"6", ",", "5"}], "}"}]}], "]"}], 
               ",", "\"\< -> SR rate: \>\"", ",", 
               RowBox[{"ScientificForm", "[", 
-               RowBox[{"Im", "[", "sol", "]"}], "]"}]}], "]"}], ",", 
+               RowBox[{
+                RowBox[{"Im", "[", "sol", "]"}], ",", "6"}], "]"}], 
+              ",", "\"\<  [\>\"", ",", 
+              RowBox[{"NumberForm", "[", 
+               RowBox[{
+                RowBox[{"Last", "[", "pointTimes", "]"}], ",", 
+                RowBox[{"{", 
+                 RowBox[{"4", ",", "2"}], "}"}]}], "]"}], ",", "\"\<s]\>\""}],
+              "]"}], ",", 
             RowBox[{"Print", "[", 
-             
-             RowBox[{"\"\<\[Alpha] = \>\"", ",", "\[Alpha]", 
-              ",", "\"\< -> No Solution\>\""}], "]"}]}], "]"}], ";", 
-          "\[IndentingNewLine]", 
-          RowBox[{"If", "[", "\[IndentingNewLine]", 
+             RowBox[{"\"\<\[Alpha] = \>\"", ",", 
+              RowBox[{"NumberForm", "[", 
+               RowBox[{
+                RowBox[{"N", "[", 
+                 RowBox[{"\[Alpha]", ",", "6"}], "]"}], ",", 
+                RowBox[{"{", 
+                 RowBox[{"6", ",", "5"}], "}"}]}], "]"}], 
+              ",", "\"\< -> No Solution\>\"", ",", "\"\<  [\>\"", ",", 
+              RowBox[{"NumberForm", "[", 
+               RowBox[{
+                RowBox[{"Last", "[", "pointTimes", "]"}], ",", 
+                RowBox[{"{", 
+                 RowBox[{"4", ",", "2"}], "}"}]}], "]"}], ",", "\"\<s]\>\""}],
+              "]"}]}], "]"}], ";", "\[IndentingNewLine]", 
+          RowBox[{"If", "[", 
            RowBox[{
-            RowBox[{"sol", "=!=", "$Failed"}], ",", "\[IndentingNewLine]", 
-            RowBox[{"(*", 
-             RowBox[{
-             "Shift", " ", "all", " ", "history", " ", "back", " ", "by", " ",
-               "one"}], "*)"}], "\[IndentingNewLine]", 
+            RowBox[{"sol", "=!=", "$Failed"}], ",", 
             RowBox[{
+             RowBox[{"consecutiveFailures", "=", "0"}], ";", 
+             "\[IndentingNewLine]", 
              RowBox[{"prevPrevPrevRe", "=", "prevPrevRe"}], ";", 
              RowBox[{"prevPrevPrevIm", "=", "prevPrevIm"}], ";", 
              RowBox[{"prevPrevPrevAlpha", "=", "prevPrevAlpha"}], ";", 
@@ -1080,11 +1350,9 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
                RowBox[{"{", 
                 RowBox[{"\[Alpha]", ",", 
                  RowBox[{"Im", "[", "sol", "]"}]}], "}"}]}], "]"}]}], ",", 
-            "\[IndentingNewLine]", 
-            RowBox[{"(*", 
-             RowBox[{"Full", " ", "reset", " ", "on", " ", "failure"}], 
-             "*)"}], "\[IndentingNewLine]", 
             RowBox[{
+             RowBox[{"consecutiveFailures", "++"}], ";", 
+             "\[IndentingNewLine]", 
              RowBox[{"prevPrevPrevRe", "=", "Null"}], ";", 
              RowBox[{"prevPrevPrevIm", "=", "Null"}], ";", 
              RowBox[{"prevPrevPrevAlpha", "=", "Null"}], ";", 
@@ -1096,35 +1364,57 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
              RowBox[{"prevRe", "=", "Null"}], ";", 
              RowBox[{"prevIm", "=", "Null"}], ";", 
              RowBox[{"prevAlpha", "=", "Null"}], ";", "\[IndentingNewLine]", 
-             "\[IndentingNewLine]", 
              RowBox[{"If", "[", 
               RowBox[{
                RowBox[{
-                RowBox[{"\[Alpha]", "/", "l"}], ">", "0.2"}], ",", 
+                RowBox[{
+                 RowBox[{"\[Alpha]", "/", "l"}], ">", "0.2"}], "&&", 
+                RowBox[{"consecutiveFailures", ">=", "2"}]}], ",", 
                RowBox[{
                 RowBox[{"Print", "[", 
                  
-                 RowBox[{"\"\<  Root finding failed above \[Alpha]/l = 0.2 at \
-\[Alpha] = \>\"", ",", 
-                  RowBox[{"N", "[", 
-                   RowBox[{"\[Alpha]", ",", "4"}], "]"}], 
+                 RowBox[{"\"\<  Two consecutive failures above \[Alpha]/l = \
+0.2 at \[Alpha] = \>\"", ",", 
+                  RowBox[{"NumberForm", "[", 
+                   RowBox[{
+                    RowBox[{"N", "[", 
+                    RowBox[{"\[Alpha]", ",", "4"}], "]"}], ",", 
+                    RowBox[{"{", 
+                    RowBox[{"4", ",", "3"}], "}"}]}], "]"}], 
                   ",", "\"\<, stopping.\>\""}], "]"}], ";", 
                 "\[IndentingNewLine]", 
-                RowBox[{"stop", "=", "True"}]}]}], "]"}]}]}], 
-           "\[IndentingNewLine]", "]"}], ";", "\[IndentingNewLine]", 
+                RowBox[{"stop", "=", "True"}]}]}], "]"}]}]}], "]"}], ";", 
           "\[IndentingNewLine]", 
-          RowBox[{"k", "++"}]}]}], "\[IndentingNewLine]", "]"}], ";", 
+          RowBox[{"k", "++"}]}]}], "]"}], ";", "\[IndentingNewLine]", 
+       RowBox[{"(*", 
+        RowBox[{"Final", " ", "progress", " ", "update"}], "*)"}], 
+       RowBox[{"progressBar", "=", "1."}], ";", "\[IndentingNewLine]", 
+       RowBox[{"tElapsed", "=", 
+        RowBox[{
+         RowBox[{"AbsoluteTime", "[", "]"}], "-", "tStart"}]}], ";", 
        "\[IndentingNewLine]", 
-       RowBox[{"If", "[", "\[IndentingNewLine]", 
+       RowBox[{"progressLabel", "=", 
+        RowBox[{"Row", "[", 
+         RowBox[{"{", 
+          RowBox[{"StringForm", "[", 
+           
+           RowBox[{"\"\<  Complete: `` / `` points found  |  Total time: ``\>\
+\"", ",", 
+            RowBox[{"Length", "[", "cfData", "]"}], ",", "nPoints", ",", 
+            RowBox[{"formatTime", "[", "tElapsed", "]"}]}], "]"}], "}"}], 
+         "]"}]}], ";", "\[IndentingNewLine]", 
+       RowBox[{"tRemaining", "=", "\"\<Done\>\""}], ";", 
+       "\[IndentingNewLine]", 
+       RowBox[{"If", "[", 
         RowBox[{
          RowBox[{"cfData", "===", 
           RowBox[{"{", "}"}]}], ",", 
          RowBox[{
           RowBox[{"Print", "[", "\"\<No valid points.\>\"", "]"}], ";", 
-          RowBox[{"Return", "[", "$Failed", "]"}]}]}], "\[IndentingNewLine]", 
-        "]"}], ";", "\[IndentingNewLine]", 
+          RowBox[{"Return", "[", "$Failed", "]"}]}]}], "]"}], ";", 
+       "\[IndentingNewLine]", 
        RowBox[{"hydroData", "=", 
-        RowBox[{"Table", "[", "\[IndentingNewLine]", 
+        RowBox[{"Table", "[", 
          RowBox[{
           RowBox[{"{", 
            RowBox[{"\[Alpha]", ",", 
@@ -1132,16 +1422,15 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
              RowBox[{"n", ",", "l", ",", "m", ",", "\[Alpha]", ",", "at"}], 
              "]"}]}], "}"}], ",", 
           RowBox[{"{", 
-           RowBox[{"\[Alpha]", ",", "\[Alpha]List"}], "}"}]}], 
-         "\[IndentingNewLine]", "]"}]}], ";", "\[IndentingNewLine]", 
+           RowBox[{"\[Alpha]", ",", "\[Alpha]List"}], "}"}]}], "]"}]}], ";", 
+       "\[IndentingNewLine]", 
        RowBox[{"exportData", "=", 
-        RowBox[{"Table", "[", "\[IndentingNewLine]", 
+        RowBox[{"Table", "[", 
          RowBox[{
-          RowBox[{"Module", "[", "\[IndentingNewLine]", 
+          RowBox[{"Module", "[", 
            RowBox[{
             RowBox[{"{", 
              RowBox[{"cfRow", ",", "cfVal"}], "}"}], ",", 
-            "\[IndentingNewLine]", 
             RowBox[{
              RowBox[{"cfRow", "=", 
               RowBox[{"Select", "[", 
@@ -1162,7 +1451,6 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
                  RowBox[{"[", 
                   RowBox[{"1", ",", "2"}], "]"}], "]"}], 
                 ",", "\"\<Failed\>\""}], "]"}]}], ";", "\[IndentingNewLine]", 
-             "\[IndentingNewLine]", 
              RowBox[{"{", 
               RowBox[{
                RowBox[{"N", "[", 
@@ -1175,12 +1463,11 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
                  RowBox[{"hydroData", "[", 
                   RowBox[{"[", 
                    RowBox[{"j", ",", "2"}], "]"}], "]"}], ",", "16"}], 
-                "]"}]}], "}"}]}]}], "\[IndentingNewLine]", "]"}], ",", 
-          "\[IndentingNewLine]", 
+                "]"}]}], "}"}]}]}], "]"}], ",", 
           RowBox[{"{", 
            RowBox[{"j", ",", "1", ",", 
-            RowBox[{"Length", "[", "\[Alpha]List", "]"}]}], "}"}]}], 
-         "\[IndentingNewLine]", "]"}]}], ";", "\[IndentingNewLine]", 
+            RowBox[{"Length", "[", "\[Alpha]List", "]"}]}], "}"}]}], "]"}]}], 
+       ";", "\[IndentingNewLine]", 
        RowBox[{"filename", "=", 
         RowBox[{"\"\<SR_n\>\"", "<>", 
          RowBox[{"ToString", "[", "n", "]"}], "<>", "\"\<l\>\"", "<>", 
@@ -1204,12 +1491,11 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
             RowBox[{"{", 
              RowBox[{"4", ",", "2"}], "}"}]}], "]"}], "]"}], 
          "<>", "\"\<.dat\>\""}]}], ";", "\[IndentingNewLine]", 
-       "\[IndentingNewLine]", 
-       RowBox[{"Export", "[", "\[IndentingNewLine]", 
+       RowBox[{"Export", "[", 
         RowBox[{"filename", ",", 
-         RowBox[{"Prepend", "[", "\[IndentingNewLine]", 
+         RowBox[{"Prepend", "[", 
           RowBox[{
-           RowBox[{"Map", "[", "\[IndentingNewLine]", 
+           RowBox[{"Map", "[", 
             RowBox[{
              RowBox[{
               RowBox[{"{", 
@@ -1220,15 +1506,12 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
                  RowBox[{"[", "2", "]"}], "]"}], ",", 
                 RowBox[{"#", "[", 
                  RowBox[{"[", "3", "]"}], "]"}]}], "}"}], "&"}], ",", 
-             "exportData"}], "\[IndentingNewLine]", "]"}], ",", 
-           "\[IndentingNewLine]", 
+             "exportData"}], "]"}], ",", 
            RowBox[{"{", 
             
             RowBox[{"\"\<alpha\>\"", ",", "\"\<CF_Gamma\>\"", 
-             ",", "\"\<Hydro_Gamma\>\""}], "}"}]}], "\[IndentingNewLine]", 
-          "]"}], ",", "\[IndentingNewLine]", "\"\<TSV\>\""}], 
-        "\[IndentingNewLine]", "]"}], ";", "\[IndentingNewLine]", 
-       "\[IndentingNewLine]", 
+             ",", "\"\<Hydro_Gamma\>\""}], "}"}]}], "]"}], 
+         ",", "\"\<TSV\>\""}], "]"}], ";", "\[IndentingNewLine]", 
        RowBox[{"Print", "[", 
         RowBox[{"\"\<\\nData exported to: \>\"", ",", "filename"}], "]"}], ";",
         "\[IndentingNewLine]", 
@@ -1239,8 +1522,8 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
        RowBox[{"Print", "[", 
         RowBox[{"\"\<Total rows: \>\"", ",", 
          RowBox[{"Length", "[", "exportData", "]"}]}], "]"}], ";", 
-       "\[IndentingNewLine]", "filename"}]}], "\[IndentingNewLine]", "]"}]}], 
-   ";"}], "\[IndentingNewLine]", "\[IndentingNewLine]", 
+       "\[IndentingNewLine]", "filename"}]}], "]"}]}], ";"}], 
+  "\[IndentingNewLine]", "\[IndentingNewLine]", 
   RowBox[{"(*", 
    RowBox[{
     RowBox[{"--", 
@@ -1285,20 +1568,20 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
       RowBox[{
        RowBox[{"Im", "[", "sol0", "]"}], "/", "hydro0"}]}], "]"}], ";"}], 
    "*)"}], "\[IndentingNewLine]", "\[IndentingNewLine]", 
-  "\[IndentingNewLine]"}], "\[IndentingNewLine]", 
+  "\[IndentingNewLine]"}], "\n", 
  RowBox[{
   RowBox[{"Block", "[", 
    RowBox[{
     RowBox[{"{", 
-     RowBox[{"prec", "=", "45"}], "}"}], ",", 
+     RowBox[{"prec", "=", "50"}], "}"}], ",", 
     RowBox[{
      RowBox[{"DistributeDefinitions", "[", "prec", "]"}], ";", 
      "\[IndentingNewLine]", 
      RowBox[{"PlotSuperradiance", "[", 
       RowBox[{"4", ",", "4", ",", "0.99", ",", 
        RowBox[{"SetPrecision", "[", 
-        RowBox[{"1.05", ",", "20"}], "]"}], ",", "1.7", ",", "200", ",", 
-       "2000"}], "]"}]}]}], "]"}], 
+        RowBox[{"1.05", ",", "20"}], "]"}], ",", "2.00", ",", "150", ",", 
+       "3000"}], "]"}]}]}], "]"}], 
   "\[IndentingNewLine]"}], "\[IndentingNewLine]"}], "Input",
  CellChangeTimes->{{3.9804916620628853`*^9, 3.9804916746248226`*^9}, {
    3.9804917256882935`*^9, 3.9804917266881943`*^9}, {3.9804918559355583`*^9, 
@@ -1423,9 +1706,14 @@ fallback\>\"", "]"}], ";", "\[IndentingNewLine]",
    3.9811173760064754`*^9}, 3.9811184929744377`*^9, {3.9811189877502155`*^9, 
    3.981118992798994*^9}, {3.981121121570614*^9, 3.981121121969101*^9}, {
    3.9812832961107044`*^9, 3.9812833413644867`*^9}, {3.98129524587039*^9, 
-   3.981295536148985*^9}, {3.981554777977667*^9, 3.9815547783841705`*^9}},
+   3.981295536148985*^9}, {3.981554777977667*^9, 3.9815547783841705`*^9}, {
+   3.981602177857113*^9, 3.9816021785448*^9}, {3.9816313311721306`*^9, 
+   3.9816313763894672`*^9}, {3.9816314701504536`*^9, 3.981631483117647*^9}, {
+   3.9816321509250565`*^9, 3.9816321515271225`*^9}, {3.981632489588148*^9, 
+   3.9816325488938026`*^9}, {3.9816326154447784`*^9, 
+   3.9816326158923206`*^9}, {3.981632733356598*^9, 3.981632733684828*^9}},
  CellLabel->
-  "In[101]:=",ExpressionUUID->"1b95d9af-0a67-1c4d-b9fc-578de10991ed"],
+  "In[157]:=",ExpressionUUID->"1b95d9af-0a67-1c4d-b9fc-578de10991ed"],
 
 Cell[BoxData["\<\"C:\\\\Users\\\\Jack\\\\MPhys\\\\Sem 2\\\\2. Relativistic \
 Superradiance Rate\\\\Mathematica\"\>"], "Output",
@@ -1436,2529 +1724,261 @@ Superradiance Rate\\\\Mathematica\"\>"], "Output",
    3.981116910417101*^9, 3.9811169575888386`*^9}, 3.981117089636793*^9, 
    3.9811172213536663`*^9, 3.9811173777112713`*^9, 3.9811184946632996`*^9, 
    3.981118994079262*^9, 3.981121123785118*^9, 3.981283344063141*^9, 
-   3.9815517142019253`*^9, 3.981554780267044*^9, 3.981555050445238*^9},
+   3.9815517142019253`*^9, 3.981554780267044*^9, 3.981555050445238*^9, 
+   3.981602187785389*^9, 3.9816313364957848`*^9, {3.9816313688448563`*^9, 
+   3.9816313779254665`*^9}, 3.9816314856604385`*^9, 3.9816321534754696`*^9, 
+   3.981632513199684*^9, 3.981632549564581*^9, 3.9816326204668026`*^9, 
+   3.9816327353709297`*^9},
  CellLabel->
-  "Out[102]=",ExpressionUUID->"ba8796ed-057d-0442-8366-3ad167c7f446"],
+  "Out[158]=",ExpressionUUID->"81635211-51bc-c847-ab9f-95632356c7e5"],
 
 Cell[CellGroupData[{
 
 Cell[BoxData[
  InterpretationBox[
   RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.0500000000000000444089209850062616169452667236328125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.06625841175467976285146697926528378172872974\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.0662584117546797628514669792652837817287297400225088206999251967`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.0500000000000000444089209850062616169452667236328125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.0662584117546797628514669792652837817287297400225088206999251967`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815558943536854`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"89a42682-86a3-3045-a8ca-a2df07a7250e"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.0532663316582915324914893062668852508068084716796875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.09275296149583594405967992684239139316037584\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.092752961495835944059679926842391393160375841863153516365732428`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.0532663316582915324914893062668852508068084716796875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.092752961495835944059679926842391393160375841863153516365732428`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981555894356701*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"6da1d883-6ff8-ca45-bbba-5082544ac51a"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.0565326633165830205740576275275088846683502197265625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.11958053644772351732898362626605874555042034\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.1195805364477235173289836262660587455504203396845857354916440949`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.0565326633165830205740576275275088846683502197265625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.1195805364477235173289836262660587455504203396845857354916440949`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981555896600603*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"6e72bb14-9492-7548-9730-b72dfb357215"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.0597989949748745086566259487881325185298919677734375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.14648819483440117138241575509523691093111789\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.1464881948344011713824157550952369109311178907155425514572227758`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.0597989949748745086566259487881325185298919677734375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.1464881948344011713824157550952369109311178907155425514572227758`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981556092153494*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"90812111-1ab5-bc42-8661-6e6f39b5c390"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.06306532663316577469458934501744806766510009765625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.17351863707375574336817789859753364244487290\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.1735186370737557433681778985975336424448728950802409283550368013`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.06306532663316577469458934501744806766510009765625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.1735186370737557433681778985975336424448728950802409283550368013`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815563157383633`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"5018106f-c65a-4949-95a4-fd8a24bb344a"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.066331658291457262777157666278071701526641845703125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.20063275573574868301426561258685530619240165\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.2006327557357486830142656125868553061924016484846642718550724017`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.066331658291457262777157666278071701526641845703125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.2006327557357486830142656125868553061924016484846642718550724017`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.98155649272806*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"495e3160-124e-e344-9698-0991382fd221"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.06959798994974875085972598753869533538818359375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.22775756752674465617068828122907112179823856\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.227757567526744656170688281229071121798238560259448780444352265`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.06959798994974875085972598753869533538818359375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.227757567526744656170688281229071121798238560259448780444352265`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981556676033474*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"517424e0-0e05-8e41-8ba5-430874f393f6"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.072864321608040238942294308799318969249725341796875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.25510103343785983399596615638077344475850501\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.2551010334378598339959661563807734447585050102919919063431053551`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.072864321608040238942294308799318969249725341796875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.2551010334378598339959661563807734447585050102919919063431053551`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981556901401329*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"2108a1cb-4c6e-3341-9b1a-998962af8411"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.07613065326633172702486263005994260311126708984375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.28253392541824457765749649936701957555747202\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.2825339254182445776574964993670195755574720172611829197466845585`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.07613065326633172702486263005994260311126708984375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.2825339254182445776574964993670195755574720172611829197466845585`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981557080407156*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"605b9a86-353c-aa49-8cc7-8b39a47578c9"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.079396984924623215107430951320566236972808837890625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.30997824714507244488738101885348678452829884\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.309978247145072444887381018853486784528298843170403071837433231`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.079396984924623215107430951320566236972808837890625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.309978247145072444887381018853486784528298843170403071837433231`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815572609131374`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"e399b7b8-abf9-0d43-bd24-240f2fa2574e"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.0826633165829147031899992725811898708343505859375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.33746931732422302130701351050357465249586001\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.3374693173242230213070135105035746524958600096582610856231082601`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.0826633165829147031899992725811898708343505859375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.3374693173242230213070135105035746524958600096582610856231082601`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981557439053692*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"cc236bb8-0648-4d4b-a79f-b01d45d4bf23"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.0859296482412059692279626688105054199695587158203125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.36506794007815749300382979848101293825696537\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.3650679400781574930038297984810129382569653665955127475510432709`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.0859296482412059692279626688105054199695587158203125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.3650679400781574930038297984810129382569653665955127475510432709`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815576681207523`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"00721946-b3ff-9248-bdad-ec9a953ce79f"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.0891959798994974573105309900711290538311004638671875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.39266656283209387813989154806386588070229324\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.3926665628320938781398915480638658807022932405911690859377358622`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.0891959798994974573105309900711290538311004638671875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.3926665628320938781398915480638658807022932405911690859377358622`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981557794361019*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"fd12a905-d519-e44c-96bf-ada30b657c34"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.0924623115577889453930993113317526876926422119140625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.42046508442477331297787871905699179051307459\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.4204650844247733129778787190569917905130745935943143462480749366`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.0924623115577889453930993113317526876926422119140625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.4204650844247733129778787190569917905130745935943143462480749366`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815579731123486`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"34e27647-82a3-524d-84bd-d1c873e568bb"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.0957286432160804334756676325923763215541839599609375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.44826360601745293536655884963690670540852996\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.4482636060174529353665588496369067054085299599342569107331786166`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.0957286432160804334756676325923763215541839599609375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.4482636060174529353665588496369067054085299599342569107331786166`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981558097599058*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"405403ee-4a44-d34a-b8f9-aa222bcb9074"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.0989949748743719215582359538529999554157257080078125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.47607518660838175002477244261761970329860516\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.4760751866083817500247724426176197032986051643338282114715790413`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.0989949748743719215582359538529999554157257080078125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.4760751866083817500247724426176197032986051643338282114715790413`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981558287581133*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"4dac3800-de53-d747-a5e8-f56899a6ad20"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1022613065326634096408042751136235892772674560546875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.50399356331881005220672489802638051144941779\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.503993563318810052206724898026380511449417785730294672096909491`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1022613065326634096408042751136235892772674560546875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.503993563318810052206724898026380511449417785730294672096909491`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981558461489149*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"d9f0b001-984b-e643-9852-4ade043eed01"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1055276381909548977233725963742472231388092041015625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.53196652017086670221745669425128501749953230\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.5319665201708667022174566942512850174995323041553256829115356177`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1055276381909548977233725963742472231388092041015625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.5319665201708667022174566942512850174995323041553256829115356177`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981558634340391*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"90de55e5-353a-894c-a136-1f39792a402b"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.108793969849246163761335992603562772274017333984375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.55996736774243695619603801840692521477053797\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.5599673677424369561960380184069252147705379652097833560321002678`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.108793969849246163761335992603562772274017333984375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.5599673677424369561960380184069252147705379652097833560321002678`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981558807660673*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"56b42f74-e3b5-4648-ade7-1a7c794f59de"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.11206030150753765184390431386418640613555908203125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.58796821531400914780705011515478751870194310\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.5879682153140091478070501151547875187019431017067591665682862389`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.11206030150753765184390431386418640613555908203125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.5879682153140091478070501151547875187019431017067591665682862389`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815589328803043`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"7f92f8b2-45e5-c14d-b856-6bb391f7a0d6"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.115326633165829139926472635124810039997100830078125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.61599818192218278824483392752469250662960989\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.6159981819221827882448339275246925066296098937469082194060710751`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.115326633165829139926472635124810039997100830078125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.6159981819221827882448339275246925066296098937469082194060710751`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981559108088505*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"81fb3b2d-8b8f-fd4f-8334-3ca61d963139"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.118592964824120628009040956385433673858642578125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.64414713132136115726345437106189557596969409\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.6441471313213611572634543710618955759696940907182011181969456804`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.118592964824120628009040956385433673858642578125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.6441471313213611572634543710618955759696940907182011181969456804`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981559281220831*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"e911fb46-9b7d-ca44-8448-4306f12a5603"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.121859296482412116091609277646057307720184326171875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.67253912032114129652335228165444554419308817\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.6725391203211412965233522816544455441930881733999025352976575826`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.121859296482412116091609277646057307720184326171875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.6725391203211412965233522816544455441930881733999025352976575826`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981559455218361*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"ec756161-2277-d34a-84e4-a03f606faa68"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.12512562814070360417417759890668094158172607421875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.70094661991082339611939079839624915563989969\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.7009466199108233961193907983962491556398996886409185006811211701`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.12512562814070360417417759890668094158172607421875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.7009466199108233961193907983962491556398996886409185006811211701`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981559630978874*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"616a6df5-9db0-cb44-9897-4495975affaa"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.128391959798995092256745920167304575443267822265625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.72935411950050550548435150419230065359685565\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.7293541195005055054843515041923006535968556502695434675777950719`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.128391959798995092256745920167304575443267822265625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.7293541195005055054843515041923006535968556502695434675777950719`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981559755387638*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"bbe75079-8549-1d46-afe6-e441643a61e8"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1316582914572863582947093163966201245784759521484375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.75776161909018570077683150392087575367757119\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.7577616190901857007768315039208757536775711931518981282915875149`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1316582914572863582947093163966201245784759521484375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.7577616190901857007768315039208757536775711931518981282915875149`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981559883309498*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"18c5ecb9-6e65-af45-8c99-5219f93ff11c"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1349246231155778463772776376572437584400177001953125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.78623507848453456374574072477374782330377104\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.7862350784845345637457407247737478233037710379393663765302335355`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1349246231155778463772776376572437584400177001953125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.7862350784845345637457407247737478233037710379393663765302335355`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815600646566563`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"eb117767-0d10-0647-bb90-92e0c60c6d71"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1381909547738693344598459589178673923015594482421875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.81487674774520182029222314161944316140477207\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.8148767477452018202922231416194431614047720668825820963101312422`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1381909547738693344598459589178673923015594482421875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.8148767477452018202922231416194431614047720668825820963101312422`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815602931551113`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"cf66d17a-61e5-eb43-b65d-ac63fe10db07"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1414572864321608225424142801784910261631011962890625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.84379287498413498836258899336853913022689268\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.8437928749841349883625889933685391302268926802276862839445253954`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1414572864321608225424142801784910261631011962890625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.8437928749841349883625889933685391302268926802276862839445253954`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981560466728241*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"87162147-9b54-e844-89d6-8ce7a57b1b10"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1447236180904523106249826014391146600246429443359375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.87271774592879990518207552059903334877481383\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.8727177459287999051820755205990333487748138323348113117503792614`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1447236180904523106249826014391146600246429443359375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.8727177459287999051820755205990333487748138323348113117503792614`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981560645721081*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"b228f5ef-d1b3-d449-b87f-d17d5373f60f"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1479899497487437987075509226997382938861846923828125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.90164261687346475731589182568352903084876980\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.9016426168734647573158918256835290308487698022193245424556924587`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1479899497487437987075509226997382938861846923828125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.9016426168734647573158918256835290308487698022193245424556924587`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815607707967777`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"a9223bc0-95dc-f342-a163-e946fe9eaa08"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1512562814070352867901192439603619277477264404296875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.93064011386085476963573664709483003647128210\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.9306401138608547696357366470948300364712821001829539280855504164`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1512562814070352867901192439603619277477264404296875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.9306401138608547696357366470948300364712821001829539280855504164`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815609442071304`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"4ae92568-be51-e44e-91eb-869a4e4d3e99"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1545226130653265528280826401896774768829345703125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.95963761084824285250657882320767756087852118\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.9596376108482428525065788232076775608785211819732101782424995378`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1545226130653265528280826401896774768829345703125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.9596376108482428525065788232076775608785211819732101782424995378`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815610697020683`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"d3bf1679-3ad3-654a-adfb-ceedd25156ee"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.157788944723618040910650961450301110744476318359375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"1.98863510783563278362613616950297387304860102\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     1.9886351078356327836261361695029738730486010180271256514666854142`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.157788944723618040910650961450301110744476318359375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   1.9886351078356327836261361695029738730486010180271256514666854142`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981561192206547*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"a18f137e-3e5c-3943-9771-5e446f58a706"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.16105527638190952899321928271092474460601806640625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.01767091695845455959394512370198881752530778\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.017670916958454559593945123701988817525307782611696744678687122`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.16105527638190952899321928271092474460601806640625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.017670916958454559593945123701988817525307782611696744678687122`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981561365876852*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"cb684ec3-57d3-7e48-abc4-5b31b9268491"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.164321608040201017075787603971548378467559814453125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.04670672608127651962393532673908321814223003\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.0467067260812765196239353267390832181422300250557507908865558451`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.164321608040201017075787603971548378467559814453125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.0467067260812765196239353267390832181422300250557507908865558451`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981561489656103*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"9c26dd58-94f5-a747-94a5-e4311334980c"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1675879396984925051583559252321720123291015625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.07578216114740645644875601861843900923099085\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.0757821611474064564487560186184390092309908538949155299792344509`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1675879396984925051583559252321720123291015625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.0757821611474064564487560186184390092309908538949155299792344509`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815616670653*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"5ac574ef-7663-2a44-9942-02a9d8d25eb6"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.170854271356783993240924246492795646190643310546875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.10517978339234558511716347980555855527150008\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.1051797833923455851171634798055585552715000788985712824233580667`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.170854271356783993240924246492795646190643310546875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.1051797833923455851171634798055585552715000788985712824233580667`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815618406987553`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"1df3bbb1-ddc1-f34b-9c60-d01c106c8746"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.17412060301507548132349256775341928005218505859375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.13474105667892483324505432132882464003133187\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.1347410566789248332450543213288246400313318709808497272133612068`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.17412060301507548132349256775341928005218505859375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.1347410566789248332450543213288246400313318709808497272133612068`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815620144571705`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"774f2b85-4b8f-c742-a621-8023ccea1a6d"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.177386934673366969406060889014042913913726806640625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.16467621362598891299265739075908354562093723\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.1646762136259889129926573907590835456209372272348078706949268669`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.177386934673366969406060889014042913913726806640625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.1646762136259889129926573907590835456209372272348078706949268669`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815622401251373`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"1a100a3b-006e-9843-9248-0017af881a0b"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1806532663316582354440242852433584630489349365234375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.19461137057305099715667159535803835364849890\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.1946113705730509971566715953580383536484989048105857156798808202`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1806532663316582354440242852433584630489349365234375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.1946113705730509971566715953580383536484989048105857156798808202`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.98156236546673*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"820a8335-b416-8a4b-85f8-0fb000c23945"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1839195979899497235265926065039820969104766845703125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.22463206359222528466985805408429346020678027\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.2246320635922252846698580540842934602067802665908672803801896877`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1839195979899497235265926065039820969104766845703125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.2246320635922252846698580540842934602067802665908672803801896877`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815625411015205`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"8875b8fd-c61f-c141-8dba-cb0440eaf5db"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1871859296482412116091609277646057307720184326171875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.25465275661139953767677642603252904848910540\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.2546527566113995376767764260325290484891053975709073110771575619`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1871859296482412116091609277646057307720184326171875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.2546527566113995376767764260325290484891053975709073110771575619`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815626662898407`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"de6edad1-43f8-e247-83a9-86b78118f05d"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1904522613065326996917292490252293646335601806640625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.28478329334126798890797045622359342500017897\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.2847832933412679889079704562235934250001789728568309982440374772`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1904522613065326996917292490252293646335601806640625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.2847832933412679889079704562235934250001789728568309982440374772`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981562892981285*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"0d8a9eb5-aa27-b348-9dd7-85757c5585ba"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1937185929648241877742975702858529984951019287109375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.31511962984738126673989160801809448112613256\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.3151196298473812667398916080180944811261325601238494971410292592`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1937185929648241877742975702858529984951019287109375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.3151196298473812667398916080180944811261325601238494971410292592`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981563171334078*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"f8b8c76d-41fc-594b-a452-87ecbc5b468c"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.1969849246231156758568658915464766323566436767578125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.34565863815301785531413582314088446534080067\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.3456586381530178553141358231408844653408006712274018285158625616`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.1969849246231156758568658915464766323566436767578125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.3456586381530178553141358231408844653408006712274018285158625616`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815633927820873`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"a2a93837-3653-f843-bf0a-fa4176914c7e"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.200251256281406941894829287775792181491851806640625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.37628876361943135717226611370658425427642745\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.3762887636194313571722661137065842542764274481984084371133257303`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.200251256281406941894829287775792181491851806640625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.3762887636194313571722661137065842542764274481984084371133257303`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815635656384315`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"e607f473-f99c-a449-860f-b43d7dc41318"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2035175879396984299773976090364158153533935546875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.40691888908584666981014125633891776708344742\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.4069188890858466698101412563389177670834474225730326470353889828`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2035175879396984299773976090364158153533935546875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.4069188890858466698101412563389177670834474225730326470353889828`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815636899941463`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"bddece2e-b920-1649-9803-40dfe8f27945"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.206783919597989918059965930297039449214935302734375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.43773513814040625769423623958917316335814575\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.4377351381404062576942362395891731633581457528762290197533071216`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.206783919597989918059965930297039449214935302734375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.4377351381404062576942362395891731633581457528762290197533071216`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981563866741686*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"c465b7f7-0edd-c642-bde7-b35a8775b1f9"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.21005025125628140614253425155766308307647705078125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.46856313201772828241659599124746672150877249\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.4685631320177282824165959912474667215087724910455128673747218388`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.21005025125628140614253425155766308307647705078125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.4685631320177282824165959912474667215087724910455128673747218388`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815640390518036`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"08f7abea-c97b-2b43-8505-dd3075f7de27"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.213316582914572894225102572818286716938018798828125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.49943852602187951764813423472630850692569324\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.4994385260218795176481342347263085069256932368845746188695361228`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.213316582914572894225102572818286716938018798828125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.4994385260218795176481342347263085069256932368845746188695361228`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981564210718172*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"55292185-cd08-c64b-b71c-5826345197b2"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.216582914572864382307670894078910350799560546875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.53052898221466087798266107789565570006393075\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.5305289822146608779826610778956557000639307474003587411332704474`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.216582914572864382307670894078910350799560546875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.5305289822146608779826610778956557000639307474003587411332704474`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815644298300743`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"1f91286e-70c8-6d4f-8740-80bc202619c3"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.219849246231155870390239215339533984661102294921875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.56164351434999890539535060977276050212698786\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.5616435143499989053953506097727605021269878550595737349003892865`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.219849246231155870390239215339533984661102294921875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.5616435143499989053953506097727605021269878550595737349003892865`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815646013456154`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"f0fc4536-d606-2345-8caa-21fcfb86501b"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.22311557788944735847280753660015761852264404296875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.59280652565096721899554757648365878236168493\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.5928065256509672189955475764836587823616849255536322219492547962`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.22311557788944735847280753660015761852264404296875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.5928065256509672189955475764836587823616849255536322219492547962`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815647718890724`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"7813a4ac-9dc6-de47-90c9-c2556d6e2c51"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2263819095477386245107709328294731676578521728515625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.62396953695193338214479510252161365899304320\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.6239695369519333821447951025216136589930431963011755899529720565`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2263819095477386245107709328294731676578521728515625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.6239695369519333821447951025216136589930431963011755899529720565`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981564893445612*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"8de69e18-d4ff-9642-b17f-6992cf78079e"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2296482412060301125933392540900968015193939208984375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.65515706195666785639512603644101319740954003\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.6551570619566678563951260364410131974095400272870633821915791552`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2296482412060301125933392540900968015193939208984375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.6551570619566678563951260364410131974095400272870633821915791552`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815650650312176`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"739aa460-e2f8-0849-8f82-e954f4d8e8c6"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2329145728643216006759075753507204353809356689453125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.68639383169652386428992092603182126941501355\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.6863938316965238642899209260318212694150135508853977179052857051`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2329145728643216006759075753507204353809356689453125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.6863938316965238642899209260318212694150135508853977179052857051`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815652355820007`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"21aecc6f-03bd-9c4b-9cf0-f2e9551ee991"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2361809045226130887584758966113440692424774169921875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.71784064408169876484298196408805717492746448\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.7178406440816987648429819640880571749274644849706107924783637933`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2361809045226130887584758966113440692424774169921875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.7178406440816987648429819640880571749274644849706107924783637933`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815654561264305`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"29280bec-b838-7c47-91a5-ab1fd2b08bfd"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2394472361809045768410442178719677031040191650390625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.74928745646687382885171349074553635376584334\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.7492874564668738288517134907455363537658433398536114695909138237`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2394472361809045768410442178719677031040191650390625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.7492874564668738288517134907455363537658433398536114695909138237`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815655780244007`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"2965b203-b3ef-e246-9038-854527745a52"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2427135678391960649236125391325913369655609130859375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.78073426885204901263686087600617289156252399\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.780734268852049012636860876006172891562523985222056708701080771`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2427135678391960649236125391325913369655609130859375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.780734268852049012636860876006172891562523985222056708701080771`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815657000665703`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"266ff013-d02a-cf40-8844-fe9b72841c09"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.24597989949748733096157593536190688610076904296875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.81228046878662952428035868159584785324978252\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.8122804687866295242803586815958478532497825246486064415616402355`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.24597989949748733096157593536190688610076904296875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.8122804687866295242803586815958478532497825246486064415616402355`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981565870564682*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"359afcbf-0d82-d043-a57d-c9cef1ff900e"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.249246231155778819044144256622530519962310791015625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.84382666872121206067144567557622402094367600\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.8438266687212120606714456755762240209436760008029579903078742287`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.249246231155778819044144256622530519962310791015625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.8438266687212120606714456755762240209436760008029579903078742287`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815659923997707`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"f40227e4-20f5-f243-a5a3-b516e620e035"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2525125628140703071267125778831541538238525390625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.87542251066550908217168257206491366188481937\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.875422510665509082171682572064913661884819367322168493598409181`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2525125628140703071267125778831541538238525390625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.875422510665509082171682572064913661884819367322168493598409181`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981566163541359*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"89877046-b6e9-7748-901d-3ce202d73ef3"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.255778894472361795209280899143777787685394287109375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.90701835260980625200976657018093871475453271\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.9070183526098062520097665701809387147545327060674999923648314629`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.255778894472361795209280899143777787685394287109375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.9070183526098062520097665701809387147545327060674999923648314629`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815662851798553`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"8ca51ea2-c5de-7644-aada-34d979873ae8"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.25904522613065328329184922040440142154693603515625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.93861419455410360011441668820723312745665262\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.938614194554103600114416688207233127456652621714355291316576754`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.25904522613065328329184922040440142154693603515625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.938614194554103600114416688207233127456652621714355291316576754`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981566406188854*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"bef0ae47-019d-7345-8716-cab884d9b879"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.262311557788944771374417541665025055408477783203125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"2.97021003649840094821906680623336711841433375\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     2.9702100364984009482190668062333671184143337529284460710815039491`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.262311557788944771374417541665025055408477783203125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   2.9702100364984009482190668062333671184143337529284460710815039491`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815665274479923`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"0ce17e9d-559d-a944-8941-e87fb595c242"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.26557788944723625945698586292564868927001953125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.00180587844269829632371692425950075514752732\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     3.0018058784426982963237169242595007551475273249698196674828893637`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.26557788944723625945698586292564868927001953125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.0018058784426982963237169242595007551475273249698196674828893637`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981566648051403*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"7bda72c9-ee20-d941-8104-f312936a3a5d"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.268844221105527747539554184186272323131561279296875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.03359613912489516690508819536012064030211757\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     3.0335961391248951669050881953601206403021175741836817622760944166`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.268844221105527747539554184186272323131561279296875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.0335961391248951669050881953601206403021175741836817622760944166`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815668171818447`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"d0560763-46f1-8648-a3cc-ac2b27c0a993"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2721105527638190135775175804155878722667694091796875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.06538639980708947450969076430008836860421061\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     3.065386399807089474509690764300088368604210613540549696504451559`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2721105527638190135775175804155878722667694091796875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.065386399807089474509690764300088368604210613540549696504451559`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981566938637743*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"be923635-eed4-1340-9f3b-1aa8c6693824"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2753768844221105016600859016762115061283111572265625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.09717666048928582090914669649171480671242905\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     3.0971766604892858209091466964917148067124290538787877163949024363`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2753768844221105016600859016762115061283111572265625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.0971766604892858209091466964917148067124290538787877163949024363`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815670603010178`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"260c4f78-3a34-b547-ab83-925986b53eab"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2786432160804019897426542229368351399898529052734375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.12943996803454523062552043215288043274765230\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     3.129439968034545230625520432152880432747652297609878681706760845`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2786432160804019897426542229368351399898529052734375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.129439968034545230625520432152880432747652297609878681706760845`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981567277188177*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"10de501c-afad-4542-a39b-dd3dc0c78fef"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2819095477386934778252225441974587738513946533203125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.16207728715843739577353586541007778984874050\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"1.05000\"\>",
       ShowStringCharacters->False],
-     3.1620772871584373957735358654100777898487405000007023107019029986`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2819095477386934778252225441974587738513946533203125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.1620772871584373957735358654100777898487405000007023107019029986`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815674447848053`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"9d6efb45-7bee-ab43-a377-fcc0aef3c48b"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2851758793969849659077908654580824077129364013671875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.19473767462760145310241264537468559268309844\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     3.1947376746276014531024126453746855926830984419737620987973759463`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2851758793969849659077908654580824077129364013671875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.1947376746276014531024126453746855926830984419737620987973759463`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981567616328779*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"ae0880c9-ebb9-a74f-898e-804889356c36"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2884422110552764539903591867187060415744781494140625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.22748898134616859457373269681438059429027669\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     3.2274889813461685945737326968143805942902766883773810605525083707`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2884422110552764539903591867187060415744781494140625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.2274889813461685945737326968143805942902766883773810605525083707`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981567785850277*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"b7130c1e-31d8-df44-a251-83efff250da2"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.2917085427135679420729275079793296754360198974609375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.26026264784554693596033194504439280212175232\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     3.2602626478455469359603319450443928021217523154717989131853084316`45.*^-\
-13,
-     AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.2917085427135679420729275079793296754360198974609375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.2602626478455469359603319450443928021217523154717989131853084316`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981567957256481*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"c826acf1-5c29-4242-8865-d651f5dacc4f"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.29497487437185920811089090420864522457122802734375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
-   TagBox[
-    InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.29373896904827553578674036163300546241120358\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
-      ShowStringCharacters->False],
-     3.2937389690482755357867403616330054624112035781039349084092580289`45.*^-\
-13,
+     1.0500000000000000444`6.,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.29497487437185920811089090420864522457122802734375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.2937389690482755357867403616330054624112035781039349084092580289`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815681247082405`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"1bd1f846-62da-6e43-9df4-96a9b50fcfdc"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.298241206030150696193459225469268858432769775390625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    NumberForm[#, {6, 5}]& ], "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
      StyleBox[
-      RowBox[{"\<\"3.32743053136351545209912235476226318612115826\"\>", "\[Times]", 
+      RowBox[{"\<\"1.06626\"\>", "\[Times]", 
        SuperscriptBox["10", "\<\"-13\"\>"]}],
       ShowStringCharacters->False],
-     3.3274305313635154520991223547622631861211582570665220748272464926`45.*^-\
+     1.0662584117546797628514669792650413849230737972520432395743572743`50.*^-\
 13,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.298241206030150696193459225469268858432769775390625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.3274305313635154520991223547622631861211582570665220748272464926`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981568343416172*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"c89623c0-cc04-624d-9fd7-969aab282513"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.3015075376884421842760275467298924922943115234375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    ScientificForm[#, 6]& ], "\[InvisibleSpace]", "\<\"  [\"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.36129055811077223385828833511123305844432577\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"346.10\"\>",
       ShowStringCharacters->False],
-     3.3612905581107722338582883351112330584443257742384540645073410216`45.*^-\
-13,
+     346.0563158`9.990691773361027,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.3015075376884421842760275467298924922943115234375`45., 
-   " -> SR rate: ", 
+    NumberForm[#, {4, 2}]& ], "\[InvisibleSpace]", "\<\"s]\"\>"}],
+  SequenceForm["\[Alpha] = ", 
+   NumberForm[1.0500000000000000444`6., {6, 5}], " -> SR rate: ", 
    ScientificForm[
-   3.3612905581107722338582883351112330584443257742384540645073410216`45.*^-\
-13]],
+   1.0662584117546797628514669792650413849230737972520432395743572743`50.*^-\
+13, 6], "  [", 
+   NumberForm[346.0563158`9.990691773361027, {4, 2}], "s]"],
   Editable->False]], "Print",
- CellChangeTimes->{3.981568512553692*^9},
+ CellChangeTimes->{3.981631383692951*^9, 3.981631785693741*^9, 
+  3.9816324583714275`*^9, 3.981632516120613*^9, 3.9816325962499447`*^9, 
+  3.981632712143818*^9, 3.9816330814517384`*^9},
  CellLabel->
   "During evaluation of \
-In[101]:=",ExpressionUUID->"0a8bc67f-ef7c-f74d-a1b8-71922d1e1a19"],
+In[157]:=",ExpressionUUID->"2784d46b-a5a5-d241-b1da-07f94f0c5ba8"],
 
 Cell[BoxData[
  InterpretationBox[
   RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.304773869346733672358595867990516126155853271484375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.39527394282559314395511668382337710023325923\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"1.05638\"\>",
       ShowStringCharacters->False],
-     3.3952739428255931439551166838233771002332592253737825729979949759`45.*^-\
-13,
+     1.0563758389261745929`6.,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.304773869346733672358595867990516126155853271484375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.3952739428255931439551166838233771002332592253737825729979949759`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815687322822666`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"2e0ef065-b5fd-1047-8bad-a3baef811327"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.30804020100502516044116418925113976001739501953125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    NumberForm[#, {6, 5}]& ], "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
      StyleBox[
-      RowBox[{"\<\"3.42925732754041387473588339833453268425425634\"\>", "\[Times]", 
+      RowBox[{"\<\"1.11850\"\>", "\[Times]", 
        SuperscriptBox["10", "\<\"-13\"\>"]}],
       ShowStringCharacters->False],
-     3.4292573275404138747358833983345326842542563351064193026247586744`45.*^-\
+     1.118497852291135652847008659039428326617265300383292145612103401`50.*^-\
 13,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.30804020100502516044116418925113976001739501953125`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.4292573275404138747358833983345326842542563351064193026247586744`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815688465607796`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"18075f95-df51-7e4f-b15a-10ebd3852285"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.311306532663316648523732510511763393878936767578125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    ScientificForm[#, 6]& ], "\[InvisibleSpace]", "\<\"  [\"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.46329910918702878328570571277374998774811241\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"281.70\"\>",
       ShowStringCharacters->False],
-     3.4632991091870287832857057127737499877481124055540675021061158229`45.*^-\
-13,
+     281.6541123`9.901261090044299,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.311306532663316648523732510511763393878936767578125`45., 
-   " -> SR rate: ", 
+    NumberForm[#, {4, 2}]& ], "\[InvisibleSpace]", "\<\"s]\"\>"}],
+  SequenceForm["\[Alpha] = ", 
+   NumberForm[1.0563758389261745929`6., {6, 5}], " -> SR rate: ", 
    ScientificForm[
-   3.4632991091870287832857057127737499877481124055540675021061158229`45.*^-\
-13]],
+   1.118497852291135652847008659039428326617265300383292145612103401`50.*^-13,
+     6], "  [", 
+   NumberForm[281.6541123`9.901261090044299, {4, 2}], "s]"],
   Editable->False]], "Print",
- CellChangeTimes->{3.9815690673295193`*^9},
+ CellChangeTimes->{3.981631383692951*^9, 3.981631785693741*^9, 
+  3.9816324583714275`*^9, 3.981632516120613*^9, 3.9816325962499447`*^9, 
+  3.981632712143818*^9, 3.981633363103737*^9},
  CellLabel->
   "During evaluation of \
-In[101]:=",ExpressionUUID->"0dedc92a-2571-3649-9561-f5765a3a1754"],
+In[157]:=",ExpressionUUID->"a97fddb7-b1c8-f848-b59d-07de47d79482"],
 
 Cell[BoxData[
  InterpretationBox[
   RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.314572864321608136606300831772387027740478515625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.49779377196621199351098233332187910800988125\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"1.06275\"\>",
       ShowStringCharacters->False],
-     3.4977937719662119935109823333218791080098812476431621346741232764`45.*^-\
-13,
+     1.0627516778523491414`6.,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.314572864321608136606300831772387027740478515625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.4977937719662119935109823333218791080098812476431621346741232764`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981569283423506*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"9661afca-85a6-ea4b-abef-faec965b23ea"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.317839195979899624688869153033010661602020263671875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    NumberForm[#, {6, 5}]& ], "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
      StyleBox[
-      RowBox[{"\<\"3.53228843474539555664970441914157062668915814\"\>", "\[Times]", 
+      RowBox[{"\<\"1.17082\"\>", "\[Times]", 
        SuperscriptBox["10", "\<\"-13\"\>"]}],
       ShowStringCharacters->False],
-     3.5322884347453955566497044191415706266891581405590459089449474352`45.*^-\
+     1.1708189476852461079675397281049019593416594446866850055944752359`50.*^-\
 13,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.317839195979899624688869153033010661602020263671875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.5322884347453955566497044191415706266891581405590459089449474352`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815694048568153`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"77332f4a-23b2-ea43-80db-7a45e190c1e8"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.3211055276381908907268325492623262107372283935546875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    ScientificForm[#, 6]& ], "\[InvisibleSpace]", "\<\"  [\"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.56796110266711648490652174118992574926299931\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"272.50\"\>",
       ShowStringCharacters->False],
-     3.5679611026671164849065217411899257492629993071644120286541209011`45.*^-\
-13,
+     272.4685077`9.886861306631637,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.3211055276381908907268325492623262107372283935546875`45., 
-   " -> SR rate: ", 
+    NumberForm[#, {4, 2}]& ], "\[InvisibleSpace]", "\<\"s]\"\>"}],
+  SequenceForm["\[Alpha] = ", 
+   NumberForm[1.0627516778523491414`6., {6, 5}], " -> SR rate: ", 
    ScientificForm[
-   3.5679611026671164849065217411899257492629993071644120286541209011`45.*^-\
-13]],
+   1.1708189476852461079675397281049019593416594446866850055944752359`50.*^-\
+13, 6], "  [", 
+   NumberForm[272.4685077`9.886861306631637, {4, 2}], "s]"],
   Editable->False]], "Print",
- CellChangeTimes->{3.981569671974327*^9},
+ CellChangeTimes->{3.981631383692951*^9, 3.981631785693741*^9, 
+  3.9816324583714275`*^9, 3.981632516120613*^9, 3.9816325962499447`*^9, 
+  3.981632712143818*^9, 3.9816336355732536`*^9},
  CellLabel->
   "During evaluation of \
-In[101]:=",ExpressionUUID->"bea621e7-8a77-8141-be10-7f7a0ff893e3"],
+In[157]:=",ExpressionUUID->"c692efab-6f15-2c4d-a88f-45d51ef63472"],
 
 Cell[BoxData[
  InterpretationBox[
   RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.3243718592964823788094008705229498445987701416015625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.60434316079564674743175815184419516306861995\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"1.06913\"\>",
       ShowStringCharacters->False],
-     3.6043431607956467474317581518441951630686199483780803821827675879`45.*^-\
-13,
+     1.0691275167785234679`6.,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.3243718592964823788094008705229498445987701416015625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.6043431607956467474317581518441951630686199483780803821827675879`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981569937467575*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"f898546b-2eb1-9047-80bd-30b936b3fcbd"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.3276381909547738668919691917835734784603118896484375`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    NumberForm[#, {6, 5}]& ], "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
      StyleBox[
-      RowBox[{"\<\"3.64188921856186582361439807237778652590327291\"\>", "\[Times]", 
+      RowBox[{"\<\"1.22382\"\>", "\[Times]", 
        SuperscriptBox["10", "\<\"-13\"\>"]}],
       ShowStringCharacters->False],
-     3.641889218561865823614398072377786525903272905251304438530760264`45.*^-\
+     1.2238218892109268450469624124389535829155941468108366419711340155`50.*^-\
 13,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.3276381909547738668919691917835734784603118896484375`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.641889218561865823614398072377786525903272905251304438530760264`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815701525538483`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"37e55104-c094-7444-8c8e-0dde76da31fb"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.3309045226130653549745375130441971123218536376953125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    ScientificForm[#, 6]& ], "\[InvisibleSpace]", "\<\"  [\"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.67946609979958054206370097267784081099984710\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"270.00\"\>",
       ShowStringCharacters->False],
-     3.6794660997995805420637009726778408109998471004741911152604780478`45.*^-\
-13,
+     269.9615199`9.882846858076912,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.3309045226130653549745375130441971123218536376953125`45., 
-   " -> SR rate: ", 
+    NumberForm[#, {4, 2}]& ], "\[InvisibleSpace]", "\<\"s]\"\>"}],
+  SequenceForm["\[Alpha] = ", 
+   NumberForm[1.0691275167785234679`6., {6, 5}], " -> SR rate: ", 
    ScientificForm[
-   3.6794660997995805420637009726778408109998471004741911152604780478`45.*^-\
-13]],
+   1.2238218892109268450469624124389535829155941468108366419711340155`50.*^-\
+13, 6], "  [", 
+   NumberForm[269.9615199`9.882846858076912, {4, 2}], "s]"],
   Editable->False]], "Print",
- CellChangeTimes->{3.981570323089266*^9},
+ CellChangeTimes->{3.981631383692951*^9, 3.981631785693741*^9, 
+  3.9816324583714275`*^9, 3.981632516120613*^9, 3.9816325962499447`*^9, 
+  3.981632712143818*^9, 3.981633905534771*^9},
  CellLabel->
   "During evaluation of \
-In[101]:=",ExpressionUUID->"c3fd12ed-a7f7-bc46-ac9c-0956e0a39109"],
+In[157]:=",ExpressionUUID->"f78d16c3-0568-3045-a492-4407aae27adb"],
 
 Cell[BoxData[
  InterpretationBox[
   RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.3341708542713568430571058343048207461833953857421875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.71891508727068778177704363340434853978069719\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"1.07550\"\>",
       ShowStringCharacters->False],
-     3.7189150872706877817770436334043485397806971914208721631697496866`45.*^-\
-13,
+     1.0755033557046980164`6.,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.3341708542713568430571058343048207461833953857421875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.7189150872706877817770436334043485397806971914208721631697496866`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815704893925304`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"6247181b-de98-f746-9f87-03a276100755"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.3374371859296483311396741555654443800449371337890625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    NumberForm[#, {6, 5}]& ], "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
      StyleBox[
-      RowBox[{"\<\"3.76322496886109847644470284391932033257579232\"\>", "\[Times]", 
+      RowBox[{"\<\"1.27691\"\>", "\[Times]", 
        SuperscriptBox["10", "\<\"-13\"\>"]}],
       ShowStringCharacters->False],
-     3.7632249688610984764447028439193203325757923247194307064603102695`45.*^-\
+     1.2769138215039201824771009460431030206039182427478187134213098853`50.*^-\
 13,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.3374371859296483311396741555654443800449371337890625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.7632249688610984764447028439193203325757923247194307064603102695`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815707468386154`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"f55f1c02-c67f-a44e-914d-1bb93aa75c08"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.340703517587939597177637551794759929180145263671875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    ScientificForm[#, 6]& ], "\[InvisibleSpace]", "\<\"  [\"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.80919408662903555150548058987587560619236032\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"273.60\"\>",
       ShowStringCharacters->False],
-     3.8091940866290355515054805898758756061923603247384393498202977723`45.*^-\
-13,
+     273.5559273`9.88859112282987,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.340703517587939597177637551794759929180145263671875`45., 
-   " -> SR rate: ", 
+    NumberForm[#, {4, 2}]& ], "\[InvisibleSpace]", "\<\"s]\"\>"}],
+  SequenceForm["\[Alpha] = ", 
+   NumberForm[1.0755033557046980164`6., {6, 5}], " -> SR rate: ", 
    ScientificForm[
-   3.8091940866290355515054805898758756061923603247384393498202977723`45.*^-\
-13]],
+   1.2769138215039201824771009460431030206039182427478187134213098853`50.*^-\
+13, 6], "  [", 
+   NumberForm[273.5559273`9.88859112282987, {4, 2}], "s]"],
   Editable->False]], "Print",
- CellChangeTimes->{3.981570912874361*^9},
+ CellChangeTimes->{3.981631383692951*^9, 3.981631785693741*^9, 
+  3.9816324583714275`*^9, 3.981632516120613*^9, 3.9816325962499447`*^9, 
+  3.981632712143818*^9, 3.9816341790917225`*^9},
  CellLabel->
   "During evaluation of \
-In[101]:=",ExpressionUUID->"b4d4aa2e-bf35-044b-87b3-c1f477c4c873"],
+In[157]:=",ExpressionUUID->"289f4177-b426-b248-bb84-77beb0984231"],
 
 Cell[BoxData[
  InterpretationBox[
   RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.34396984924623108526020587305538356304168701171875`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.86137572236827773231602777815171710748540789\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"1.08188\"\>",
       ShowStringCharacters->False],
-     3.8613757223682777323160277781517171074854078870055354381187876474`45.*^-\
-13,
+     1.0818791946308725649`6.,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.34396984924623108526020587305538356304168701171875`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.8613757223682777323160277781517171074854078870055354381187876474`45.*^-\
-13]],
-  Editable->False]], "Print",
- CellChangeTimes->{3.981571126410059*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"c7f5fc86-1601-a942-958d-a2fb05e08718"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.347236180904522573342774194316007196903228759765625`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    NumberForm[#, {6, 5}]& ], "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
      StyleBox[
-      RowBox[{"\<\"3.91364680926654501286943264400449948049542969\"\>", "\[Times]", 
+      RowBox[{"\<\"1.33002\"\>", "\[Times]", 
        SuperscriptBox["10", "\<\"-13\"\>"]}],
       ShowStringCharacters->False],
-     3.913646809266545012869432644004499480495429685934833613225895698`45.*^-\
+     1.3300173704823295425747077100112738942831412483008628469953959865`50.*^-\
 13,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.347236180904522573342774194316007196903228759765625`45., 
-   " -> SR rate: ", 
-   ScientificForm[
-   3.913646809266545012869432644004499480495429685934833613225895698`45.*^-13]\
-],
-  Editable->False]], "Print",
- CellChangeTimes->{3.9815712950808563`*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"63baa195-1640-db4b-a85a-ad0e192e3619"],
-
-Cell[BoxData[
- InterpretationBox[
-  RowBox[{"\<\"\[Alpha] = \"\>", "\[InvisibleSpace]", 
-   "1.3505025125628140614253425155766308307647705078125`45.", 
-   "\[InvisibleSpace]", "\<\" -> SR rate: \"\>", "\[InvisibleSpace]", 
+    ScientificForm[#, 6]& ], "\[InvisibleSpace]", "\<\"  [\"\>", "\[InvisibleSpace]", 
    TagBox[
     InterpretationBox[
-     StyleBox[
-      RowBox[{"\<\"3.98891379978905978634335366822350094531288004\"\>", "\[Times]", 
-       SuperscriptBox["10", "\<\"-13\"\>"]}],
+     StyleBox["\<\"277.60\"\>",
       ShowStringCharacters->False],
-     3.9889137997890597863433536682235009453128800400248071923739237159`45.*^-\
-13,
+     277.6340574`9.89501773349798,
      AutoDelete->True],
-    ScientificForm]}],
-  SequenceForm[
-  "\[Alpha] = ", 1.3505025125628140614253425155766308307647705078125`45., 
-   " -> SR rate: ", 
+    NumberForm[#, {4, 2}]& ], "\[InvisibleSpace]", "\<\"s]\"\>"}],
+  SequenceForm["\[Alpha] = ", 
+   NumberForm[1.0818791946308725649`6., {6, 5}], " -> SR rate: ", 
    ScientificForm[
-   3.9889137997890597863433536682235009453128800400248071923739237159`45.*^-\
-13]],
+   1.3300173704823295425747077100112738942831412483008628469953959865`50.*^-\
+13, 6], "  [", 
+   NumberForm[277.6340574`9.89501773349798, {4, 2}], "s]"],
   Editable->False]], "Print",
- CellChangeTimes->{3.981571596680256*^9},
- CellLabel->
-  "During evaluation of \
-In[101]:=",ExpressionUUID->"52157b8e-97cc-8343-bde7-fab317cc335b"],
-
-Cell[BoxData["\<\"  2nd-order seed failed, trying 1st-order fallback\"\>"], \
-"Print",
- CellChangeTimes->{3.981571873959091*^9},
+ CellChangeTimes->{3.981631383692951*^9, 3.981631785693741*^9, 
+  3.9816324583714275`*^9, 3.981632516120613*^9, 3.9816325962499447`*^9, 
+  3.981632712143818*^9, 3.981634456739273*^9},
  CellLabel->
   "During evaluation of \
-In[101]:=",ExpressionUUID->"76837db6-00a4-7641-9d9d-2e18abb4b24c"]
+In[157]:=",ExpressionUUID->"e8ba8355-a815-894a-aeda-7ba1a6f0afe2"]
 }, Open  ]],
 
 Cell[BoxData["$Aborted"], "Output",
@@ -3969,13 +1989,17 @@ Cell[BoxData["$Aborted"], "Output",
    3.981116910417101*^9, 3.9811169575888386`*^9}, 3.981117089636793*^9, 
    3.9811172213536663`*^9, 3.9811173777112713`*^9, 3.9811184946632996`*^9, 
    3.981118994079262*^9, 3.981121123785118*^9, 3.981283344063141*^9, 
-   3.9815517142019253`*^9, 3.981554780267044*^9, 3.9815718820457535`*^9},
+   3.9815517142019253`*^9, 3.981554780267044*^9, 3.981555050445238*^9, 
+   3.981602187785389*^9, 3.9816313364957848`*^9, {3.9816313688448563`*^9, 
+   3.9816313779254665`*^9}, 3.9816314856604385`*^9, 3.9816321534754696`*^9, 
+   3.981632513199684*^9, 3.981632549564581*^9, 3.9816326204668026`*^9, 
+   3.981634618174349*^9},
  CellLabel->
-  "Out[116]=",ExpressionUUID->"e484556c-5cac-7146-8b0c-92320612b5bd"]
+  "Out[174]=",ExpressionUUID->"acb5d127-bf38-8e48-8d72-baf03568ba04"]
 }, Open  ]]
 },
-WindowSize->{718.5, 729.75},
-WindowMargins->{{Automatic, 0}, {Automatic, 0}},
+WindowSize->{1440, 741.75},
+WindowMargins->{{-6, Automatic}, {Automatic, -6}},
 FrontEndVersion->"14.3 for Microsoft Windows (64-bit) (July 8, 2025)",
 StyleDefinitions->"Default.nb",
 ExpressionUUID->"46b69459-2253-9e40-94ab-216e86ff0e7d"
@@ -3992,105 +2016,17 @@ CellTagsIndex->{}
 (*NotebookFileOutline
 Notebook[{
 Cell[CellGroupData[{
-Cell[576, 22, 61392, 1405, 5469, "Input",ExpressionUUID->"1b95d9af-0a67-1c4d-b9fc-578de10991ed"],
-Cell[61971, 1429, 745, 11, 32, "Output",ExpressionUUID->"ba8796ed-057d-0442-8366-3ad167c7f446"],
+Cell[576, 22, 72548, 1693, 4347, "Input",ExpressionUUID->"1b95d9af-0a67-1c4d-b9fc-578de10991ed"],
+Cell[73127, 1717, 997, 15, 32, "Output",ExpressionUUID->"81635211-51bc-c847-ab9f-95632356c7e5"],
 Cell[CellGroupData[{
-Cell[62741, 1444, 970, 25, 39, "Print",ExpressionUUID->"89a42682-86a3-3045-a8ca-a2df07a7250e"],
-Cell[63714, 1471, 966, 25, 39, "Print",ExpressionUUID->"6da1d883-6ff8-ca45-bbba-5082544ac51a"],
-Cell[64683, 1498, 968, 25, 39, "Print",ExpressionUUID->"6e72bb14-9492-7548-9730-b72dfb357215"],
-Cell[65654, 1525, 968, 25, 39, "Print",ExpressionUUID->"90812111-1ab5-bc42-8661-6e6f39b5c390"],
-Cell[66625, 1552, 966, 25, 39, "Print",ExpressionUUID->"5018106f-c65a-4949-95a4-fd8a24bb344a"],
-Cell[67594, 1579, 965, 25, 39, "Print",ExpressionUUID->"495e3160-124e-e344-9698-0991382fd221"],
-Cell[68562, 1606, 956, 25, 39, "Print",ExpressionUUID->"517424e0-0e05-8e41-8ba5-430874f393f6"],
-Cell[69521, 1633, 966, 25, 39, "Print",ExpressionUUID->"2108a1cb-4c6e-3341-9b1a-998962af8411"],
-Cell[70490, 1660, 964, 25, 39, "Print",ExpressionUUID->"605b9a86-353c-aa49-8cc7-8b39a47578c9"],
-Cell[71457, 1687, 966, 25, 39, "Print",ExpressionUUID->"e399b7b8-abf9-0d43-bd24-240f2fa2574e"],
-Cell[72426, 1714, 962, 25, 39, "Print",ExpressionUUID->"cc236bb8-0648-4d4b-a79f-b01d45d4bf23"],
-Cell[73391, 1741, 970, 25, 39, "Print",ExpressionUUID->"00721946-b3ff-9248-bdad-ec9a953ce79f"],
-Cell[74364, 1768, 968, 25, 39, "Print",ExpressionUUID->"fd12a905-d519-e44c-96bf-ada30b657c34"],
-Cell[75335, 1795, 970, 25, 39, "Print",ExpressionUUID->"34e27647-82a3-524d-84bd-d1c873e568bb"],
-Cell[76308, 1822, 968, 25, 39, "Print",ExpressionUUID->"405403ee-4a44-d34a-b8f9-aa222bcb9074"],
-Cell[77279, 1849, 968, 25, 39, "Print",ExpressionUUID->"4dac3800-de53-d747-a5e8-f56899a6ad20"],
-Cell[78250, 1876, 966, 25, 39, "Print",ExpressionUUID->"d9f0b001-984b-e643-9852-4ade043eed01"],
-Cell[79219, 1903, 968, 25, 39, "Print",ExpressionUUID->"90de55e5-353a-894c-a136-1f39792a402b"],
-Cell[80190, 1930, 966, 25, 39, "Print",ExpressionUUID->"56b42f74-e3b5-4648-ade7-1a7c794f59de"],
-Cell[81159, 1957, 966, 25, 39, "Print",ExpressionUUID->"7f92f8b2-45e5-c14d-b856-6bb391f7a0d6"],
-Cell[82128, 1984, 966, 25, 39, "Print",ExpressionUUID->"81fb3b2d-8b8f-fd4f-8334-3ca61d963139"],
-Cell[83097, 2011, 960, 25, 39, "Print",ExpressionUUID->"e911fb46-9b7d-ca44-8448-4306f12a5603"],
-Cell[84060, 2038, 966, 25, 39, "Print",ExpressionUUID->"ec756161-2277-d34a-84e4-a03f606faa68"],
-Cell[85029, 2065, 964, 25, 39, "Print",ExpressionUUID->"616a6df5-9db0-cb44-9897-4495975affaa"],
-Cell[85996, 2092, 966, 25, 39, "Print",ExpressionUUID->"bbe75079-8549-1d46-afe6-e441643a61e8"],
-Cell[86965, 2119, 968, 25, 39, "Print",ExpressionUUID->"18c5ecb9-6e65-af45-8c99-5219f93ff11c"],
-Cell[87936, 2146, 970, 25, 39, "Print",ExpressionUUID->"eb117767-0d10-0647-bb90-92e0c60c6d71"],
-Cell[88909, 2173, 970, 25, 39, "Print",ExpressionUUID->"cf66d17a-61e5-eb43-b65d-ac63fe10db07"],
-Cell[89882, 2200, 968, 25, 39, "Print",ExpressionUUID->"87162147-9b54-e844-89d6-8ce7a57b1b10"],
-Cell[90853, 2227, 968, 25, 39, "Print",ExpressionUUID->"b228f5ef-d1b3-d449-b87f-d17d5373f60f"],
-Cell[91824, 2254, 970, 25, 39, "Print",ExpressionUUID->"a9223bc0-95dc-f342-a163-e946fe9eaa08"],
-Cell[92797, 2281, 970, 25, 39, "Print",ExpressionUUID->"4ae92568-be51-e44e-91eb-869a4e4d3e99"],
-Cell[93770, 2308, 964, 25, 39, "Print",ExpressionUUID->"d3bf1679-3ad3-654a-adfb-ceedd25156ee"],
-Cell[94737, 2335, 966, 25, 39, "Print",ExpressionUUID->"a18f137e-3e5c-3943-9771-5e446f58a706"],
-Cell[95706, 2362, 962, 25, 39, "Print",ExpressionUUID->"cb684ec3-57d3-7e48-abc4-5b31b9268491"],
-Cell[96671, 2389, 966, 25, 39, "Print",ExpressionUUID->"9c26dd58-94f5-a747-94a5-e4311334980c"],
-Cell[97640, 2416, 954, 25, 39, "Print",ExpressionUUID->"5ac574ef-7663-2a44-9942-02a9d8d25eb6"],
-Cell[98597, 2443, 968, 25, 39, "Print",ExpressionUUID->"1df3bbb1-ddc1-f34b-9c60-d01c106c8746"],
-Cell[99568, 2470, 966, 25, 39, "Print",ExpressionUUID->"774f2b85-4b8f-c742-a621-8023ccea1a6d"],
-Cell[100537, 2497, 968, 25, 39, "Print",ExpressionUUID->"1a100a3b-006e-9843-9248-0017af881a0b"],
-Cell[101508, 2524, 967, 25, 39, "Print",ExpressionUUID->"820a8335-b416-8a4b-85f8-0fb000c23945"],
-Cell[102478, 2551, 970, 25, 39, "Print",ExpressionUUID->"8875b8fd-c61f-c141-8dba-cb0440eaf5db"],
-Cell[103451, 2578, 970, 25, 39, "Print",ExpressionUUID->"de6edad1-43f8-e247-83a9-86b78118f05d"],
-Cell[104424, 2605, 968, 25, 39, "Print",ExpressionUUID->"0d8a9eb5-aa27-b348-9dd7-85757c5585ba"],
-Cell[105395, 2632, 968, 25, 39, "Print",ExpressionUUID->"f8b8c76d-41fc-594b-a452-87ecbc5b468c"],
-Cell[106366, 2659, 970, 25, 39, "Print",ExpressionUUID->"a2a93837-3653-f843-bf0a-fa4176914c7e"],
-Cell[107339, 2686, 968, 25, 39, "Print",ExpressionUUID->"e607f473-f99c-a449-860f-b43d7dc41318"],
-Cell[108310, 2713, 964, 25, 39, "Print",ExpressionUUID->"bddece2e-b920-1649-9803-40dfe8f27945"],
-Cell[109277, 2740, 966, 25, 39, "Print",ExpressionUUID->"c465b7f7-0edd-c642-bde7-b35a8775b1f9"],
-Cell[110246, 2767, 966, 25, 39, "Print",ExpressionUUID->"08f7abea-c97b-2b43-8505-dd3075f7de27"],
-Cell[111215, 2794, 966, 25, 39, "Print",ExpressionUUID->"55292185-cd08-c64b-b71c-5826345197b2"],
-Cell[112184, 2821, 962, 25, 39, "Print",ExpressionUUID->"1f91286e-70c8-6d4f-8740-80bc202619c3"],
-Cell[113149, 2848, 968, 25, 39, "Print",ExpressionUUID->"f0fc4536-d606-2345-8caa-21fcfb86501b"],
-Cell[114120, 2875, 966, 25, 39, "Print",ExpressionUUID->"7813a4ac-9dc6-de47-90c9-c2556d6e2c51"],
-Cell[115089, 2902, 968, 25, 39, "Print",ExpressionUUID->"8de69e18-d4ff-9642-b17f-6992cf78079e"],
-Cell[116060, 2929, 970, 25, 39, "Print",ExpressionUUID->"739aa460-e2f8-0849-8f82-e954f4d8e8c6"],
-Cell[117033, 2956, 970, 25, 39, "Print",ExpressionUUID->"21aecc6f-03bd-9c4b-9cf0-f2e9551ee991"],
-Cell[118006, 2983, 970, 25, 39, "Print",ExpressionUUID->"29280bec-b838-7c47-91a5-ab1fd2b08bfd"],
-Cell[118979, 3010, 970, 25, 39, "Print",ExpressionUUID->"2965b203-b3ef-e246-9038-854527745a52"],
-Cell[119952, 3037, 968, 25, 39, "Print",ExpressionUUID->"266ff013-d02a-cf40-8844-fe9b72841c09"],
-Cell[120923, 3064, 964, 25, 39, "Print",ExpressionUUID->"359afcbf-0d82-d043-a57d-c9cef1ff900e"],
-Cell[121890, 3091, 968, 25, 39, "Print",ExpressionUUID->"f40227e4-20f5-f243-a5a3-b516e620e035"],
-Cell[122861, 3118, 960, 25, 39, "Print",ExpressionUUID->"89877046-b6e9-7748-901d-3ce202d73ef3"],
-Cell[123824, 3145, 968, 25, 39, "Print",ExpressionUUID->"8ca51ea2-c5de-7644-aada-34d979873ae8"],
-Cell[124795, 3172, 962, 25, 39, "Print",ExpressionUUID->"bef0ae47-019d-7345-8716-cab884d9b879"],
-Cell[125760, 3199, 968, 25, 39, "Print",ExpressionUUID->"0ce17e9d-559d-a944-8941-e87fb595c242"],
-Cell[126731, 3226, 958, 25, 39, "Print",ExpressionUUID->"7bda72c9-ee20-d941-8104-f312936a3a5d"],
-Cell[127692, 3253, 968, 25, 39, "Print",ExpressionUUID->"d0560763-46f1-8648-a3cc-ac2b27c0a993"],
-Cell[128663, 3280, 966, 25, 39, "Print",ExpressionUUID->"be923635-eed4-1340-9f3b-1aa8c6693824"],
-Cell[129632, 3307, 970, 25, 39, "Print",ExpressionUUID->"260c4f78-3a34-b547-ab83-925986b53eab"],
-Cell[130605, 3334, 966, 25, 39, "Print",ExpressionUUID->"10de501c-afad-4542-a39b-dd3dc0c78fef"],
-Cell[131574, 3361, 970, 25, 39, "Print",ExpressionUUID->"9d6efb45-7bee-ab43-a377-fcc0aef3c48b"],
-Cell[132547, 3388, 968, 25, 39, "Print",ExpressionUUID->"ae0880c9-ebb9-a74f-898e-804889356c36"],
-Cell[133518, 3415, 968, 25, 39, "Print",ExpressionUUID->"b7130c1e-31d8-df44-a251-83efff250da2"],
-Cell[134489, 3442, 968, 25, 39, "Print",ExpressionUUID->"c826acf1-5c29-4242-8865-d651f5dacc4f"],
-Cell[135460, 3469, 966, 25, 39, "Print",ExpressionUUID->"1bd1f846-62da-6e43-9df4-96a9b50fcfdc"],
-Cell[136429, 3496, 966, 25, 39, "Print",ExpressionUUID->"c89623c0-cc04-624d-9fd7-969aab282513"],
-Cell[137398, 3523, 962, 25, 39, "Print",ExpressionUUID->"0a8bc67f-ef7c-f74d-a1b8-71922d1e1a19"],
-Cell[138363, 3550, 968, 25, 39, "Print",ExpressionUUID->"2e0ef065-b5fd-1047-8bad-a3baef811327"],
-Cell[139334, 3577, 966, 25, 39, "Print",ExpressionUUID->"18075f95-df51-7e4f-b15a-10ebd3852285"],
-Cell[140303, 3604, 968, 25, 39, "Print",ExpressionUUID->"0dedc92a-2571-3649-9561-f5765a3a1754"],
-Cell[141274, 3631, 960, 25, 39, "Print",ExpressionUUID->"9661afca-85a6-ea4b-abef-faec965b23ea"],
-Cell[142237, 3658, 968, 25, 39, "Print",ExpressionUUID->"77332f4a-23b2-ea43-80db-7a45e190c1e8"],
-Cell[143208, 3685, 968, 25, 39, "Print",ExpressionUUID->"bea621e7-8a77-8141-be10-7f7a0ff893e3"],
-Cell[144179, 3712, 968, 25, 39, "Print",ExpressionUUID->"f898546b-2eb1-9047-80bd-30b936b3fcbd"],
-Cell[145150, 3739, 968, 25, 39, "Print",ExpressionUUID->"37e55104-c094-7444-8c8e-0dde76da31fb"],
-Cell[146121, 3766, 968, 25, 39, "Print",ExpressionUUID->"c3fd12ed-a7f7-bc46-ac9c-0956e0a39109"],
-Cell[147092, 3793, 970, 25, 39, "Print",ExpressionUUID->"6247181b-de98-f746-9f87-03a276100755"],
-Cell[148065, 3820, 970, 25, 39, "Print",ExpressionUUID->"f55f1c02-c67f-a44e-914d-1bb93aa75c08"],
-Cell[149038, 3847, 966, 25, 39, "Print",ExpressionUUID->"b4d4aa2e-bf35-044b-87b3-c1f477c4c873"],
-Cell[150007, 3874, 964, 25, 39, "Print",ExpressionUUID->"c7f5fc86-1601-a942-958d-a2fb05e08718"],
-Cell[150974, 3901, 966, 25, 39, "Print",ExpressionUUID->"63baa195-1640-db4b-a85a-ad0e192e3619"],
-Cell[151943, 3928, 962, 25, 39, "Print",ExpressionUUID->"52157b8e-97cc-8343-bde7-fab317cc335b"],
-Cell[152908, 3955, 234, 5, 22, "Print",ExpressionUUID->"76837db6-00a4-7641-9d9d-2e18abb4b24c"]
+Cell[74149, 1736, 1539, 39, 22, "Print",ExpressionUUID->"2784d46b-a5a5-d241-b1da-07f94f0c5ba8"],
+Cell[75691, 1777, 1538, 39, 22, "Print",ExpressionUUID->"a97fddb7-b1c8-f848-b59d-07de47d79482"],
+Cell[77232, 1818, 1539, 39, 22, "Print",ExpressionUUID->"c692efab-6f15-2c4d-a88f-45d51ef63472"],
+Cell[78774, 1859, 1537, 39, 22, "Print",ExpressionUUID->"f78d16c3-0568-3045-a492-4407aae27adb"],
+Cell[80314, 1900, 1537, 39, 22, "Print",ExpressionUUID->"289f4177-b426-b248-bb84-77beb0984231"],
+Cell[81854, 1941, 1535, 39, 22, "Print",ExpressionUUID->"e8ba8355-a815-894a-aeda-7ba1a6f0afe2"]
 }, Open  ]],
-Cell[153157, 3963, 655, 10, 51, "Output",ExpressionUUID->"e484556c-5cac-7146-8b0c-92320612b5bd"]
+Cell[83404, 1983, 903, 14, 51, "Output",ExpressionUUID->"acb5d127-bf38-8e48-8d72-baf03568ba04"]
 }, Open  ]]
 }
 ]

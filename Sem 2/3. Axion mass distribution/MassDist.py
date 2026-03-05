@@ -8,8 +8,9 @@ from tqdm import tqdm
 import pickle
 import os
 
-h11=20
+h11=30
 n_polys=50
+scaling_of_cone = 2
 
 M_pl_in_ev = 1.22e28
 
@@ -141,6 +142,7 @@ def numerical_hessian(f, x0, eps=1e-5):
 def find_masses(polytope, silent=True, return_masses=True, return_potential=False, plot_hessian=False, plot_potential=False):
     # First find CY manifold for each polytope, we need to do this via triangulation
     t = polytope.triangulate(backend="topcom")
+    # t = t.random_flips(10, only_fine=True, only_star=True)
     cy = t.get_cy()
 
     # Now we want the intersection numbers \kappa_{ijk} to be able to compute the CY volume
@@ -152,7 +154,7 @@ def find_masses(polytope, silent=True, return_masses=True, return_potential=Fals
     # I think it might be to do with fixing the saxion value
     # It might implicitly set dV/dtau = 0
     cone = cy.toric_kahler_cone()
-    point = cone.find_interior_point(check=True)
+    point = cone.tip_of_stretched_cone(scaling_of_cone)
 
     # Compute the total colume of the CY space
     V = cy.compute_cy_volume(point)
@@ -289,7 +291,7 @@ all_masses = np.concatenate([m[~np.isnan(m)] for m in mass_list if m is not None
 script_dir = os.path.dirname(os.path.abspath(__file__))
 pickle_dir = os.path.join(script_dir, 'mass_dist_pickles')
 os.makedirs(pickle_dir, exist_ok=True)
-pickle_filename = os.path.join(pickle_dir, f'masses_h11_{h11}_npolys_{n_polys}_nmasses_{len(all_masses)}.pkl')
+pickle_filename = os.path.join(pickle_dir, f'masses_h11_{h11}_npolys_{n_polys}_scaling_{scaling_of_cone}_nmasses_{len(all_masses)}.pkl')
 with open(pickle_filename, 'wb') as f:
     pickle.dump(all_masses, f)
 print(f"Saved masses to {pickle_filename}")
@@ -303,7 +305,7 @@ log_bins = np.logspace(np.log10(mass_min), np.log10(mass_max), 51)  # 51 edges =
 plt.hist(all_masses, bins=log_bins, edgecolor='black', alpha=0.7, color='steelblue')
 plt.xlabel('Axion Mass [eV]', fontsize=12)
 plt.ylabel('N', fontsize=12)
-plt.title(f'Distribution of Axion Masses (N = {len(all_masses)} masses from {n_polys} polytopes with h11={h11})', 
+plt.title(f'Distribution of Axion Masses (N = {len(all_masses)} masses from {n_polys} polytopes\nwith h11={h11} and Kahler cone stretching of {scaling_of_cone})', 
           fontsize=14, fontweight='bold')
 plt.xscale('log')
 plt.grid(True, alpha=0.3, which='both')

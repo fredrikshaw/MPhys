@@ -1,17 +1,26 @@
+import sys
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import re
 
+
+# Add the directory containing the script to the Python path
+script_dir = Path(r"C:\Users\g60628jf\MPhys\Sem 2\0. Scripts from Sem 1")
+sys.path.append(str(script_dir))
+
+# Import the script (replace 'script_name' with the actual name of the script without .py)
+from ParamCalculator import calc_superradiance_rate
+
 # ── Configuration ────────────────────────────────────────────────────────────
 FILES = [
-    "Mathematica/SR_n2l1m1_at0.99_aMin0.05_aMax0.50.dat",
-    "Mathematica/SR_n3l2m2_at0.99_aMin0.18_aMax1.dat",
-    "Mathematica/SR_n4l3m3_at0.99_aMin0.50_aMax1.50.dat"
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.99_aMin0.05_aMax0.50.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.99_aMin0.18_aMax1.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.99_aMin0.50_aMax1.50.dat",
 ]
 
-COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#2a9d8f"]
+COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#284945"]
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -32,9 +41,9 @@ def parse_quantum_numbers(filepath):
     fname = Path(filepath).name
     match = re.search(r'n(\d+)l(\d+)m(\d+)', fname)
     if match:
-        n, l, m = match.group(1), match.group(2), match.group(3)
-        return rf"$|{n}{l}{m}\rangle$"
-    return fname
+        n, l, m = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        return rf"$|{n}{l}{m}\rangle$", [n, l, m]
+    return fname, None
 
 
 def load_file(filepath):
@@ -58,28 +67,36 @@ plt.rcParams.update({
 fig, ax = plt.subplots(figsize=(7, 5.5))
 
 for filepath, colour in zip(FILES, COLOURS):
-    label = parse_quantum_numbers(filepath)
+    label, quantum_numbers = parse_quantum_numbers(filepath)
     df = load_file(filepath)
 
-    # CF data: positive values only
-    df_cf = df[df["CF_Gamma"] > 0].dropna(subset=["CF_Gamma"])
-    if not df_cf.empty:
-        ax.plot(df_cf["alpha"], df_cf["CF_Gamma"],
-                color=colour, linestyle="solid", linewidth=1.5)
+    if quantum_numbers: 
+        n, m, l = quantum_numbers
+        a_star = 0.99 # replace later
 
-    # Hydro data: positive values only - negative silently dropped
-    df_hydro = df[df["Hydro_Gamma"] > 0].dropna(subset=["Hydro_Gamma"])
-    if not df_hydro.empty:
-        ax.plot(df_hydro["alpha"], df_hydro["Hydro_Gamma"],
-                color=colour, linestyle="dashed", linewidth=1.5)
+        # CF data: positive values only
+        df_cf = df[df["CF_Gamma"] > 0].dropna(subset=["CF_Gamma"])
+        if not df_cf.empty:
+            ax.plot(df_cf["alpha"], df_cf["CF_Gamma"],
+                    color=colour, linestyle="solid", linewidth=1.5)
 
-    # Label at peak of CF curve
-    if not df_cf.empty:
-        peak_idx = df_cf["CF_Gamma"].idxmax()
-        peak_alpha = df_cf.loc[peak_idx, "alpha"]
-        peak_gamma = df_cf.loc[peak_idx, "CF_Gamma"]
-        ax.text(peak_alpha, peak_gamma * 1.5, label,
-                color=colour, fontsize=11, ha="center", va="bottom")
+        # Hydro data: replace with calculated values
+        df_hydro = df[df["Hydro_Gamma"] > 0].dropna(subset=["Hydro_Gamma"])
+        if not df_hydro.empty:
+            df_hydro["Hydro_Gamma_Calc"] = df_hydro["alpha"].apply(
+                lambda alpha: calc_superradiance_rate(l, m, n, a_star, 1, alpha)
+            )
+            ax.plot(df_hydro["alpha"], df_hydro["Hydro_Gamma_Calc"],
+                    color=colour, linestyle="dashed", linewidth=1.5)
+
+
+        # Label at peak of CF curve
+        if not df_cf.empty:
+            peak_idx = df_cf["CF_Gamma"].idxmax()
+            peak_alpha = df_cf.loc[peak_idx, "alpha"]
+            peak_gamma = df_cf.loc[peak_idx, "CF_Gamma"]
+            ax.text(peak_alpha, peak_gamma * 1.5, label,
+                    color=colour, fontsize=11, ha="center", va="bottom")
 
 # ── Legend: black lines only ──────────────────────────────────────────────────
 legend_handles = [
@@ -88,6 +105,7 @@ legend_handles = [
     mlines.Line2D([], [], color="black", linestyle="dashed",
                   linewidth=1.5, label="Non-Relativistic"),
 ]
+
 ax.legend(handles=legend_handles, fontsize=10, frameon=False)
 
 ax.set_yscale("log")
@@ -99,7 +117,7 @@ ax.set_xlim(0, 1.5)
 
 plt.tight_layout()
 
-output_path = Path("Plots/superradiance_plot.png")
+output_path = Path("2. Relativistic Superradiance Rate/Plots/superradiance_plot.png")
 output_path.parent.mkdir(parents=True, exist_ok=True)
 plt.savefig(output_path, dpi=150)
 plt.show()

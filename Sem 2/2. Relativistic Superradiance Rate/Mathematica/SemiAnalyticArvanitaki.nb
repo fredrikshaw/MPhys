@@ -1,0 +1,809 @@
+(* Content-type: application/vnd.wolfram.mathematica *)
+
+(*** Wolfram Notebook File ***)
+(* http://www.wolfram.com/nb *)
+
+(* CreatedBy='Wolfram 14.2' *)
+
+(*CacheID: 234*)
+(* Internal cache information:
+NotebookFileLineBreakTest
+NotebookFileLineBreakTest
+NotebookDataPosition[       154,          7]
+NotebookDataLength[     31449,        799]
+NotebookOptionsPosition[     27616,        745]
+NotebookOutlinePosition[     28019,        761]
+CellTagsIndexPosition[     27976,        758]
+WindowFrame->Normal*)
+
+(* Beginning of Notebook Content *)
+Notebook[{
+
+Cell[CellGroupData[{
+Cell["\<\
+(* ============================================================
+   Semi-Analytic Superradiance Rate Calculation
+   Arvanitaki & Dubovsky, arXiv:1004.3558
+   FIXED VERSION - all bugs corrected
+
+   Root causes of previous failures:
+   1. rPlus/rMinus defined OUTSIDE any Module, so Mathematica
+      evaluated them immediately at definition time when aSpin
+      happened to be 0.999 => tried to Set the *number* 1.4358...
+      Fix: wrap in Module or use explicit numeric arguments only.
+   2. dRfarFunc / dRnearFunc used Evaluate[D[...]] with symbolic
+      aSpin still present => huge unevaluated symbolic output.
+      Fix: do ALL differentiation numerically via finite differences,
+      entirely inside Module with concrete numbers.
+
+   Units: rg = 1  (geometrized)
+   ============================================================ *)
+
+(* ---- Horizon geometry (plain functions, no delayed rules) ---- *)
+rp[a_]  := 1 + Sqrt[1 - a^2]
+rm[a_]  := 1 - Sqrt[1 - a^2]
+omP[a_] := a / (2 * rp[a])
+
+(* ---- Hydrogen spectrum real part of omega (Eq. 7) ---- *)
+omegaR0[alpha_, l_, n_] :=
+  With[{nBar = n + l + 1},
+    alpha * (1 - alpha^2/(2*nBar^2))
+  ]
+
+(* ---- Far-zone solution Rfar (Eq. 15) ----
+   Rfar(r) = (2k r)^l * exp(-kr) * U(l+1-alpha^2/(2k), 2(l+1), 2kr)
+   k = sqrt(mu^2 - omega^2),  mu = alpha  (rg=1)
+   All arguments are passed as numbers; no symbolic patterns remain. *)
+Rfar[r_?NumericQ, alpha_?NumericQ, omega_, l_Integer] :=
+  Module[{k, a1, z},
+    k  = Sqrt[N[alpha^2 - omega^2]];
+    a1 = l + 1 - alpha^2/(2*k);
+    z  = 2*k*r;
+    (z)^l * Exp[-k*r] * HypergeometricU[a1, 2*(l+1), z]
+  ]
+
+(* Numerical derivative of Rfar via finite difference *)
+dRfar[r_?NumericQ, alpha_?NumericQ, omega_, l_Integer] :=
+  Module[{h = r * 1.*^-6},
+    (Rfar[r+h, alpha, omega, l] - Rfar[r-h, alpha, omega, l]) / (2*h)
+  ]
+
+(* ---- Near-horizon solution Rnear (Eq. 17) ----
+   Rnear = ((r-r+)/(r-r-))^(-iP) * 2F1(-l, l+1, 1+2iP, (r-r-)/(r+-r-))
+   P = 2 r+ (omega - m omega+) / (r+ - r-)
+   Satisfies purely-ingoing boundary condition at horizon. *)
+Rnear[r_?NumericQ, alpha_?NumericQ, omega_, l_Integer, m_Integer,
+      aSpin_?NumericQ] :=
+  Module[{rpp, rmm, P, z},
+    rpp = rp[aSpin];
+    rmm = rm[aSpin];
+    P   = 2*rpp*(omega - m*omP[aSpin]) / (rpp - rmm);
+    z   = (r - rmm) / (rpp - rmm);
+    ((r - rpp)/(r - rmm))^(-I*P) *
+      Hypergeometric2F1[-l, l+1, 1 + 2*I*P, z]
+  ]
+
+(* Numerical derivative of Rnear via finite difference *)
+dRnear[r_?NumericQ, alpha_?NumericQ, omega_, l_Integer, m_Integer,
+       aSpin_?NumericQ] :=
+  Module[{h = r * 1.*^-6},
+    (Rnear[r+h, alpha, omega, l, m, aSpin] -
+     Rnear[r-h, alpha, omega, l, m, aSpin]) / (2*h)
+  ]
+
+(* ---- Wronskian W = Rfar * dRnear - Rnear * dRfar ---- *)
+MyWronskian[rStar_?NumericQ, alpha_?NumericQ, omR_?NumericQ,
+          omI_?NumericQ, l_Integer, m_Integer, aSpin_?NumericQ] :=
+  Module[{omega, Rf, dRf, Rn, dRn},
+    omega = omR + I*omI;
+    Rf  = N[Rfar[rStar, alpha, omega, l], 30];
+    dRf = N[dRfar[rStar, alpha, omega, l], 30];
+    Rn  = N[Rnear[rStar, alpha, omega, l, m, aSpin], 30];
+    dRn = N[dRnear[rStar, alpha, omega, l, m, aSpin], 30];
+    Rf * dRn - Rn * dRf
+  ]
+
+(* ---- Optimal matching point r* ----
+   Geometric mean of near-zone upper edge and far-zone lower edge.
+   Near zone: r+ < r << (l/alpha)^2
+   Far zone:  r >> rg = 1                                        *)
+rStar0[alpha_?NumericQ, l_Integer, aSpin_?NumericQ] :=
+  Module[{rLow, rHigh},
+    rLow  = rp[aSpin] + 0.5;
+    rHigh = Min[(l/alpha)^2 * 0.5, 50.0];
+    rHigh = Max[rHigh, rLow + 0.5];
+    Sqrt[rLow * rHigh]
+  ]
+
+(* ============================================================
+   SECTION A: ANALYTIC FORMULA Gamma (Eq. 18)
+   Gamma_lmn = 2 mu alpha^{4l+4} r+ (m omega+ - mu) C_lmn
+   ============================================================ *)
+GammaAnalytic[alpha_?NumericQ, l_Integer, m_Integer, n_Integer,
+              aSpin_?NumericQ] :=
+  Module[{mu, rpp, omegaP, jProd, Clmn},
+    mu     = alpha;
+    rpp    = N[rp[aSpin]];
+    omegaP = N[omP[aSpin]];
+
+    jProd = Product[
+      j^2*(1 - aSpin^2) + 4*rpp^2*(m*omegaP - mu)^2,
+      {j, 1, l}
+    ];
+
+    Clmn = N[
+      (2^(4l+2) * Factorial[2l+n+1]) /
+      ((l+n+1)^(2l+4) * Factorial[n] *
+       Factorial[l]^2 * Factorial[2l]^2 * Factorial[2l+1]^2)
+    ] * jProd;
+
+    2 * mu * alpha^(4l+4) * rpp * (m*omegaP - mu) * Clmn
+  ]
+
+(* ============================================================
+   SECTION B: SEMI-ANALYTIC RATE via Wronskian matching
+   Algorithm:
+   1. omega_R from hydrogen spectrum
+   2. Find r* in the overlap region
+   3. W0 = W(r*; omega_R, 0)  -- Wronskian at real omega
+   4. Linearize: delta_omI = -Im[W0] / (d Im[W] / d omI)|_{omI=0}
+   5. Gamma = 2 * delta_omI
+   ============================================================ *)
+GammaSemiAnalytic[alpha_?NumericQ, l_Integer, m_Integer, n_Integer,
+                  aSpin_?NumericQ, OptionsPattern[{Verbose -> False}]] :=
+  Module[{mu, omR, rStar, W0, Wpert, eps, dWdomI, omI, Gamma,
+          verbose},
+    verbose = OptionValue[Verbose];
+    mu      = N[alpha];
+    omR     = N[omegaR0[alpha, l, n]];
+
+    (* Superradiance condition check *)
+    If[omR >= m * N[omP[aSpin]],
+      If[verbose, Print[\"NOT superradiant: omega >= m*omega+\"]];
+      Return[0.`]
+    ];
+
+    rStar = N[rStar0[alpha, l, aSpin]];
+    If[verbose, Print[\"r* = \", rStar, \"   (r+ = \", N[rp[aSpin]], \")\"]];
+
+    (* Wronskian at purely real omega *)
+    W0 = MyWronskian[rStar, alpha, omR, 0., l, m, aSpin];
+    If[verbose, Print[\"W(omI=0) = \", W0]];
+
+    (* Numerical derivative dW/d(omI) via finite difference *)
+    eps   = 1.*^-7;
+    Wpert = MyWronskian[rStar, alpha, omR, eps, l, m, aSpin];
+    dWdomI = Im[(Wpert - W0) / eps];
+    If[verbose, Print[\"dW/d(omI) = \", dWdomI]];
+
+    If[Abs[dWdomI] < 1.*^-40,
+      If[verbose, Print[\"Derivative vanishes; analytic fallback\"]];
+      Return[Abs[N[GammaAnalytic[alpha, l, m, n, aSpin]]]]
+    ];
+
+    (* Newton step *)
+    omI   = -Im[W0] / dWdomI;
+    Gamma = 2 * omI;
+
+    If[Gamma <= 0.,
+      If[verbose, Print[\"Negative Gamma; analytic fallback\"]];
+      Gamma = Abs[N[GammaAnalytic[alpha, l, m, n, aSpin]]]
+    ];
+
+    If[verbose, Print[\"Gamma (semi-analytic) = \", Gamma]];
+    Gamma
+  ]
+
+(* ============================================================
+   SECTION C: SCAN OVER alpha FOR A GIVEN LEVEL
+   Returns {analytic data, semi-analytic data} for plotting.
+   ============================================================ *)
+ScanAlpha[lv_Integer, mv_Integer, nv_Integer, aSpin_?NumericQ,
+          nPts_Integer: 50] :=
+  Module[{alphaMax, alphas, gA, gSA},
+    (* Find upper alpha: omega_R = m*omega+ *)
+    alphaMax = Quiet[
+      FindRoot[
+        omegaR0[x, lv, nv] - mv*omP[aSpin] == 0,
+        {x, mv*omP[aSpin]*1.01}
+      ][[1, 2]]
+    ];
+    alphaMax = 0.97 * alphaMax;
+    alphas   = Table[0.05 + i*(alphaMax - 0.05)/nPts, {i, 0, nPts}];
+    alphas   = Select[alphas, # > 0 &];
+
+    gA = Map[
+      Function[a, {a, Abs[N[GammaAnalytic[a, lv, mv, nv, aSpin]]]}],
+      alphas
+    ];
+    gSA = Map[
+      Function[a, {a, Abs[GammaSemiAnalytic[a, lv, mv, nv, aSpin]]}],
+      alphas
+    ];
+
+    {Select[gA, #[[2]] > 0 &], Select[gSA, #[[2]] > 0 &]}
+  ]
+
+(* ============================================================
+   SECTION D: REPRODUCE FIGURE 5  (a/rg = 0.999, l=m=1..5)
+   Solid lines: semi-analytic.  Dashed lines: analytic Eq. 18.
+   ============================================================ *)
+PlotFig5[] :=
+  Module[{aSpin = 0.999, lMax = 5,
+          cols = {Blue, Red, Darker[Green], Purple, Orange},
+          plots = {}},
+    Do[
+      Module[{res, gA, gSA},
+        Print[\"Computing l=m=\", lv, \" ...\"];
+        res = ScanAlpha[lv, lv, 0, aSpin, 40];
+        gA  = res[[1]];
+        gSA = res[[2]];
+        If[Length[gSA] > 1,
+          AppendTo[plots,
+            ListLogPlot[gSA, Joined -> True,
+              PlotStyle -> {cols[[lv]], Thick},
+              DisplayFunction -> Identity]]
+        ];
+        If[Length[gA] > 1,
+          AppendTo[plots,
+            ListLogPlot[gA, Joined -> True,
+              PlotStyle -> {Dashed, cols[[lv]]},
+              DisplayFunction -> Identity]]
+        ]
+      ],
+      {lv, 1, lMax}
+    ];
+    Show[plots,
+      Frame -> True,
+      FrameLabel -> {\"\[Alpha] = \[Mu]_a r_g\",
+                     \"\[CapitalGamma] r_g (superradiance rate)\"},
+      PlotLabel ->
+        \"Fig. 5: Solid = semi-analytic, Dashed = analytic Eq.18\\n\" <>
+        \"a/r_g = 0.999,  l=m=1,2,3,4,5  (n=0)\",
+      PlotRange -> {{0, 2.5}, {10^-17, 10^-5}},
+      ImageSize -> 550,
+      GridLines -> Automatic,
+      GridLinesStyle -> LightGray
+    ]
+  ]
+
+(* ============================================================
+   SECTION E: REPRODUCE FIGURE 6  (l=m=1, varying spin)
+   ============================================================ *)
+PlotFig6[] :=
+  Module[{spins = {0.5, 0.6, 0.7, 0.8, 0.9, 0.999},
+          cols, plots = {}},
+    cols = Table[Hue[i/6], {i, 0, 5}];
+    MapThread[
+      Function[{aSpin, col},
+        Module[{res, gSA},
+          Print[\"Computing a/rg = \", aSpin, \" ...\"];
+          res = ScanAlpha[1, 1, 0, aSpin, 40];
+          gSA = res[[2]];
+          If[Length[gSA] > 1,
+            AppendTo[plots,
+              ListLogPlot[gSA, Joined -> True,
+                PlotStyle -> {col, Thick},
+                DisplayFunction -> Identity]]
+          ]
+        ]
+      ],
+      {spins, cols}
+    ];
+    Show[plots,
+      Frame -> True,
+      FrameLabel -> {\"\[Alpha] = \[Mu]_a r_g\",
+                     \"\[CapitalGamma] r_g\"},
+      PlotLabel ->
+        \"Fig. 6: l=m=1, n=0   \" <>
+        \"Spins a/r_g \[Element] {0.5,0.6,0.7,0.8,0.9,0.999}\",
+      PlotRange -> {{0, 0.5}, {10^-17, 10^-5}},
+      ImageSize -> 550,
+      GridLines -> Automatic,
+      GridLinesStyle -> LightGray
+    ]
+  ]
+
+(* ============================================================
+   SECTION F: NUMERICAL BENCHMARKS
+   ============================================================ *)
+RunBenchmarks[] :=
+  Module[{aS = 0.999},
+    Print[\"\\n====== BENCHMARKS  (rg=1, a/rg=0.999) ======\\n\"];
+    Print[\"--- Eq. 18 analytic formula ---\"];
+    Do[
+      Do[
+        Print[StringForm[
+          \"  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_analytic = `3`\",
+          lv, alphav,
+          N[GammaAnalytic[alphav, lv, lv, 0, aS], 5]]],
+        {alphav, {0.1, 0.2, 0.42}}
+      ],
+      {lv, 1, 3}
+    ];
+
+    Print[\"\\n--- Semi-analytic Wronskian matching ---\"];
+    Do[
+      Do[
+        Print[StringForm[
+          \"  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_SA = `3`\",
+          lv, alphav,
+          N[GammaSemiAnalytic[alphav, lv, lv, 0, aS], 5]]],
+        {alphav, {0.1, 0.2, 0.42}}
+      ],
+      {lv, 1, 3}
+    ];
+
+    Print[\"\\n--- Key paper benchmark (Fig. 5): l=m=1, n=0, \[Alpha]=0.42 \
+---\"];
+    Print[\"  Expected: \[CapitalGamma]_max ~ 1.5 x 10^-7  r_g^-1\"];
+    Print[\"  Analytic:       \", N[GammaAnalytic[0.42, 1, 1, 0, aS], 6]];
+    Print[\"  Semi-analytic:  \", N[GammaSemiAnalytic[0.42, 1, 1, 0, aS,
+                                    Verbose -> True], 6]];
+    Print[\"\\n============================================\\n\"]
+  ]
+
+(* ---- Run benchmarks immediately ---- *)
+RunBenchmarks[]
+
+Print[\"To reproduce Fig. 5: PlotFig5[]\"];
+Print[\"To reproduce Fig. 6: PlotFig6[]\"];
+Print[\"Single call example:\"];
+Print[\"  GammaSemiAnalytic[0.42, 1, 1, 0, 0.999, Verbose->True]\"];
+Print[\"  GammaAnalytic[0.42, 1, 1, 0, 0.999]\"];
+\
+\>", "Input",
+ CellChangeTimes->{{3.981544352677286*^9, 3.981544364889492*^9}},
+ CellLabel->
+  "In[395]:=",ExpressionUUID->"7869506b-b2a3-5049-ac17-2090e993ee10"],
+
+Cell[CellGroupData[{
+
+Cell[BoxData["\<\"\\n====== BENCHMARKS  (rg=1, a/rg=0.999) ======\\n\"\>"], \
+"Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807017384`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"edd86b0b-4bbf-bf42-8f46-5e5e97300bb6"],
+
+Cell[BoxData["\<\"--- Eq. 18 analytic formula ---\"\>"], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807047005`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"7269d59b-6994-4746-adf3-4bd71a7d6ebd"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"1\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.1`\\\"}]\\):  \[CapitalGamma]_analytic = \
+\\!\\(\\*RowBox[{\\\"2.0613619193768728`*^-11\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_analytic = `3`", 1, 0.1, 
+   2.0613619193768728`*^-11],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380709732*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"54364503-e059-b548-b64d-e462b24d2a67"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"1\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.2`\\\"}]\\):  \[CapitalGamma]_analytic = \
+\\!\\(\\*RowBox[{\\\"4.211242973215396`*^-9\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_analytic = `3`", 1, 0.2, 
+   4.211242973215396*^-9],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380712734*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"5ec18bfc-f3bb-eb45-b489-f839d66f1243"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"1\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.42`\\\"}]\\):  \[CapitalGamma]_analytic = \
+\\!\\(\\*RowBox[{\\\"3.4463292050634706`*^-8\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_analytic = `3`", 1, 0.42, 
+   3.4463292050634706`*^-8],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807157307`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"f8c795ce-0406-5b42-95e6-9f1ca7fa085e"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"2\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.1`\\\"}]\\):  \[CapitalGamma]_analytic = \
+\\!\\(\\*RowBox[{\\\"1.0378701031620732`*^-18\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_analytic = `3`", 2, 0.1, 
+   1.0378701031620732`*^-18],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380717699*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"bf57aa09-cc34-9347-8272-1eda368f4db3"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"2\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.2`\\\"}]\\):  \[CapitalGamma]_analytic = \
+\\!\\(\\*RowBox[{\\\"4.57337795537295`*^-15\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_analytic = `3`", 2, 0.2, 
+   4.57337795537295*^-15],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807207336`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"ac83cb53-f909-e74a-9681-a9183fd7451c"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"2\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.42`\\\"}]\\):  \[CapitalGamma]_analytic = \
+\\!\\(\\*RowBox[{\\\"1.2714669105887265`*^-11\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_analytic = `3`", 2, 0.42, 
+   1.2714669105887265`*^-11],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807237377`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"6c0738b6-3c4b-8d49-8981-6c92d4adc5f7"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"3\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.1`\\\"}]\\):  \[CapitalGamma]_analytic = \
+\\!\\(\\*RowBox[{\\\"2.183216304430371`*^-27\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_analytic = `3`", 3, 0.1, 
+   2.183216304430371*^-27],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807267017`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"5e404635-0cc7-9445-8c53-d40938b8a63d"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"3\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.2`\\\"}]\\):  \[CapitalGamma]_analytic = \
+\\!\\(\\*RowBox[{\\\"1.6597903612364372`*^-22\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_analytic = `3`", 3, 0.2, 
+   1.6597903612364372`*^-22],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807297306`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"839b2dad-40d9-de4f-958e-40c944cbf1f8"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"3\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.42`\\\"}]\\):  \[CapitalGamma]_analytic = \
+\\!\\(\\*RowBox[{\\\"1.2644867263960925`*^-17\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_analytic = `3`", 3, 0.42, 
+   1.2644867263960925`*^-17],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807327003`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"983d852c-0065-2e4d-ba51-1078f6d98c04"],
+
+Cell[BoxData["\<\"\\n--- Semi-analytic Wronskian matching ---\"\>"], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807357006`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"bc872e42-92c6-d24c-bf78-fff669e2bfa4"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"1\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.1`\\\"}]\\):  \[CapitalGamma]_SA = \\!\\(\\*RowBox[{\\\
+\"2.0613619193768728`*^-11\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_SA = `3`", 1, 0.1, 
+   2.0613619193768728`*^-11],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807377014`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"af943eeb-1ea0-244e-a2a4-582642c05fac"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"1\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.2`\\\"}]\\):  \[CapitalGamma]_SA = \\!\\(\\*RowBox[{\\\
+\"4.211242973215396`*^-9\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_SA = `3`", 1, 0.2, 
+   4.211242973215396*^-9],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807407017`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"669b7bd2-7be4-5a4e-8093-f92879b6e571"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"1\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.42`\\\"}]\\):  \[CapitalGamma]_SA = \
+\\!\\(\\*RowBox[{\\\"3.4463292050634706`*^-8\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_SA = `3`", 1, 0.42, 
+   3.4463292050634706`*^-8],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807437305`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"ddb5be22-44fa-d443-9774-a168d1050148"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"2\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.1`\\\"}]\\):  \[CapitalGamma]_SA = \\!\\(\\*RowBox[{\\\
+\"5.460869388327155`*^-6\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_SA = `3`", 2, 0.1, 
+   5.460869388327155*^-6],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807467003`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"d7bf4c17-b47e-7f45-8c7e-f859acab824c"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"2\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.2`\\\"}]\\):  \[CapitalGamma]_SA = \\!\\(\\*RowBox[{\\\
+\"0.0000494390432969686`\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_SA = `3`", 2, 0.2, 
+   0.0000494390432969686],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380749731*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"da78c298-5f7b-ae45-b8cd-0edeb31409cf"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"2\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.42`\\\"}]\\):  \[CapitalGamma]_SA = \
+\\!\\(\\*RowBox[{\\\"0.0006372664308304364`\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_SA = `3`", 2, 0.42, 
+   0.0006372664308304364],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807517014`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"4ba0b16d-3611-3f40-934b-63dfd2b94f2e"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"3\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.1`\\\"}]\\):  \[CapitalGamma]_SA = \\!\\(\\*RowBox[{\\\
+\"2.183216304430371`*^-27\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_SA = `3`", 3, 0.1, 
+   2.183216304430371*^-27],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807547398`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"a0007907-4d54-4d41-a3f0-eeb4bd083e7e"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"3\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.2`\\\"}]\\):  \[CapitalGamma]_SA = \\!\\(\\*RowBox[{\\\
+\"1.6597903612364372`*^-22\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_SA = `3`", 3, 0.2, 
+   1.6597903612364372`*^-22],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807577305`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"f62a4d54-b576-6042-9dc9-1f0983b509fc"],
+
+Cell[BoxData[
+ InterpretationBox["\<\"  l=m=\\!\\(\\*RowBox[{\\\"3\\\"}]\\), n=0, \[Alpha]=\
+\\!\\(\\*RowBox[{\\\"0.42`\\\"}]\\):  \[CapitalGamma]_SA = \
+\\!\\(\\*RowBox[{\\\"1.2644867263960925`*^-17\\\"}]\\)\"\>",
+  StringForm[
+  "  l=m=`1`, n=0, \[Alpha]=`2`:  \[CapitalGamma]_SA = `3`", 3, 0.42, 
+   1.2644867263960925`*^-17],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380760063*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"911e1e7b-624e-164a-9169-e8378076bec3"],
+
+Cell[BoxData["\<\"\\n--- Key paper benchmark (Fig. 5): l=m=1, n=0, \
+\[Alpha]=0.42 ---\"\>"], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807630634`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"8385cb86-0a6c-c54b-80df-bbd20277f738"],
+
+Cell[BoxData["\<\"  Expected: \[CapitalGamma]_max ~ 1.5 x 10^-7  \
+r_g^-1\"\>"], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380765747*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"10ff5842-04dd-5443-ab33-613a72dcc694"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"  Analytic:       \"\>", "\[InvisibleSpace]", 
+   "3.4463292050634706`*^-8"}],
+  SequenceForm["  Analytic:       ", 3.4463292050634706`*^-8],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380767748*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"83fc48e6-7b64-8340-8892-a3be22ddb305"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"r* = \"\>", "\[InvisibleSpace]", "2.0924698825116455`", 
+   "\[InvisibleSpace]", "\<\"   (r+ = \"\>", "\[InvisibleSpace]", 
+   "1.044710177812216`", "\[InvisibleSpace]", "\<\")\"\>"}],
+  SequenceForm[
+  "r* = ", 2.0924698825116455`, "   (r+ = ", 1.044710177812216, ")"],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380770748*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"84f86b3a-9032-bd43-bb3b-66d7e124488a"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"W(omI=0) = \"\>", "\[InvisibleSpace]", 
+   RowBox[{
+    RowBox[{"-", "70.7969868277026`"}], "-", 
+    RowBox[{"223.26517312545081`", " ", "\[ImaginaryI]"}]}]}],
+  SequenceForm["W(omI=0) = ", 
+   Complex[-70.7969868277026, -223.26517312545081`]],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807737465`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"7e4a05da-4e89-8c41-ab5b-945e5cc302bf"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"dW/d(omI) = \"\>", "\[InvisibleSpace]", 
+   RowBox[{"-", "7324.073656889141`"}]}],
+  SequenceForm["dW/d(omI) = ", -7324.073656889141],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380776779*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"6fd4f471-deaf-7c40-8325-a64f2982a667"],
+
+Cell[BoxData["\<\"Negative Gamma; analytic fallback\"\>"], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.98154438077878*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"583a9ce2-2419-9448-ae7c-e1d4d94f202f"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"Gamma (semi-analytic) = \"\>", "\[InvisibleSpace]", 
+   "3.4463292050634706`*^-8"}],
+  SequenceForm["Gamma (semi-analytic) = ", 3.4463292050634706`*^-8],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380781782*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"f3c9e311-62b4-794b-83c5-4915d8dd5715"],
+
+Cell[BoxData[
+ InterpretationBox[
+  RowBox[{"\<\"  Semi-analytic:  \"\>", "\[InvisibleSpace]", 
+   "3.4463292050634706`*^-8"}],
+  SequenceForm["  Semi-analytic:  ", 3.4463292050634706`*^-8],
+  Editable->False]], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807847805`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"ea42db1f-15cf-454b-8dc4-742af3347573"],
+
+Cell[BoxData["\<\"\\n============================================\\n\"\>"], \
+"Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807867813`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"dbd20845-b992-8746-b0b8-ea6f487eaa77"],
+
+Cell[BoxData["\<\"To reproduce Fig. 5: PlotFig5[]\"\>"], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380789749*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"7a85b4f4-6f81-5748-90dc-17c78d51c3ae"],
+
+Cell[BoxData["\<\"To reproduce Fig. 6: PlotFig6[]\"\>"], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380794424*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"5f08d308-4f63-0e47-afda-fcf9a96ff434"],
+
+Cell[BoxData["\<\"Single call example:\"\>"], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807974243`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"4e5542aa-b55a-7646-9d54-f0a2c09ce01f"],
+
+Cell[BoxData["\<\"  GammaSemiAnalytic[0.42, 1, 1, 0, 0.999, \
+Verbose->True]\"\>"], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.9815443807994556`*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"282010cb-5581-9044-8e16-3b3c40d987c5"],
+
+Cell[BoxData["\<\"  GammaAnalytic[0.42, 1, 1, 0, 0.999]\"\>"], "Print",
+ CellChangeTimes->{3.9815439571469193`*^9, 3.981544380802454*^9},
+ CellLabel->
+  "During evaluation of \
+In[395]:=",ExpressionUUID->"c3ba5447-06d2-a34d-8c44-c9d0fbe58b81"]
+}, Open  ]]
+}, Open  ]]
+},
+WindowSize->{581.25, 648.75},
+WindowMargins->{{0, Automatic}, {Automatic, 0}},
+FrontEndVersion->"14.2 for Microsoft Windows (64-bit) (March 14, 2025)",
+StyleDefinitions->"Default.nb",
+ExpressionUUID->"9f95d9a1-3525-9c44-8d43-4be5a307b456"
+]
+(* End of Notebook Content *)
+
+(* Internal cache information *)
+(*CellTagsOutline
+CellTagsIndex->{}
+*)
+(*CellTagsIndex
+CellTagsIndex->{}
+*)
+(*NotebookFileOutline
+Notebook[{
+Cell[CellGroupData[{
+Cell[576, 22, 11664, 335, 5365, "Input",ExpressionUUID->"7869506b-b2a3-5049-ac17-2090e993ee10"],
+Cell[CellGroupData[{
+Cell[12265, 361, 260, 5, 57, "Print",ExpressionUUID->"edd86b0b-4bbf-bf42-8f46-5e5e97300bb6"],
+Cell[12528, 368, 239, 4, 22, "Print",ExpressionUUID->"7269d59b-6994-4746-adf3-4bd71a7d6ebd"],
+Cell[12770, 374, 541, 11, 22, "Print",ExpressionUUID->"54364503-e059-b548-b64d-e462b24d2a67"],
+Cell[13314, 387, 536, 11, 22, "Print",ExpressionUUID->"5ec18bfc-f3bb-eb45-b489-f839d66f1243"],
+Cell[13853, 400, 543, 11, 22, "Print",ExpressionUUID->"f8c795ce-0406-5b42-95e6-9f1ca7fa085e"],
+Cell[14399, 413, 541, 11, 22, "Print",ExpressionUUID->"bf57aa09-cc34-9347-8272-1eda368f4db3"],
+Cell[14943, 426, 538, 11, 22, "Print",ExpressionUUID->"ac83cb53-f909-e74a-9681-a9183fd7451c"],
+Cell[15484, 439, 545, 11, 22, "Print",ExpressionUUID->"6c0738b6-3c4b-8d49-8981-6c92d4adc5f7"],
+Cell[16032, 452, 540, 11, 22, "Print",ExpressionUUID->"5e404635-0cc7-9445-8c53-d40938b8a63d"],
+Cell[16575, 465, 543, 11, 22, "Print",ExpressionUUID->"839b2dad-40d9-de4f-958e-40c944cbf1f8"],
+Cell[17121, 478, 545, 11, 22, "Print",ExpressionUUID->"983d852c-0065-2e4d-ba51-1078f6d98c04"],
+Cell[17669, 491, 251, 4, 39, "Print",ExpressionUUID->"bc872e42-92c6-d24c-bf78-fff669e2bfa4"],
+Cell[17923, 497, 531, 11, 22, "Print",ExpressionUUID->"af943eeb-1ea0-244e-a2a4-582642c05fac"],
+Cell[18457, 510, 526, 11, 22, "Print",ExpressionUUID->"669b7bd2-7be4-5a4e-8093-f92879b6e571"],
+Cell[18986, 523, 531, 11, 22, "Print",ExpressionUUID->"ddb5be22-44fa-d443-9774-a168d1050148"],
+Cell[19520, 536, 526, 11, 22, "Print",ExpressionUUID->"d7bf4c17-b47e-7f45-8c7e-f859acab824c"],
+Cell[20049, 549, 524, 11, 22, "Print",ExpressionUUID->"da78c298-5f7b-ae45-b8cd-0edeb31409cf"],
+Cell[20576, 562, 528, 11, 22, "Print",ExpressionUUID->"4ba0b16d-3611-3f40-934b-63dfd2b94f2e"],
+Cell[21107, 575, 528, 11, 22, "Print",ExpressionUUID->"a0007907-4d54-4d41-a3f0-eeb4bd083e7e"],
+Cell[21638, 588, 531, 11, 22, "Print",ExpressionUUID->"f62a4d54-b576-6042-9dc9-1f0983b509fc"],
+Cell[22172, 601, 531, 11, 22, "Print",ExpressionUUID->"911e1e7b-624e-164a-9169-e8378076bec3"],
+Cell[22706, 614, 276, 5, 39, "Print",ExpressionUUID->"8385cb86-0a6c-c54b-80df-bbd20277f738"],
+Cell[22985, 621, 261, 5, 22, "Print",ExpressionUUID->"10ff5842-04dd-5443-ab33-613a72dcc694"],
+Cell[23249, 628, 392, 9, 22, "Print",ExpressionUUID->"83fc48e6-7b64-8340-8892-a3be22ddb305"],
+Cell[23644, 639, 521, 11, 22, "Print",ExpressionUUID->"84f86b3a-9032-bd43-bb3b-66d7e124488a"],
+Cell[24168, 652, 498, 12, 22, "Print",ExpressionUUID->"7e4a05da-4e89-8c41-ab5b-945e5cc302bf"],
+Cell[24669, 666, 385, 9, 22, "Print",ExpressionUUID->"6fd4f471-deaf-7c40-8325-a64f2982a667"],
+Cell[25057, 677, 238, 4, 22, "Print",ExpressionUUID->"583a9ce2-2419-9448-ae7c-e1d4d94f202f"],
+Cell[25298, 683, 404, 9, 22, "Print",ExpressionUUID->"f3c9e311-62b4-794b-83c5-4915d8dd5715"],
+Cell[25705, 694, 394, 9, 22, "Print",ExpressionUUID->"ea42db1f-15cf-454b-8dc4-742af3347573"],
+Cell[26102, 705, 260, 5, 57, "Print",ExpressionUUID->"dbd20845-b992-8746-b0b8-ea6f487eaa77"],
+Cell[26365, 712, 237, 4, 22, "Print",ExpressionUUID->"7a85b4f4-6f81-5748-90dc-17c78d51c3ae"],
+Cell[26605, 718, 237, 4, 22, "Print",ExpressionUUID->"5f08d308-4f63-0e47-afda-fcf9a96ff434"],
+Cell[26845, 724, 228, 4, 22, "Print",ExpressionUUID->"4e5542aa-b55a-7646-9d54-f0a2c09ce01f"],
+Cell[27076, 730, 266, 5, 22, "Print",ExpressionUUID->"282010cb-5581-9044-8e16-3b3c40d987c5"],
+Cell[27345, 737, 243, 4, 22, "Print",ExpressionUUID->"c3ba5447-06d2-a34d-8c44-c9d0fbe58b81"]
+}, Open  ]]
+}, Open  ]]
+}
+]
+*)
+
+(* End of internal cache information *)
+

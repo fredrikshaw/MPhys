@@ -6,11 +6,25 @@ import matplotlib.lines as mlines
 import re
 
 
-# Add the directory containing the script to the Python path
-script_dir = Path(r"C:\Users\g60628jf\MPhys\Sem 2\0. Scripts from Sem 1")
-sys.path.append(str(script_dir))
+current_dir = Path(__file__).resolve().parent
+sem2_dir = None
+for p in current_dir.parents:
+    if p.name == "Sem 2":
+        sem2_dir = p
+        break
+if sem2_dir is None:
+    sem2_dir = current_dir.parent
+script_dir = sem2_dir / "0. Scripts from Sem 1"
+if not script_dir.exists():
+    # fallback: search upward for the folder name
+    for p in current_dir.parents:
+        candidate = p / "0. Scripts from Sem 1"
+        if candidate.exists():
+            script_dir = candidate
+            break
+sys.path.append(str(script_dir.resolve()))
 
-# Import the script (replace 'script_name' with the actual name of the script without .py)
+# Import the script (expects `calc_superradiance_rate` in ParamCalculator)
 from ParamCalculator import calc_superradiance_rate
 
 # ── Configuration ────────────────────────────────────────────────────────────

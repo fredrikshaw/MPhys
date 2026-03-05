@@ -70,7 +70,7 @@ FILES = [
     "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.80_aMin0.05_aMax0.30.dat",
     "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.90_aMin0.05_aMax0.50.dat",
     "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.99_aMin0.05_aMax0.50.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.03_aMax0.52.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.999_aMin0.03_aMax0.52.dat",
 ]
 COLOURS = ["blue", "green", "orange", "red", "purple", "black"]
 
@@ -81,7 +81,7 @@ plt.rcParams.update({
     "text.latex.preamble": r"\usepackage{amsmath}"
 })
 
-fig, ax = plt.subplots(figsize=(7, 5.5))
+fig, ax = plt.subplots(figsize=(5, 3.5))
 
 for filepath, colour in zip(FILES, COLOURS):
     label, quantum_numbers, a_t, spin_label = parse_quantum_numbers_and_spin(filepath)

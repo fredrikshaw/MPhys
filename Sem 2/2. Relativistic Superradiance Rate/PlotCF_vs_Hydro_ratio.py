@@ -82,7 +82,7 @@ plt.rcParams.update({
     "text.latex.preamble": r"\usepackage{amsmath}"
 })
 
-fig, ax = plt.subplots(figsize=(7, 5.5))
+fig, ax = plt.subplots(figsize=(4, 3.5))
 
 # track max x for setting x-limits later
 max_x = 0.0
@@ -123,8 +123,8 @@ for filepath, colour in zip(FILES, COLOURS):
             peak_idx = df_cf_all["CF_Gamma"].idxmax()
             peak_alpha = df_cf_all.loc[peak_idx, "alpha"] / float(l)
             # place label slightly above zero line for readability
-            ax.text(peak_alpha, 0.05, label,
-                color=colour, fontsize=11, ha="center", va="bottom")
+            #ax.text(peak_alpha, 0.05, label,
+            #    color=colour, fontsize=11, ha="center", va="bottom")
 
 
 # ── Legend & styling ────────────────────────────────────────────────────────
@@ -133,16 +133,13 @@ ax.legend(fontsize=10, frameon=False)
 
 # Use a symmetric log scale on the y-axis to compress large outliers while
 # keeping the region near zero linear for readability.
-ax.set_yscale('symlog', linthresh=1e-2)
+ax.set_yscale('symlog', linthresh=1e0)
 
 # x-axis label: alpha divided by l
 ax.set_xlabel(r"$\alpha / \ell$", fontsize=13)
 ax.set_ylabel(r"$\Im(\omega_{CF}/\omega_{\mathrm{hy}} - 1)$", fontsize=13)
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
-if max_x > 0 and min_x != float('inf'):
-    ax.set_xlim(max(0, min_x - 0.01 * max_x), max_x * 1.05)
-else:
-    ax.set_xlim(0, 1.5)
+ax.set_xlim(0, 0.5)
 
 plt.tight_layout()
 

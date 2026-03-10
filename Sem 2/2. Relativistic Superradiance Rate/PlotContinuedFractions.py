@@ -28,10 +28,16 @@ sys.path.append(str(script_dir.resolve()))
 from ParamCalculator import calc_superradiance_rate
 
 # ── Configuration ────────────────────────────────────────────────────────────
+FILE = [
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.999_aMin0.010_aMax0.600_20260310.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.999_aMin0.010_aMax1.200_20260310.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.999_aMin0.010_aMax1.700_20260310.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n5l4m4_at0.999_aMin0.010_aMax2.700_20260310.dat",
+   
+]
+
 FILES = [
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.99_aMin0.05_aMax0.50.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.99_aMin0.18_aMax1.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.99_aMin0.50_aMax1.50.dat",
+     "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat",
 ]
 
 COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#284945"]
@@ -78,7 +84,7 @@ plt.rcParams.update({
     "text.latex.preamble": r"\usepackage{amsmath}"
 })
 
-fig, ax = plt.subplots(figsize=(7, 5.5))
+fig, ax = plt.subplots(figsize=(4, 3.5))
 
 for filepath, colour in zip(FILES, COLOURS):
     label, quantum_numbers = parse_quantum_numbers(filepath)
@@ -126,8 +132,8 @@ ax.set_yscale("log")
 ax.set_xlabel(r"$\alpha$", fontsize=13)
 ax.set_ylabel(r"$\Gamma^{\mathrm{sr}} r_g$", fontsize=13)
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
-ax.set_ylim(1e-13, 1e-6)
-ax.set_xlim(0, 1.5)
+ax.set_ylim(1e-21, 1e-6)
+#ax.set_xlim(0, 2)
 
 plt.tight_layout()
 

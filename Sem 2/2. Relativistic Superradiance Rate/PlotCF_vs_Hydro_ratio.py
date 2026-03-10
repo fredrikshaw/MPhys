@@ -33,10 +33,9 @@ from ParamCalculator import calc_superradiance_rate
 
 # ── Configuration ────────────────────────────────────────────────────────────
 FILES = [
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.99_aMin0.05_aMax0.50.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.99_aMin0.18_aMax1.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.99_aMin0.50_aMax1.50.dat",
+     "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat",
 ]
+
 
 COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#284945"]
 # ─────────────────────────────────────────────────────────────────────────────
@@ -108,7 +107,7 @@ for filepath, colour in zip(FILES, COLOURS):
             # keep only positive hydro calcs to avoid divide-by-zero / sign flips
             df_cf = df_cf[df_cf["Hydro_Gamma_Calc"] > 0]
             if not df_cf.empty:
-                df_cf["ratio_minus_one"] = df_cf["CF_Gamma"] / df_cf["Hydro_Gamma_Calc"] - 1.0
+                df_cf["ratio_minus_one"] = df_cf["CF_Gamma"] / df_cf["Hydro_Gamma_Calc"]
                 # x-axis is alpha divided by l
                 xvals = df_cf["alpha"] / float(l)
                 ax.plot(xvals, df_cf["ratio_minus_one"],
@@ -128,16 +127,16 @@ for filepath, colour in zip(FILES, COLOURS):
 
 
 # ── Legend & styling ────────────────────────────────────────────────────────
-ax.axhline(0.0, color="black", linewidth=0.8, linestyle="--", alpha=0.6)
+ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--", alpha=0.8)
 ax.legend(fontsize=10, frameon=False)
 
 # Use a symmetric log scale on the y-axis to compress large outliers while
 # keeping the region near zero linear for readability.
-ax.set_yscale('symlog', linthresh=1e0)
+ax.set_yscale('log')
 
 # x-axis label: alpha divided by l
 ax.set_xlabel(r"$\alpha / \ell$", fontsize=13)
-ax.set_ylabel(r"$\Im(\omega_{CF}/\omega_{\mathrm{hy}} - 1)$", fontsize=13)
+ax.set_ylabel(r"$\Im(\omega_{CF}/\omega_{\mathrm{hy}} )$", fontsize=13)
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
 ax.set_xlim(0, 0.5)
 

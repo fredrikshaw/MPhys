@@ -28,7 +28,7 @@ sys.path.append(str(script_dir.resolve()))
 from ParamCalculator import calc_superradiance_rate
 
 # ── Configuration ────────────────────────────────────────────────────────────
-FILE = [
+FILES = [
     "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.999_aMin0.010_aMax0.600_20260310.dat",
     "2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.999_aMin0.010_aMax1.200_20260310.dat",
     "2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.999_aMin0.010_aMax1.700_20260310.dat",
@@ -37,10 +37,14 @@ FILE = [
 ]
 
 FILES = [
-     "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.990_aMin0.010_aMax1.100_20260312.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.990_aMin0.010_aMax1.600_20260312.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n5l4m4_at0.990_aMin0.010_aMax2.100_20260312.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n6l5m5_at0.990_aMin0.500_aMax2.600_20260312.dat",
 ]
 
-COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#284945"]
+COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#284945", "#284245"]
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -132,8 +136,8 @@ ax.set_yscale("log")
 ax.set_xlabel(r"$\alpha$", fontsize=13)
 ax.set_ylabel(r"$\Gamma^{\mathrm{sr}} r_g$", fontsize=13)
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
-ax.set_ylim(1e-21, 1e-6)
-#ax.set_xlim(0, 2)
+ax.set_ylim(1e-15, 1e-6)
+ax.set_xlim(0, 3)
 
 plt.tight_layout()
 

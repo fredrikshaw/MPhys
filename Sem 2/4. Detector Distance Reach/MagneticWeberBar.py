@@ -427,8 +427,8 @@ def plot_sensitivity(detectors: dict,
                      f_min: float = 1e2,
                      f_max: float = 1e8,
                      n_points: int = 2000,
-                     plot_LC: bool = True,
-                     plot_BBN: bool = True):
+                     plot_LC: bool = False,
+                     plot_BBN: bool = False):
     """
     Reproduce Fig. 1 of Domcke et al. — noise-equivalent strain ASD.
 
@@ -503,8 +503,7 @@ if __name__ == '__main__':
 
     detectors = {
         'ADMX-EFR'    : ADMX_EFR,
-        'DMRadio-GUT' : DMRADIO_GUT,
-    }
+        }
 
     plot_sensitivity(detectors)
 

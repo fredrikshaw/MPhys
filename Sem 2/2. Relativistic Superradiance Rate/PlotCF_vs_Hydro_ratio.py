@@ -33,7 +33,10 @@ from ParamCalculator import calc_superradiance_rate
 
 # ── Configuration ────────────────────────────────────────────────────────────
 FILES = [
-     "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.999_aMin0.010_aMax0.600_20260310.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.999_aMin0.010_aMax1.200_20260310.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.999_aMin0.010_aMax1.700_20260310.dat",
+    "2. Relativistic Superradiance Rate/Mathematica/SR_n5l4m4_at0.999_aMin0.010_aMax2.700_20260310.dat",
 ]
 
 
@@ -100,14 +103,14 @@ for filepath, colour in zip(FILES, COLOURS):
         if not df_cf.empty:
             # compute hydrogenic (non-relativistic) rate at the same alpha values
             df_cf = df_cf.copy()
-            df_cf["Hydro_Gamma_Calc"] = df_cf["alpha"].apply(
-                lambda alpha: calc_superradiance_rate(l, m, n, a_star, 1, alpha)
-            )
+            df_cf["Hydro_Gamma_Calc"] = df["Hydro_Gamma"] #df_cf["alpha"].apply(
+            #    lambda alpha: calc_superradiance_rate(l, m, n, a_star, 1, alpha)
+            #)
 
             # keep only positive hydro calcs to avoid divide-by-zero / sign flips
             df_cf = df_cf[df_cf["Hydro_Gamma_Calc"] > 0]
             if not df_cf.empty:
-                df_cf["ratio_minus_one"] = df_cf["CF_Gamma"] / df_cf["Hydro_Gamma_Calc"]
+                df_cf["ratio_minus_one"] = (df_cf["CF_Gamma"] / df_cf["Hydro_Gamma_Calc"]) 
                 # x-axis is alpha divided by l
                 xvals = df_cf["alpha"] / float(l)
                 ax.plot(xvals, df_cf["ratio_minus_one"],
@@ -133,10 +136,11 @@ ax.legend(fontsize=10, frameon=False)
 # Use a symmetric log scale on the y-axis to compress large outliers while
 # keeping the region near zero linear for readability.
 ax.set_yscale('log')
+ax.set_xscale("log")
 
 # x-axis label: alpha divided by l
 ax.set_xlabel(r"$\alpha / \ell$", fontsize=13)
-ax.set_ylabel(r"$\Im(\omega_{CF}/\omega_{\mathrm{hy}} )$", fontsize=13)
+ax.set_ylabel(r"$(\Im(\omega_{CF}/\omega_{\mathrm{hy}}))$", fontsize=13)
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
 ax.set_xlim(0, 0.5)
 

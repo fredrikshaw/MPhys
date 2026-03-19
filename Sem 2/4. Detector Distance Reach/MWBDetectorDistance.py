@@ -160,7 +160,8 @@ def make_annihilation_source(alpha, level, n, l, m, astar_init, debug=False):
     debug      : bool  — if True, print all intermediate values for first point
     """
 
-    _debug_done = [False]
+    G_N_nat      = 6.708e-57    # [eV^-2] — defined at factory scope, visible to all closures
+    _debug_done  = [False]
 
     def source_func(M_solar):
         # ── Natural unit quantities ───────────────────────────────────────────
@@ -168,78 +169,65 @@ def make_annihilation_source(alpha, level, n, l, m, astar_init, debug=False):
         omega_ann    = calc_omega_ann(r_g, alpha, n)         # [eV]
         ann_rate     = calc_annihilation_rate(
                            level, alpha, omega_ann,
-                           G_N=6.708e-57, r_g=r_g
+                           G_N=G_N_nat, r_g=r_g
                        )                                     # [eV]
-        bh_mass      = calc_bh_mass(r_g)                    # [eV]
         delta_a_star = calc_delta_astar(astar_init, r_g, alpha, n, m)
-        n_max        = calc_n_max(bh_mass, delta_a_star, m)  # dimensionless
+
+        # BH mass in eV: M_eV = r_g / G_N  (from r_g = G_N * M_eV)
+        bh_mass_eV   = r_g / G_N_nat                        # [eV]
+        n_max        = calc_n_max(bh_mass_eV, delta_a_star, m)   # dimensionless
 
         # ── GW frequency ─────────────────────────────────────────────────────
         omega_ann_SI = omega_ann * EV_TO_SI                  # [rad/s]
         f_ann        = omega_ann_SI / (2 * np.pi)            # [Hz]
 
-        # ── Source amplitude A in natural units then convert to SI ───────────
-        # In natural units (G=hbar=c=1), with r in eV^-1:
-        #   h = n_max * sqrt(8 * G_N_nat * ann_rate / omega_ann) / r^2
-        # G_N in natural units where mass is in eV: G_N_nat = 6.708e-57 eV^-2
-        # ann_rate and omega_ann in eV, r in eV^-1
-        # So sqrt(G_N_nat * ann_rate / omega_ann) has units eV^-1
-        # n_max is dimensionless
-        # h = n_max * [eV^-1] / [eV^-2] = dimensionless -- correct
-        #
-        # At r = 1 eV^-1:
-        #   h_nat = n_max * sqrt(8 * G_N_nat * ann_rate / omega_ann)  [dimensionless]
-        # Converting to r = 1 m requires noting that 1 m = 1/INV_EV_TO_M eV^-1
-        # so r_nat = 1 m / INV_EV_TO_M, and h scales as 1/r^2:
-        #   h(r=1m) = h_nat * (1 eV^-1)^2 / (1m)^2
-        #           = h_nat / INV_EV_TO_M^2
-        # Therefore A [m^2] = h_nat * INV_EV_TO_M^2 such that h = A/r^2 with r in m:
-        #   h(r) = A / r^2 = h_nat * INV_EV_TO_M^2 / r^2
-
-        G_N_nat  = 6.708e-57                                 # [eV^-2]
-        h_nat    = float(n_max) * np.sqrt(
-                       8 * G_N_nat * float(ann_rate) / float(omega_ann)
-                   )                                         # dimensionless at r=1 eV^-1
-        A        = h_nat * INV_EV_TO_M**2                   # [m^2]
+        # ── Source amplitude A ────────────────────────────────────────────────
+        # In natural units at r = 1 eV^-1:
+        #   h_nat = n_max * sqrt(8 * G_N_nat * ann_rate / omega_ann)
+        # Converting to h = A/r^2 with r in metres:
+        #   A [m^2] = h_nat * INV_EV_TO_M^2
+        h_nat = float(n_max) * np.sqrt(
+                    8 * G_N_nat * float(ann_rate) / float(omega_ann)
+                )                                            # dimensionless at r=1 eV^-1
+        A     = h_nat * INV_EV_TO_M**2                      # [m^2]
 
         if debug and not _debug_done[0]:
             ann_rate_SI = float(ann_rate) * EV_TO_SI
             print(f"\n{'─'*60}")
-            print(f"[ANN DEBUG] M_solar        = {M_solar:.4e} Msun")
-            print(f"[ANN DEBUG] r_g            = {r_g:.4e} eV^-1")
-            print(f"[ANN DEBUG] r_g (SI)       = {r_g * INV_EV_TO_M:.4e} m")
-            print(f"[ANN DEBUG] omega_ann      = {omega_ann:.4e} eV")
-            print(f"[ANN DEBUG] f_ann          = {f_ann:.4e} Hz")
-            print(f"[ANN DEBUG] ann_rate       = {float(ann_rate):.4e} eV")
-            print(f"[ANN DEBUG] ann_rate (SI)  = {ann_rate_SI:.4e} s^-1")
-            print(f"[ANN DEBUG] bh_mass        = {float(bh_mass):.4e} eV")
-            print(f"[ANN DEBUG] delta_a_star   = {delta_a_star:.4e}")
-            print(f"[ANN DEBUG] n_max          = {float(n_max):.4e}")
-            print(f"[ANN DEBUG] G_N_nat        = {G_N_nat:.4e} eV^-2")
+            print(f"[ANN DEBUG] M_solar          = {M_solar:.4e} Msun")
+            print(f"[ANN DEBUG] r_g              = {r_g:.4e} eV^-1")
+            print(f"[ANN DEBUG] r_g (SI)         = {r_g * INV_EV_TO_M:.4e} m")
+            print(f"[ANN DEBUG] omega_ann        = {float(omega_ann):.4e} eV")
+            print(f"[ANN DEBUG] f_ann            = {f_ann:.4e} Hz")
+            print(f"[ANN DEBUG] ann_rate         = {float(ann_rate):.4e} eV")
+            print(f"[ANN DEBUG] ann_rate (SI)    = {ann_rate_SI:.4e} s^-1")
+            print(f"[ANN DEBUG] bh_mass_eV       = {bh_mass_eV:.4e} eV")
+            print(f"[ANN DEBUG] delta_a_star     = {delta_a_star:.4e}")
+            print(f"[ANN DEBUG] n_max            = {float(n_max):.4e}")
             print(f"[ANN DEBUG] h_nat (r=1eV^-1) = {h_nat:.4e} [dimensionless]")
-            print(f"[ANN DEBUG] INV_EV_TO_M    = {INV_EV_TO_M:.4e} m/eV^-1")
-            print(f"[ANN DEBUG] A = h_nat*INV^2 = {A:.4e} m^2")
-            print(f"[ANN DEBUG] h at 1 kpc     = {A / KPC_TO_M**2:.4e} [dimensionless]")
+            print(f"[ANN DEBUG] INV_EV_TO_M      = {INV_EV_TO_M:.4e} m/eV^-1")
+            print(f"[ANN DEBUG] A = h_nat*INV^2  = {A:.4e} m^2")
+            print(f"[ANN DEBUG] h at 1 kpc       = {A / KPC_TO_M**2:.4e} [dimensionless]")
             print(f"{'─'*60}\n")
             _debug_done[0] = True
 
         return f_ann, A
 
     def tau_func(f_ann, M_solar):
-        r_g          = calc_rg_from_bh_mass(M_solar)
-        omega_ann    = calc_omega_ann(r_g, alpha, n)
+        r_g          = calc_rg_from_bh_mass(M_solar)        # [eV^-1]
+        omega_ann    = calc_omega_ann(r_g, alpha, n)         # [eV]
         ann_rate     = calc_annihilation_rate(
                            level, alpha, omega_ann,
-                           G_N=6.708e-57, r_g=r_g
-                       )
-        bh_mass      = calc_bh_mass(r_g)
+                           G_N=G_N_nat, r_g=r_g
+                       )                                     # [eV]
+        # BH mass in eV for calc_n_max
+        bh_mass_eV   = r_g / G_N_nat                        # [eV]
         delta_a_star = calc_delta_astar(astar_init, r_g, alpha, n, m)
-        n_max        = calc_n_max(bh_mass, delta_a_star, m)
+        n_max        = calc_n_max(bh_mass_eV, delta_a_star, m)   # dimensionless
         tau_eV       = calc_char_t_ann(ann_rate, n_max)      # [eV^-1]
         return float(tau_eV) / EV_TO_SI                      # [s]
 
     return source_func, tau_func
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Core computation — transitions (h ~ 1/r)
@@ -656,29 +644,30 @@ if __name__ == '__main__':
           f"{'tau [s]':>14} | {'A [m^2]':>14} | {'d_max [kpc]':>14}")
     print("-"*80)
 
-    M_test = 1.0
+    M_test  = 1.0
+    G_N_nat = 6.708e-57   # [eV^-2]
 
     for alpha_test in [0.05, 0.10, 0.20, 0.30, 0.40, 0.50]:
 
         try:
-            r_g_t        = calc_rg_from_bh_mass(M_test)
-            omega_t      = calc_omega_ann(r_g_t, alpha_test, n)
+            r_g_t        = calc_rg_from_bh_mass(M_test)         # [eV^-1]
+            omega_t      = calc_omega_ann(r_g_t, alpha_test, n)  # [eV]
             ann_t        = float(calc_annihilation_rate(
                                level, alpha_test, omega_t,
-                               G_N=6.708e-57, r_g=r_g_t
-                           ))
-            bh_mass_t    = float(calc_bh_mass(r_g_t))
-            delta_t      = calc_delta_astar(astar_init, r_g_t, alpha_test, n, m)
-            n_max_t      = float(calc_n_max(bh_mass_t, delta_t, m))
-            tau_t        = float(calc_char_t_ann(ann_t, n_max_t)) / EV_TO_SI
+                               G_N=G_N_nat, r_g=r_g_t
+                           ))                                    # [eV]
 
-            G_N_nat      = 6.708e-57
+            bh_mass_eV_t = r_g_t / G_N_nat                      # [eV]  <-- FIXED
+            delta_t      = calc_delta_astar(astar_init, r_g_t, alpha_test, n, m)
+            n_max_t      = float(calc_n_max(bh_mass_eV_t, delta_t, m))  # dimensionless
+            tau_t        = float(calc_char_t_ann(ann_t, n_max_t)) / EV_TO_SI  # [s]
+
             h_nat        = n_max_t * np.sqrt(
                                8 * G_N_nat * ann_t / float(omega_t)
                            )
-            A_t          = h_nat * INV_EV_TO_M**2
+            A_t          = h_nat * INV_EV_TO_M**2               # [m^2]
 
-            f_t          = float(omega_t) * EV_TO_SI / (2 * np.pi)
+            f_t          = float(omega_t) * EV_TO_SI / (2 * np.pi)  # [Hz]
             S_h_t        = noise_equivalent_strain_broadband(
                                ADMX_EFR, np.array([f_t])
                            )[0]

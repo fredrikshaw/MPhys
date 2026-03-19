@@ -72,44 +72,30 @@ KPC_TO_M     = 3.086e19
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Source function factories
+# Transition source factory
 #
-# Each factory takes the physical parameters for a given process and returns
-# three callables with the standard interface expected by compute_point:
+# Returns three callables with the standard interface:
+#   freq_func(M_solar)     -> f  [Hz]
+#   h_func(f, M_solar)     -> h  [m]    strain at unit distance r = 1 m
+#   tau_func(f, M_solar)   -> tau [s]
 #
-#   freq_func(M_solar)       -> f  [Hz]
-#   h_func(f, M_solar)       -> h  [m]       strain at unit distance r = 1 m
-#   tau_func(f, M_solar)     -> tau [s]       characteristic signal duration
-#
-# The factory pattern means compute_point never needs to know whether it is
-# computing a transition or an annihilation — it just calls these three
-# functions with the same interface.
+# h_peak for transitions scales as 1/r, so d_max is found by linear inversion.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def make_transition_funcs(alpha, transition, filepath):
     """
     Return (freq_func, h_func, tau_func) for a superradiance transition.
 
-    The GW frequency is set by the energy difference between the two levels:
+    GW frequency is the energy difference between the two levels:
         f_t = omega_t / 2pi
 
-    Parameters
-    ----------
-    alpha      : float — dimensionless gravitational coupling
-    transition : str   — transition string e.g. '4d 3d'
-    filepath   : str   — path to SR data file
-
-    Returns
-    -------
-    freq_func : M_solar -> f_t [Hz]
-    h_func    : (f_t, M_solar) -> h_unit [m]
-    tau_func  : (f_t, M_solar) -> tau [s]
+    h_peak ~ 1/r  =>  d_max = h_unit * sqrt(tau / S_h_noise)
     """
 
     def freq_func(M_solar):
         r_g_nat     = calc_rg_from_bh_mass(M_solar)
         omega_t_nat = calc_omega_transition(r_g_nat, alpha, 4, 3)
-        return omega_t_nat * EV_TO_SI / (2 * np.pi)            # [Hz]
+        return omega_t_nat * EV_TO_SI / (2 * np.pi)
 
     def h_func(f_t, M_solar):
         r_g_nat     = calc_rg_from_bh_mass(M_solar)
@@ -124,117 +110,148 @@ def make_transition_funcs(alpha, transition, filepath):
         omega_t_SI  = 2 * np.pi * f_t
         return np.sqrt(
             4 * G_NEWTON / omega_t_SI * Gamma_sr_SI**2 / Gamma_t_SI
-        )                                                        # [m]
+        )
 
     def tau_func(f_t, M_solar):
-        # For transitions tau = 1 / Gamma_sr
-        # f_t is accepted for interface consistency but not used
         return 1.0 / sr_rate_dimensioned(
                          alpha, M_solar, filepath=filepath, method='cf'
-                     )['gamma_SI']                               # [s]
-
-    return freq_func, h_func, tau_func
-
-
-def make_annihilation_funcs(alpha, level, n, l, m, astar_init):
-    """
-    Return (freq_func, h_func, tau_func) for a superradiance annihilation.
-
-    The GW frequency for annihilation is TWICE the axion rest mass frequency:
-        f_ann = omega_ann / 2pi = 2 * m_a * c^2 / h
-              = 2 * alpha * c^3 / (2pi * G_N * M_BH)
-
-    This is different from the transition frequency which depends on the
-    energy DIFFERENCE between two levels. Here both photons carry the full
-    axion rest mass, so the frequency scales as 1/M_BH with a different
-    prefactor than transitions.
-
-    Parameters
-    ----------
-    alpha      : float — dimensionless gravitational coupling
-    level      : str   — level string for annihilation rate calculation
-    n          : int   — principal quantum number of the superradiant level
-    l          : int   — orbital quantum number
-    m          : int   — azimuthal quantum number
-    astar_init : float — initial dimensionless BH spin parameter
-
-    Returns
-    -------
-    freq_func : M_solar -> f_ann [Hz]
-    h_func    : (f_ann, M_solar) -> h_unit [m]
-    tau_func  : (f_ann, M_solar) -> tau [s]
-    """
-
-    def freq_func(M_solar):
-        # omega_ann is computed from r_g and alpha
-        # calc_omega_ann returns omega_ann in eV (natural units)
-        r_g     = calc_rg_from_bh_mass(M_solar)                 # [eV^-1]
-        omega   = calc_omega_ann(r_g, alpha, n)                  # [eV]
-        return omega * EV_TO_SI / (2 * np.pi)                   # [Hz]
-
-    def h_func(f_ann, M_solar):
-        r_g          = calc_rg_from_bh_mass(M_solar)            # [eV^-1]
-        omega_ann    = calc_omega_ann(r_g, alpha, n)             # [eV]
-        ann_rate     = calc_annihilation_rate(
-                           level, alpha, omega_ann,
-                           G_N=6.708e-57, r_g=r_g
-                       )                                         # [eV]
-        bh_mass      = calc_bh_mass(r_g)                        # [eV]
-        delta_a_star = calc_delta_astar(astar_init, r_g, alpha, n, m)
-        n_max        = calc_n_max(bh_mass, delta_a_star, m)
-
-        # calc_h_peak_ann returns strain in eV at unit distance r = 1 eV^-1
-        # Convert: h [eV] * r [eV^-1] is dimensionless, so h [eV] at r=1 eV^-1
-        # means we need to convert the reference distance to metres:
-        #   1 eV^-1 = INV_EV_TO_M metres
-        # h [m] = h_eV [eV] * INV_EV_TO_M
-        h_eV = calc_h_peak_ann(ann_rate, omega_ann, 1, n_max)   # [eV * eV^-1] = dimensionless at r=1 eV^-1
-        return float(h_eV) * INV_EV_TO_M                        # [m]
-
-    def tau_func(f_ann, M_solar):
-        r_g          = calc_rg_from_bh_mass(M_solar)            # [eV^-1]
-        omega_ann    = calc_omega_ann(r_g, alpha, n)             # [eV]
-        ann_rate     = calc_annihilation_rate(
-                           level, alpha, omega_ann,
-                           G_N=6.708e-57, r_g=r_g
-                       )                                         # [eV]
-        bh_mass      = calc_bh_mass(r_g)                        # [eV]
-        delta_a_star = calc_delta_astar(astar_init, r_g, alpha, n, m)
-        n_max        = calc_n_max(bh_mass, delta_a_star, m)
-
-        # calc_char_t_ann returns characteristic time in eV^-1 (natural units)
-        # Convert to SI: tau [s] = tau [eV^-1] / EV_TO_SI
-        tau_eV = calc_char_t_ann(ann_rate, n_max)               # [eV^-1]
-        return float(tau_eV) / EV_TO_SI                         # [s]
+                     )['gamma_SI']
 
     return freq_func, h_func, tau_func
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Core computation — process-agnostic
+# Annihilation source factory
+#
+# For annihilation the peak strain is:
+#
+#   h_peak = (G_N M^2 Delta_a* / m_a r) * sqrt(8 G_N Gamma_a / r^2 omega_ann)
+#          = A / r^2
+#
+# where A = N_max * sqrt(8 G_N Gamma_a / omega_ann)  has units [m^2]
+# and N_max = G_N M^2 Delta_a* / m_a carries dimensions [m^3 s^-2 / (m s^-2)] = [m]
+# (since G_N [m^3 kg^-1 s^-2] * M^2 [kg^2] / m_a [kg] / c^2 [m^2 s^-2] = [m])
+#
+# Because h ~ 1/r^2 rather than 1/r the d_max inversion is different:
+#   SNR = (A/r^2) * sqrt(tau/S_h_noise) = rho*
+#   r^2 = A * sqrt(tau/S_h_noise) / rho*
+#   d_max = sqrt( A * sqrt(tau/S_h_noise) / rho* )
+#
+# make_annihilation_source returns a single source_func(M_solar) -> (f, A)
+# rather than the (freq, h, tau) triple, because the 1/r^2 structure means
+# compute_point_ann handles d_max differently to compute_point.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def make_annihilation_source(alpha, level, n, l, m, astar_init, debug=False):
+    """
+    Return source_func(M_solar) -> (f_ann [Hz], A [m^2])
+    where h_peak = A / r^2  (r in metres, h dimensionless).
+
+    Also returns tau_func(f_ann, M_solar) -> tau [s].
+
+    Parameters
+    ----------
+    alpha      : float — dimensionless gravitational coupling
+    level      : str   — level string for annihilation rate e.g. '2p'
+    n          : int   — principal quantum number
+    l          : int   — orbital quantum number
+    m          : int   — azimuthal quantum number
+    astar_init : float — initial BH spin
+    debug      : bool  — if True, print all intermediate values for first point
+    """
+
+    _debug_done = [False]
+
+    def source_func(M_solar):
+        # ── Natural unit quantities ───────────────────────────────────────────
+        r_g          = calc_rg_from_bh_mass(M_solar)        # [eV^-1]
+        omega_ann    = calc_omega_ann(r_g, alpha, n)         # [eV]
+        ann_rate     = calc_annihilation_rate(
+                           level, alpha, omega_ann,
+                           G_N=6.708e-57, r_g=r_g
+                       )                                     # [eV]
+        bh_mass      = calc_bh_mass(r_g)                    # [eV]
+        delta_a_star = calc_delta_astar(astar_init, r_g, alpha, n, m)
+        n_max        = calc_n_max(bh_mass, delta_a_star, m)  # dimensionless
+
+        # ── GW frequency ─────────────────────────────────────────────────────
+        omega_ann_SI = omega_ann * EV_TO_SI                  # [rad/s]
+        f_ann        = omega_ann_SI / (2 * np.pi)            # [Hz]
+
+        # ── Source amplitude A in natural units then convert to SI ───────────
+        # In natural units (G=hbar=c=1), with r in eV^-1:
+        #   h = n_max * sqrt(8 * G_N_nat * ann_rate / omega_ann) / r^2
+        # G_N in natural units where mass is in eV: G_N_nat = 6.708e-57 eV^-2
+        # ann_rate and omega_ann in eV, r in eV^-1
+        # So sqrt(G_N_nat * ann_rate / omega_ann) has units eV^-1
+        # n_max is dimensionless
+        # h = n_max * [eV^-1] / [eV^-2] = dimensionless -- correct
+        #
+        # At r = 1 eV^-1:
+        #   h_nat = n_max * sqrt(8 * G_N_nat * ann_rate / omega_ann)  [dimensionless]
+        # Converting to r = 1 m requires noting that 1 m = 1/INV_EV_TO_M eV^-1
+        # so r_nat = 1 m / INV_EV_TO_M, and h scales as 1/r^2:
+        #   h(r=1m) = h_nat * (1 eV^-1)^2 / (1m)^2
+        #           = h_nat / INV_EV_TO_M^2
+        # Therefore A [m^2] = h_nat * INV_EV_TO_M^2 such that h = A/r^2 with r in m:
+        #   h(r) = A / r^2 = h_nat * INV_EV_TO_M^2 / r^2
+
+        G_N_nat  = 6.708e-57                                 # [eV^-2]
+        h_nat    = float(n_max) * np.sqrt(
+                       8 * G_N_nat * float(ann_rate) / float(omega_ann)
+                   )                                         # dimensionless at r=1 eV^-1
+        A        = h_nat * INV_EV_TO_M**2                   # [m^2]
+
+        if debug and not _debug_done[0]:
+            ann_rate_SI = float(ann_rate) * EV_TO_SI
+            print(f"\n{'─'*60}")
+            print(f"[ANN DEBUG] M_solar        = {M_solar:.4e} Msun")
+            print(f"[ANN DEBUG] r_g            = {r_g:.4e} eV^-1")
+            print(f"[ANN DEBUG] r_g (SI)       = {r_g * INV_EV_TO_M:.4e} m")
+            print(f"[ANN DEBUG] omega_ann      = {omega_ann:.4e} eV")
+            print(f"[ANN DEBUG] f_ann          = {f_ann:.4e} Hz")
+            print(f"[ANN DEBUG] ann_rate       = {float(ann_rate):.4e} eV")
+            print(f"[ANN DEBUG] ann_rate (SI)  = {ann_rate_SI:.4e} s^-1")
+            print(f"[ANN DEBUG] bh_mass        = {float(bh_mass):.4e} eV")
+            print(f"[ANN DEBUG] delta_a_star   = {delta_a_star:.4e}")
+            print(f"[ANN DEBUG] n_max          = {float(n_max):.4e}")
+            print(f"[ANN DEBUG] G_N_nat        = {G_N_nat:.4e} eV^-2")
+            print(f"[ANN DEBUG] h_nat (r=1eV^-1) = {h_nat:.4e} [dimensionless]")
+            print(f"[ANN DEBUG] INV_EV_TO_M    = {INV_EV_TO_M:.4e} m/eV^-1")
+            print(f"[ANN DEBUG] A = h_nat*INV^2 = {A:.4e} m^2")
+            print(f"[ANN DEBUG] h at 1 kpc     = {A / KPC_TO_M**2:.4e} [dimensionless]")
+            print(f"{'─'*60}\n")
+            _debug_done[0] = True
+
+        return f_ann, A
+
+    def tau_func(f_ann, M_solar):
+        r_g          = calc_rg_from_bh_mass(M_solar)
+        omega_ann    = calc_omega_ann(r_g, alpha, n)
+        ann_rate     = calc_annihilation_rate(
+                           level, alpha, omega_ann,
+                           G_N=6.708e-57, r_g=r_g
+                       )
+        bh_mass      = calc_bh_mass(r_g)
+        delta_a_star = calc_delta_astar(astar_init, r_g, alpha, n, m)
+        n_max        = calc_n_max(bh_mass, delta_a_star, m)
+        tau_eV       = calc_char_t_ann(ann_rate, n_max)      # [eV^-1]
+        return float(tau_eV) / EV_TO_SI                      # [s]
+
+    return source_func, tau_func
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Core computation — transitions (h ~ 1/r)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def compute_point(M_solar, freq_func, h_func, tau_func,
                   det=ADMX_EFR, f_band=(1e2, 1e8)):
     """
     Compute (f, d_max_kpc, h_unit, tau_val, S_h_noise) for one BH mass.
+    For transition processes where h_peak ~ 1/r.
 
-    Works for any process — transition or annihilation — as long as the
-    three callables follow the standard interface.
-
-    Parameters
-    ----------
-    M_solar   : float    — BH mass [solar masses]
-    freq_func : callable — freq_func(M_solar) -> f [Hz]
-    h_func    : callable — h_func(f, M_solar) -> h_unit [m]
-    tau_func  : callable — tau_func(f, M_solar) -> tau [s]
-    det       : MagneticWeberBar
-    f_band    : tuple    — (f_min, f_max) [Hz]
-
-    Returns
-    -------
-    tuple : (f [Hz], d_max [kpc], h_unit [m], tau [s], S_h_noise [Hz^-1])
-            Returns (f, nan, nan, nan, nan) on any failure.
+    d_max = h_unit * sqrt(tau / S_h_noise)
     """
     try:
         f_t = freq_func(M_solar)
@@ -268,29 +285,54 @@ def compute_point(M_solar, freq_func, h_func, tau_func,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sweep — process-agnostic
+# Core computation — annihilation (h ~ 1/r^2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def compute_point_ann(M_solar, source_func, tau_func,
+                      det=ADMX_EFR, f_band=(1e2, 1e8), rho_star=1.0):
+    """
+    Compute (f, d_max_kpc, A, tau_val, S_h_noise) for one BH mass.
+    For annihilation processes where h_peak = A / r^2.
+
+    SNR = (A/r^2) * sqrt(tau/S_h_noise) = rho*
+    => d_max = sqrt( A * sqrt(tau/S_h_noise) / rho* )
+    """
+    try:
+        f_ann, A = source_func(M_solar)
+    except Exception:
+        return np.nan, np.nan, np.nan, np.nan, np.nan
+
+    if not (f_band[0] <= f_ann <= f_band[1]):
+        return f_ann, np.nan, np.nan, np.nan, np.nan
+
+    try:
+        tau_val = tau_func(f_ann, M_solar)
+    except Exception:
+        return f_ann, np.nan, np.nan, np.nan, np.nan
+
+    S_h_noise = noise_equivalent_strain_broadband(
+                    det, np.array([f_ann])
+                )[0]
+
+    d_max_m_sq = A * np.sqrt(tau_val / S_h_noise) / rho_star
+
+    if not np.isfinite(d_max_m_sq) or d_max_m_sq <= 0:
+        return f_ann, np.nan, A, tau_val, S_h_noise
+
+    d_max_kpc = np.sqrt(d_max_m_sq) / KPC_TO_M
+
+    return f_ann, d_max_kpc, A, tau_val, S_h_noise
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sweep — transitions
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_sweep(freq_func, h_func, tau_func,
               M_range=(1e-12, 1e1), n_coarse=300, n_dense=800,
               det=ADMX_EFR, f_band=(1e2, 1e8)):
     """
-    Two-stage mass sweep, agnostic to the underlying GW process.
-
-    Parameters
-    ----------
-    freq_func : callable — from make_transition_funcs or make_annihilation_funcs
-    h_func    : callable
-    tau_func  : callable
-    M_range   : tuple   — (M_min, M_max) solar masses for coarse sweep
-    n_coarse  : int
-    n_dense   : int
-    det       : MagneticWeberBar
-    f_band    : tuple   — (f_min, f_max) [Hz]
-
-    Returns
-    -------
-    dict with keys: f, d, M, fin, f_res, d_res, M_res
+    Two-stage mass sweep for transition processes (h ~ 1/r).
     """
 
     def _sweep(M_array):
@@ -300,19 +342,17 @@ def run_sweep(freq_func, h_func, tau_func,
                 M, freq_func, h_func, tau_func, det, f_band
             )
             f_arr.append(f);  d_arr.append(d);  M_arr.append(M)
-            print(f"M = {M:.4e} Msun | f = {f:.4e} Hz")
+            # print(f"M = {M:.4e} Msun | f = {f:.4e} Hz")
         return np.array(f_arr), np.array(d_arr), np.array(M_arr)
 
-    # Stage 1: coarse sweep
     M_coarse      = np.logspace(np.log10(M_range[0]),
                                 np.log10(M_range[1]), n_coarse)
     f_c, d_c, M_c = _sweep(M_coarse)
     fin_c         = np.isfinite(d_c)
 
     if not fin_c.any():
-        raise RuntimeError("No finite points in coarse sweep — check parameters.")
+        raise RuntimeError("No finite points in coarse sweep.")
 
-    # Stage 2: dense sweep around f_mech
     f_mech   = det.f_mech
     f_lo     = f_mech / 10.0
     f_hi     = f_mech * 10.0
@@ -331,12 +371,9 @@ def run_sweep(freq_func, h_func, tau_func,
                                 np.log10(M_hi) + 0.3, n_dense)
     f_d, d_d, M_d = _sweep(M_dense)
 
-    # Resonance point by interpolation
     f_res_pt = np.nan;  d_res_pt = np.nan;  M_res_pt = np.nan
-
     sort_idx = np.argsort(f_c[fin_c])
-    f_s      = f_c[fin_c][sort_idx]
-    M_s      = M_c[fin_c][sort_idx]
+    f_s      = f_c[fin_c][sort_idx];  M_s = M_c[fin_c][sort_idx]
     _, uniq  = np.unique(f_s, return_index=True)
     f_u      = f_s[uniq];  M_u = M_s[uniq]
 
@@ -348,45 +385,118 @@ def run_sweep(freq_func, h_func, tau_func,
         log_M_res = f_to_logM(np.log10(f_mech))
         if np.isfinite(log_M_res):
             M_res_exact = 10.0**log_M_res
-            print(f"\nResonant mass: {M_res_exact:.4e} Msun | f = f_mech = {f_mech:.4e} Hz")
+            # print(f"\nResonant mass: {M_res_exact:.4e} Msun | f = f_mech = {f_mech:.4e} Hz")
             f_r, d_r, _, _, _ = compute_point(
                 M_res_exact, freq_func, h_func, tau_func, det, f_band
             )
             if np.isfinite(d_r):
                 f_res_pt = f_r;  d_res_pt = d_r;  M_res_pt = M_res_exact
 
-    # Merge and sort
     f_all = np.concatenate([f_c, f_d])
     d_all = np.concatenate([d_c, d_d])
     M_all = np.concatenate([M_c, M_d])
     sort_idx = np.argsort(f_all)
-    f_all    = f_all[sort_idx]
-    d_all    = d_all[sort_idx]
-    M_all    = M_all[sort_idx]
+    f_all    = f_all[sort_idx];  d_all = d_all[sort_idx];  M_all = M_all[sort_idx]
     fin_all  = np.isfinite(d_all) & np.isfinite(f_all) & (f_all > 0)
 
-    return dict(
-        f=f_all, d=d_all, M=M_all, fin=fin_all,
-        f_res=f_res_pt, d_res=d_res_pt, M_res=M_res_pt
-    )
+    return dict(f=f_all, d=d_all, M=M_all, fin=fin_all,
+                f_res=f_res_pt, d_res=d_res_pt, M_res=M_res_pt)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Plotting — unchanged, works for both processes
+# Sweep — annihilation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_sweep_ann(source_func, tau_func,
+                  M_range=(1e-12, 1e1), n_coarse=300, n_dense=800,
+                  det=ADMX_EFR, f_band=(1e2, 1e8), rho_star=1.0):
+    """
+    Two-stage mass sweep for annihilation processes (h ~ 1/r^2).
+    """
+
+    def _sweep(M_array):
+        f_arr, d_arr, M_arr = [], [], []
+        for M in M_array:
+            f, d, _, _, _ = compute_point_ann(
+                M, source_func, tau_func, det, f_band, rho_star
+            )
+            f_arr.append(f);  d_arr.append(d);  M_arr.append(M)
+            # print(f"M = {M:.4e} Msun | f = {f:.4e} Hz")
+        return np.array(f_arr), np.array(d_arr), np.array(M_arr)
+
+    M_coarse      = np.logspace(np.log10(M_range[0]),
+                                np.log10(M_range[1]), n_coarse)
+    f_c, d_c, M_c = _sweep(M_coarse)
+    fin_c         = np.isfinite(d_c)
+
+    if not fin_c.any():
+        raise RuntimeError("No finite points in annihilation coarse sweep.")
+
+    f_mech   = det.f_mech
+    f_lo     = f_mech / 10.0
+    f_hi     = f_mech * 10.0
+    mask_res = fin_c & (f_c >= f_lo) & (f_c <= f_hi)
+
+    if mask_res.any():
+        M_lo = M_c[mask_res].min()
+        M_hi = M_c[mask_res].max()
+    else:
+        idx_near = np.argmin(np.abs(f_c[fin_c] - f_mech))
+        M_near   = M_c[fin_c][idx_near]
+        M_lo     = 10**(np.log10(M_near) - 1.5)
+        M_hi     = 10**(np.log10(M_near) + 1.5)
+
+    M_dense       = np.logspace(np.log10(M_lo) - 0.3,
+                                np.log10(M_hi) + 0.3, n_dense)
+    f_d, d_d, M_d = _sweep(M_dense)
+
+    f_res_pt = np.nan;  d_res_pt = np.nan;  M_res_pt = np.nan
+    sort_idx = np.argsort(f_c[fin_c])
+    f_s      = f_c[fin_c][sort_idx];  M_s = M_c[fin_c][sort_idx]
+    _, uniq  = np.unique(f_s, return_index=True)
+    f_u      = f_s[uniq];  M_u = M_s[uniq]
+
+    if len(f_u) >= 2:
+        f_to_logM = interp1d(
+            np.log10(f_u), np.log10(M_u),
+            kind='linear', bounds_error=False, fill_value=np.nan
+        )
+        log_M_res = f_to_logM(np.log10(f_mech))
+        if np.isfinite(log_M_res):
+            M_res_exact = 10.0**log_M_res
+            # print(f"\nResonant mass (ann): {M_res_exact:.4e} Msun | f = f_mech = {f_mech:.4e} Hz")
+            f_r, d_r, _, _, _ = compute_point_ann(
+                M_res_exact, source_func, tau_func, det, f_band, rho_star
+            )
+            if np.isfinite(d_r):
+                f_res_pt = f_r;  d_res_pt = d_r;  M_res_pt = M_res_exact
+
+    f_all = np.concatenate([f_c, f_d])
+    d_all = np.concatenate([d_c, d_d])
+    M_all = np.concatenate([M_c, M_d])
+    sort_idx = np.argsort(f_all)
+    f_all    = f_all[sort_idx];  d_all = d_all[sort_idx];  M_all = M_all[sort_idx]
+    fin_all  = np.isfinite(d_all) & np.isfinite(f_all) & (f_all > 0)
+
+    return dict(f=f_all, d=d_all, M=M_all, fin=fin_all,
+                f_res=f_res_pt, d_res=d_res_pt, M_res=M_res_pt)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Plotting — works for both processes
 # ─────────────────────────────────────────────────────────────────────────────
 
 def plot_reach(results, alpha, process_label,
                det=ADMX_EFR, savepath=None):
     """
-    Plot the detector distance reach from the output of run_sweep().
+    Plot the detector distance reach from the output of run_sweep()
+    or run_sweep_ann().
 
     Parameters
     ----------
-    results       : dict  — output of run_sweep()
+    results       : dict  — output of run_sweep() or run_sweep_ann()
     alpha         : float — coupling, for legend label
-    process_label : str   — LaTeX string describing the process,
-                            e.g. r'|422\rangle \to |322\rangle\ \text{(transition)}'
-                            or   r'|211\rangle\ \text{(annihilation)}'
+    process_label : str   — LaTeX string e.g. r'|422\rangle \to |322\rangle'
     det           : MagneticWeberBar
     savepath      : str or None
     """
@@ -490,18 +600,18 @@ def plot_reach(results, alpha, process_label,
 if __name__ == '__main__':
 
     # ── Common parameters ─────────────────────────────────────────────────────
-    alpha   = 0.75
+    alpha   = 0.01
     M_range = (1e-12, 1e1)   # solar masses
     savepath= '4. Detector Distance Reach/distance_reach_mass_sweep.pdf'
 
     # =========================================================================
     # OPTION A: Transition process
     # =========================================================================
-    filepath         = "2. Relativistic Superradiance Rate/Mathematica/SR_n4l2m2_at0.990_aMin0.010_aMax1.200_20260317.dat"
-    transition       = '4d 3d'
-    process_label_t  = r'|422\rangle \to |322\rangle\ \text{(transition)}'
+    filepath        = "2. Relativistic Superradiance Rate/Mathematica/SR_n4l2m2_at0.990_aMin0.010_aMax1.200_20260317.dat"
+    transition      = '4d 3d'
+    process_label_t = r'|422\rangle \to |322\rangle\ \text{(transition)}'
 
-    freq_func_t, h_func_t, tau_func_t = make_transition_funcs(
+    """freq_func_t, h_func_t, tau_func_t = make_transition_funcs(
         alpha      = alpha,
         transition = transition,
         filepath   = filepath,
@@ -519,30 +629,74 @@ if __name__ == '__main__':
         alpha         = alpha,
         process_label = process_label_t,
         savepath      = savepath,
-    )
+    )"""
 
     # =========================================================================
     # OPTION B: Annihilation process
     # =========================================================================
-    level          = '2p'    # level string for annihilation rate
-    n, l, m        = 2, 1, 1  # quantum numbers of superradiant level
-    astar_init     = 0.99     # initial BH spin
-    process_label_a= r'|211\rangle\ \text{(annihilation)}'
+    level           = '2p'
+    n, l, m         = 2, 1, 1
+    astar_init      = 0.99
+    process_label_a = r'|211\rangle\ \text{(annihilation)}'
 
-    freq_func_a, h_func_a, tau_func_a = make_annihilation_funcs(
+    source_func_a, tau_func_ann = make_annihilation_source(
         alpha      = alpha,
         level      = level,
         n          = n,
         l          = l,
         m          = m,
         astar_init = astar_init,
+        debug      = True,   # prints full diagnostics for the first mass point
     )
 
-    results_a = run_sweep(
-        freq_func = freq_func_a,
-        h_func    = h_func_a,
-        tau_func  = tau_func_a,
-        M_range   = M_range,
+    print("\n" + "="*80)
+    print("ALPHA SCALING DIAGNOSTIC — fixed M = 1 Msun")
+    print("="*80)
+    print(f"{'alpha':>8} | {'Gamma_a [eV]':>14} | {'N_max':>14} | "
+          f"{'tau [s]':>14} | {'A [m^2]':>14} | {'d_max [kpc]':>14}")
+    print("-"*80)
+
+    M_test = 1.0
+
+    for alpha_test in [0.05, 0.10, 0.20, 0.30, 0.40, 0.50]:
+
+        try:
+            r_g_t        = calc_rg_from_bh_mass(M_test)
+            omega_t      = calc_omega_ann(r_g_t, alpha_test, n)
+            ann_t        = float(calc_annihilation_rate(
+                               level, alpha_test, omega_t,
+                               G_N=6.708e-57, r_g=r_g_t
+                           ))
+            bh_mass_t    = float(calc_bh_mass(r_g_t))
+            delta_t      = calc_delta_astar(astar_init, r_g_t, alpha_test, n, m)
+            n_max_t      = float(calc_n_max(bh_mass_t, delta_t, m))
+            tau_t        = float(calc_char_t_ann(ann_t, n_max_t)) / EV_TO_SI
+
+            G_N_nat      = 6.708e-57
+            h_nat        = n_max_t * np.sqrt(
+                               8 * G_N_nat * ann_t / float(omega_t)
+                           )
+            A_t          = h_nat * INV_EV_TO_M**2
+
+            f_t          = float(omega_t) * EV_TO_SI / (2 * np.pi)
+            S_h_t        = noise_equivalent_strain_broadband(
+                               ADMX_EFR, np.array([f_t])
+                           )[0]
+            val          = A_t * np.sqrt(tau_t / S_h_t)
+            d_kpc        = np.sqrt(val) / KPC_TO_M if val > 0 else np.nan
+
+            print(f"{alpha_test:>8.2f} | {ann_t:>14.3e} | {n_max_t:>14.3e} | "
+                  f"{tau_t:>14.3e} | {A_t:>14.3e} | {d_kpc:>14.3e}")
+
+        except Exception as e:
+            print(f"{alpha_test:>8.2f} | FAILED: {e}")
+
+    print("="*80 + "\n")
+
+    results_a = run_sweep_ann(
+        source_func = source_func_a,
+        tau_func    = tau_func_ann,
+        M_range     = M_range,
     )
 
     plot_reach(

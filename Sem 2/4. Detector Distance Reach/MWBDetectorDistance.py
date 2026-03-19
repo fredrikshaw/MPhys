@@ -588,8 +588,8 @@ def plot_reach(results, alpha, process_label,
 if __name__ == '__main__':
 
     # ── Common parameters ─────────────────────────────────────────────────────
-    alpha   = 0.01
-    M_range = (1e-12, 1e1)   # solar masses
+    alpha   = 0.001
+    M_range = (1e-12, 1e4)   # solar masses
     savepath= '4. Detector Distance Reach/distance_reach_mass_sweep.pdf'
 
     # =========================================================================

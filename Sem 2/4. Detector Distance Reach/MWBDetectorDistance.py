@@ -60,6 +60,36 @@ sys.path.append(str(relativistic_dir.resolve()))
 
 from SuperradianceRateCF import sr_rate_dimensioned
 
+
+def check_required_files(verbose=False):
+    """Verify required files and modules are accessible for this script."""
+    checks = []
+
+    # folder paths referenced in this module
+    checks.append((script_dir, "ParamCalculator script directory"))
+    checks.append((relativistic_dir, "SuperradianceRate directory"))
+
+    # module paths for explicit local dependencies
+    for module_name in ["MagneticWeberBar", "ParamCalculator", "SuperradianceRateCF"]:
+        try:
+            module = __import__(module_name)
+            module_path = Path(getattr(module, "__file__", ""))
+            checks.append((module_path, f"Python module {module_name}"))
+        except Exception as ex:
+            checks.append((Path("<missing>"), f"Python module {module_name} (import failed: {ex})"))
+
+    all_ok = True
+    for path_obj, reason in checks:
+        if not path_obj or not path_obj.exists():
+            print(f"[FILE VALIDATION] MISSING: {reason}: {path_obj}")
+            all_ok = False
+        elif verbose:
+            print(f"[FILE VALIDATION] OK: {reason}: {path_obj}")
+    return all_ok
+
+# Run validation at import-time once
+_required_files_ok = check_required_files(verbose=False)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Unit conversion constants
 # ─────────────────────────────────────────────────────────────────────────────
@@ -243,20 +273,24 @@ def compute_point(M_solar, freq_func, h_func, tau_func,
     """
     try:
         f_t = freq_func(M_solar)
-    except Exception:
+    except Exception as exc:
+        # print(f"[VALIDATION] Rejected point: M={M_solar} (freq_func failed: {exc})")
         return np.nan, np.nan, np.nan, np.nan, np.nan
 
     if not (f_band[0] <= f_t <= f_band[1]):
+        # print(f"[VALIDATION] Rejected point: M={M_solar} f={f_t:.3e} (outside f_band {f_band})")
         return f_t, np.nan, np.nan, np.nan, np.nan
 
     try:
         h_unit = h_func(f_t, M_solar)
-    except Exception:
+    except Exception as exc:
+        # print(f"[VALIDATION] Rejected point: M={M_solar} f={f_t:.3e} (h_func failed: {exc})")
         return f_t, np.nan, np.nan, np.nan, np.nan
 
     try:
         tau_val = tau_func(f_t, M_solar)
-    except Exception:
+    except Exception as exc:
+        # print(f"[VALIDATION] Rejected point: M={M_solar} f={f_t:.3e} (tau_func failed: {exc})")
         return f_t, np.nan, np.nan, np.nan, np.nan
 
     S_h_noise = noise_equivalent_strain_broadband(
@@ -267,6 +301,7 @@ def compute_point(M_solar, freq_func, h_func, tau_func,
     d_max_kpc = d_max_m / KPC_TO_M
 
     if not np.isfinite(d_max_kpc) or d_max_kpc <= 0:
+        # print(f"[VALIDATION] Rejected point: M={M_solar} f={f_t:.3e} d_max_kpc={d_max_kpc} (invalid distance)")
         return f_t, np.nan, h_unit, tau_val, S_h_noise
 
     return f_t, d_max_kpc, h_unit, tau_val, S_h_noise
@@ -287,15 +322,18 @@ def compute_point_ann(M_solar, source_func, tau_func,
     """
     try:
         f_ann, A = source_func(M_solar)
-    except Exception:
+    except Exception as exc:
+        # print(f"[VALIDATION] Rejected ann point: M={M_solar} (source_func failed: {exc})")
         return np.nan, np.nan, np.nan, np.nan, np.nan
 
     if not (f_band[0] <= f_ann <= f_band[1]):
+        # print(f"[VALIDATION] Rejected ann point: M={M_solar} f={f_ann:.3e} (outside f_band {f_band})")
         return f_ann, np.nan, np.nan, np.nan, np.nan
 
     try:
         tau_val = tau_func(f_ann, M_solar)
-    except Exception:
+    except Exception as exc:
+        # print(f"[VALIDATION] Rejected ann point: M={M_solar} f={f_ann:.3e} (tau_func failed: {exc})")
         return f_ann, np.nan, np.nan, np.nan, np.nan
 
     S_h_noise = noise_equivalent_strain_broadband(
@@ -305,6 +343,7 @@ def compute_point_ann(M_solar, source_func, tau_func,
     d_max_m_sq = A * np.sqrt(tau_val / S_h_noise) / rho_star
 
     if not np.isfinite(d_max_m_sq) or d_max_m_sq <= 0:
+        # print(f"[VALIDATION] Rejected ann point: M={M_solar} f={f_ann:.3e} d_max_m_sq={d_max_m_sq} (invalid distance)")
         return f_ann, np.nan, A, tau_val, S_h_noise
 
     d_max_kpc = np.sqrt(d_max_m_sq) / KPC_TO_M

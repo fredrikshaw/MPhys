@@ -234,7 +234,7 @@ def make_annihilation_source(alpha, level, n, l, m, astar_init, debug=False):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def compute_point(M_solar, freq_func, h_func, tau_func,
-                  det=ADMX_EFR, f_band=(1e2, 1e8)):
+                  det=ADMX_EFR, f_band=(1e2, 1e8), rho_star=1.0):
     """
     Compute (f, d_max_kpc, h_unit, tau_val, S_h_noise) for one BH mass.
     For transition processes where h_peak ~ 1/r.
@@ -318,78 +318,140 @@ def compute_point_ann(M_solar, source_func, tau_func,
 
 def run_sweep(freq_func, h_func, tau_func,
               M_range=(1e-12, 1e1), n_coarse=300, n_dense=800,
-              det=ADMX_EFR, f_band=(1e2, 1e8)):
+              det1=ADMX_EFR, det2=DMRADIO_GUT, f_band=(1e2, 1e8), rho_star=1.0):
     """
     Two-stage mass sweep for transition processes (h ~ 1/r).
+    Returns results for both detectors.
     """
-
-    def _sweep(M_array):
+    
+    def _sweep(M_array, det):
         f_arr, d_arr, M_arr = [], [], []
         for M in M_array:
             f, d, _, _, _ = compute_point(
-                M, freq_func, h_func, tau_func, det, f_band
+                M, freq_func, h_func, tau_func, det, f_band, rho_star
             )
             f_arr.append(f);  d_arr.append(d);  M_arr.append(M)
-            # print(f"M = {M:.4e} Msun | f = {f:.4e} Hz")
         return np.array(f_arr), np.array(d_arr), np.array(M_arr)
 
-    M_coarse      = np.logspace(np.log10(M_range[0]),
-                                np.log10(M_range[1]), n_coarse)
-    f_c, d_c, M_c = _sweep(M_coarse)
-    fin_c         = np.isfinite(d_c)
-
-    if not fin_c.any():
-        raise RuntimeError("No finite points in coarse sweep.")
-
-    f_mech   = det.f_mech
-    f_lo     = f_mech / 10.0
-    f_hi     = f_mech * 10.0
-    mask_res = fin_c & (f_c >= f_lo) & (f_c <= f_hi)
-
-    if mask_res.any():
-        M_lo = M_c[mask_res].min()
-        M_hi = M_c[mask_res].max()
+    M_coarse = np.logspace(np.log10(M_range[0]), np.log10(M_range[1]), n_coarse)
+    
+    # Get results for both detectors
+    f_c1, d_c1, M_c1 = _sweep(M_coarse, det1)
+    f_c2, d_c2, M_c2 = _sweep(M_coarse, det2)
+    
+    # Find resonant masses for both detectors
+    f_mech1 = det1.f_mech
+    f_mech2 = det2.f_mech
+    
+    # Process results for detector 1 - find region around resonance
+    fin_c1 = np.isfinite(d_c1)
+    M_res1, f_r1, d_r1 = np.nan, np.nan, np.nan
+    d_fine1 = None
+    M_fine1 = None
+    
+    if fin_c1.any():
+        # Find index closest to mechanical frequency
+        idx_closest = np.argmin(np.abs(f_c1[fin_c1] - f_mech1))
+        M_guess = M_c1[fin_c1][idx_closest]
+        
+        # Do dense sweep around the guess
+        M_dense = np.logspace(np.log10(M_guess/10), np.log10(M_guess*10), n_dense)
+        f_dense, d_dense, _ = _sweep(M_dense, det1)
+        
+        # Store dense results for plotting
+        valid_dense = np.isfinite(d_dense)
+        if valid_dense.any():
+            M_fine1 = M_dense[valid_dense]
+            d_fine1 = d_dense[valid_dense]
+            
+            # Find exact resonance from dense sweep
+            idx_res = np.argmax(d_fine1)
+            M_res1 = M_fine1[idx_res]
+            f_r1 = f_dense[valid_dense][idx_res]
+            d_r1 = d_fine1[idx_res]
+    
+    # Process results for detector 2
+    fin_c2 = np.isfinite(d_c2)
+    M_res2, f_r2, d_r2 = np.nan, np.nan, np.nan
+    d_fine2 = None
+    M_fine2 = None
+    
+    if fin_c2.any():
+        # Find index closest to mechanical frequency
+        idx_closest = np.argmin(np.abs(f_c2[fin_c2] - f_mech2))
+        M_guess = M_c2[fin_c2][idx_closest]
+        
+        # Do dense sweep around the guess
+        M_dense = np.logspace(np.log10(M_guess/10), np.log10(M_guess*10), n_dense)
+        f_dense, d_dense, _ = _sweep(M_dense, det2)
+        
+        # Store dense results for plotting
+        valid_dense = np.isfinite(d_dense)
+        if valid_dense.any():
+            M_fine2 = M_dense[valid_dense]
+            d_fine2 = d_dense[valid_dense]
+            
+            # Find exact resonance from dense sweep
+            idx_res = np.argmax(d_fine2)
+            M_res2 = M_fine2[idx_res]
+            f_r2 = f_dense[valid_dense][idx_res]
+            d_r2 = d_fine2[idx_res]
+    
+    # Combine coarse and dense results for plotting
+    # For detector 1
+    valid_c1 = np.isfinite(d_c1)
+    if M_fine1 is not None:
+        M_combined1 = np.concatenate([M_c1[valid_c1], M_fine1])
+        d_combined1 = np.concatenate([d_c1[valid_c1], d_fine1])
+        # Sort by mass
+        sort_idx = np.argsort(M_combined1)
+        M_combined1 = M_combined1[sort_idx]
+        d_combined1 = d_combined1[sort_idx]
     else:
-        idx_near = np.argmin(np.abs(f_c[fin_c] - f_mech))
-        M_near   = M_c[fin_c][idx_near]
-        M_lo     = 10**(np.log10(M_near) - 1.5)
-        M_hi     = 10**(np.log10(M_near) + 1.5)
-
-    M_dense       = np.logspace(np.log10(M_lo) - 0.3,
-                                np.log10(M_hi) + 0.3, n_dense)
-    f_d, d_d, M_d = _sweep(M_dense)
-
-    f_res_pt = np.nan;  d_res_pt = np.nan;  M_res_pt = np.nan
-    sort_idx = np.argsort(f_c[fin_c])
-    f_s      = f_c[fin_c][sort_idx];  M_s = M_c[fin_c][sort_idx]
-    _, uniq  = np.unique(f_s, return_index=True)
-    f_u      = f_s[uniq];  M_u = M_s[uniq]
-
-    if len(f_u) >= 2:
-        f_to_logM = interp1d(
-            np.log10(f_u), np.log10(M_u),
-            kind='linear', bounds_error=False, fill_value=np.nan
-        )
-        log_M_res = f_to_logM(np.log10(f_mech))
-        if np.isfinite(log_M_res):
-            M_res_exact = 10.0**log_M_res
-            # print(f"\nResonant mass: {M_res_exact:.4e} Msun | f = f_mech = {f_mech:.4e} Hz")
-            f_r, d_r, _, _, _ = compute_point(
-                M_res_exact, freq_func, h_func, tau_func, det, f_band
-            )
-            if np.isfinite(d_r):
-                f_res_pt = f_r;  d_res_pt = d_r;  M_res_pt = M_res_exact
-
-    f_all = np.concatenate([f_c, f_d])
-    d_all = np.concatenate([d_c, d_d])
-    M_all = np.concatenate([M_c, M_d])
-    sort_idx = np.argsort(f_all)
-    f_all    = f_all[sort_idx];  d_all = d_all[sort_idx];  M_all = M_all[sort_idx]
-    fin_all  = np.isfinite(d_all) & np.isfinite(f_all) & (f_all > 0)
-
-    return dict(f=f_all, d=d_all, M=M_all, fin=fin_all,
-                f_res=f_res_pt, d_res=d_res_pt, M_res=M_res_pt)
-
+        M_combined1 = M_c1[valid_c1]
+        d_combined1 = d_c1[valid_c1]
+    
+    # For detector 2
+    valid_c2 = np.isfinite(d_c2)
+    if M_fine2 is not None:
+        M_combined2 = np.concatenate([M_c2[valid_c2], M_fine2])
+        d_combined2 = np.concatenate([d_c2[valid_c2], d_fine2])
+        # Sort by mass
+        sort_idx = np.argsort(M_combined2)
+        M_combined2 = M_combined2[sort_idx]
+        d_combined2 = d_combined2[sort_idx]
+    else:
+        M_combined2 = M_c2[valid_c2]
+        d_combined2 = d_c2[valid_c2]
+    
+    return {
+        'det1': {
+            'name': 'ADMX-EFR',
+            'f_mech': f_mech1,
+            'f': f_c1[valid_c1],
+            'd': d_c1[valid_c1],
+            'M': M_c1[valid_c1],
+            'f_combined': f_c1[valid_c1],  # Keep for compatibility
+            'd_combined': d_combined1,
+            'M_combined': M_combined1,
+            'f_res': f_r1,
+            'd_res': d_r1,
+            'M_res': M_res1
+        },
+        'det2': {
+            'name': 'DMRadio-GUT',
+            'f_mech': f_mech2,
+            'f': f_c2[valid_c2],
+            'd': d_c2[valid_c2],
+            'M': M_c2[valid_c2],
+            'f_combined': f_c2[valid_c2],  # Keep for compatibility
+            'd_combined': d_combined2,
+            'M_combined': M_combined2,
+            'f_res': f_r2,
+            'd_res': d_r2,
+            'M_res': M_res2
+        }
+    }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Sweep — annihilation
@@ -397,101 +459,145 @@ def run_sweep(freq_func, h_func, tau_func,
 
 def run_sweep_ann(source_func, tau_func,
                   M_range=(1e-12, 1e1), n_coarse=300, n_dense=800,
-                  det=ADMX_EFR, f_band=(1e2, 1e8), rho_star=1.0):
+                  det1=ADMX_EFR, det2=DMRADIO_GUT, f_band=(1e2, 1e8), rho_star=1.0):
     """
     Two-stage mass sweep for annihilation processes (h ~ 1/r^2).
+    Returns results for both detectors.
     """
-
-    def _sweep(M_array):
+    
+    def _sweep(M_array, det):
         f_arr, d_arr, M_arr = [], [], []
         for M in M_array:
             f, d, _, _, _ = compute_point_ann(
                 M, source_func, tau_func, det, f_band, rho_star
             )
             f_arr.append(f);  d_arr.append(d);  M_arr.append(M)
-            # print(f"M = {M:.4e} Msun | f = {f:.4e} Hz")
         return np.array(f_arr), np.array(d_arr), np.array(M_arr)
 
-    M_coarse      = np.logspace(np.log10(M_range[0]),
-                                np.log10(M_range[1]), n_coarse)
-    f_c, d_c, M_c = _sweep(M_coarse)
-    fin_c         = np.isfinite(d_c)
-
-    if not fin_c.any():
-        raise RuntimeError("No finite points in annihilation coarse sweep.")
-
-    f_mech   = det.f_mech
-    f_lo     = f_mech / 10.0
-    f_hi     = f_mech * 10.0
-    mask_res = fin_c & (f_c >= f_lo) & (f_c <= f_hi)
-
-    if mask_res.any():
-        M_lo = M_c[mask_res].min()
-        M_hi = M_c[mask_res].max()
+    M_coarse = np.logspace(np.log10(M_range[0]), np.log10(M_range[1]), n_coarse)
+    
+    # Get results for both detectors
+    f_c1, d_c1, M_c1 = _sweep(M_coarse, det1)
+    f_c2, d_c2, M_c2 = _sweep(M_coarse, det2)
+    
+    # Find resonant masses for both detectors
+    f_mech1 = det1.f_mech
+    f_mech2 = det2.f_mech
+    
+    # Process results for detector 1
+    fin_c1 = np.isfinite(d_c1)
+    M_res1, f_r1, d_r1 = np.nan, np.nan, np.nan
+    d_fine1 = None
+    M_fine1 = None
+    
+    if fin_c1.any():
+        # Find index closest to mechanical frequency
+        idx_closest = np.argmin(np.abs(f_c1[fin_c1] - f_mech1))
+        M_guess = M_c1[fin_c1][idx_closest]
+        
+        # Do dense sweep around the guess
+        M_dense = np.logspace(np.log10(M_guess/10), np.log10(M_guess*10), n_dense)
+        f_dense, d_dense, _ = _sweep(M_dense, det1)
+        
+        # Store dense results for plotting
+        valid_dense = np.isfinite(d_dense)
+        if valid_dense.any():
+            M_fine1 = M_dense[valid_dense]
+            d_fine1 = d_dense[valid_dense]
+            
+            # Find exact resonance from dense sweep
+            idx_res = np.argmax(d_fine1)
+            M_res1 = M_fine1[idx_res]
+            f_r1 = f_dense[valid_dense][idx_res]
+            d_r1 = d_fine1[idx_res]
+    
+    # Process results for detector 2
+    fin_c2 = np.isfinite(d_c2)
+    M_res2, f_r2, d_r2 = np.nan, np.nan, np.nan
+    d_fine2 = None
+    M_fine2 = None
+    
+    if fin_c2.any():
+        # Find index closest to mechanical frequency
+        idx_closest = np.argmin(np.abs(f_c2[fin_c2] - f_mech2))
+        M_guess = M_c2[fin_c2][idx_closest]
+        
+        # Do dense sweep around the guess
+        M_dense = np.logspace(np.log10(M_guess/10), np.log10(M_guess*10), n_dense)
+        f_dense, d_dense, _ = _sweep(M_dense, det2)
+        
+        # Store dense results for plotting
+        valid_dense = np.isfinite(d_dense)
+        if valid_dense.any():
+            M_fine2 = M_dense[valid_dense]
+            d_fine2 = d_dense[valid_dense]
+            
+            # Find exact resonance from dense sweep
+            idx_res = np.argmax(d_fine2)
+            M_res2 = M_fine2[idx_res]
+            f_r2 = f_dense[valid_dense][idx_res]
+            d_r2 = d_fine2[idx_res]
+    
+    # Combine coarse and dense results for plotting
+    valid_c1 = np.isfinite(d_c1)
+    if M_fine1 is not None:
+        M_combined1 = np.concatenate([M_c1[valid_c1], M_fine1])
+        d_combined1 = np.concatenate([d_c1[valid_c1], d_fine1])
+        # Sort by mass
+        sort_idx = np.argsort(M_combined1)
+        M_combined1 = M_combined1[sort_idx]
+        d_combined1 = d_combined1[sort_idx]
     else:
-        idx_near = np.argmin(np.abs(f_c[fin_c] - f_mech))
-        M_near   = M_c[fin_c][idx_near]
-        M_lo     = 10**(np.log10(M_near) - 1.5)
-        M_hi     = 10**(np.log10(M_near) + 1.5)
-
-    M_dense       = np.logspace(np.log10(M_lo) - 0.3,
-                                np.log10(M_hi) + 0.3, n_dense)
-    f_d, d_d, M_d = _sweep(M_dense)
-
-    f_res_pt = np.nan;  d_res_pt = np.nan;  M_res_pt = np.nan
-    sort_idx = np.argsort(f_c[fin_c])
-    f_s      = f_c[fin_c][sort_idx];  M_s = M_c[fin_c][sort_idx]
-    _, uniq  = np.unique(f_s, return_index=True)
-    f_u      = f_s[uniq];  M_u = M_s[uniq]
-
-    if len(f_u) >= 2:
-        f_to_logM = interp1d(
-            np.log10(f_u), np.log10(M_u),
-            kind='linear', bounds_error=False, fill_value=np.nan
-        )
-        log_M_res = f_to_logM(np.log10(f_mech))
-        if np.isfinite(log_M_res):
-            M_res_exact = 10.0**log_M_res
-            # print(f"\nResonant mass (ann): {M_res_exact:.4e} Msun | f = f_mech = {f_mech:.4e} Hz")
-            f_r, d_r, _, _, _ = compute_point_ann(
-                M_res_exact, source_func, tau_func, det, f_band, rho_star
-            )
-            if np.isfinite(d_r):
-                f_res_pt = f_r;  d_res_pt = d_r;  M_res_pt = M_res_exact
-
-    f_all = np.concatenate([f_c, f_d])
-    d_all = np.concatenate([d_c, d_d])
-    M_all = np.concatenate([M_c, M_d])
-    sort_idx = np.argsort(f_all)
-    f_all    = f_all[sort_idx];  d_all = d_all[sort_idx];  M_all = M_all[sort_idx]
-    fin_all  = np.isfinite(d_all) & np.isfinite(f_all) & (f_all > 0)
-
-    return dict(f=f_all, d=d_all, M=M_all, fin=fin_all,
-                f_res=f_res_pt, d_res=d_res_pt, M_res=M_res_pt)
-
+        M_combined1 = M_c1[valid_c1]
+        d_combined1 = d_c1[valid_c1]
+    
+    valid_c2 = np.isfinite(d_c2)
+    if M_fine2 is not None:
+        M_combined2 = np.concatenate([M_c2[valid_c2], M_fine2])
+        d_combined2 = np.concatenate([d_c2[valid_c2], d_fine2])
+        # Sort by mass
+        sort_idx = np.argsort(M_combined2)
+        M_combined2 = M_combined2[sort_idx]
+        d_combined2 = d_combined2[sort_idx]
+    else:
+        M_combined2 = M_c2[valid_c2]
+        d_combined2 = d_c2[valid_c2]
+    
+    return {
+        'det1': {
+            'name': 'ADMX-EFR',
+            'f_mech': f_mech1,
+            'f': f_c1[valid_c1],
+            'd': d_c1[valid_c1],
+            'M': M_c1[valid_c1],
+            'd_combined': d_combined1,
+            'M_combined': M_combined1,
+            'f_res': f_r1,
+            'd_res': d_r1,
+            'M_res': M_res1
+        },
+        'det2': {
+            'name': 'DMRadio-GUT',
+            'f_mech': f_mech2,
+            'f': f_c2[valid_c2],
+            'd': d_c2[valid_c2],
+            'M': M_c2[valid_c2],
+            'd_combined': d_combined2,
+            'M_combined': M_combined2,
+            'f_res': f_r2,
+            'd_res': d_r2,
+            'M_res': M_res2
+        }
+    }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Plotting — works for both processes
 # ─────────────────────────────────────────────────────────────────────────────
 
 def plot_reach(results, alpha, process_label,
-               det=ADMX_EFR, savepath=None):
+               savepath=None):
     """
-    Plot the detector distance reach from the output of run_sweep()
-    or run_sweep_ann().
-
-    The x-axis runs in increasing BH mass (left to right), which means
-    decreasing frequency. Mass is on the bottom axis (log scale) and
-    frequency on the top axis. The resonance point is inserted into the
-    main dataset so it appears in the connected curve.
-
-    Parameters
-    ----------
-    results       : dict  — output of run_sweep() or run_sweep_ann()
-    alpha         : float — coupling, for legend label
-    process_label : str   — LaTeX string e.g. r'|422\rangle \to |322\rangle'
-    det           : MagneticWeberBar
-    savepath      : str or None
+    Plot the detector distance reach for both ADMX-EFR and DMRadio-GUT.
     """
     plt.rcParams.update({
         "text.usetex"         : True,
@@ -500,169 +606,172 @@ def plot_reach(results, alpha, process_label,
         "text.latex.preamble" : r"\usepackage{amsmath}"
     })
 
-    f_all   = results['f'];    d_all   = results['d']
-    M_all   = results['M'];    fin_all = results['fin']
-    f_res   = results['f_res'];d_res   = results['d_res']
-    M_res   = results['M_res']
-    f_mech  = det.f_mech
-
-    # ── Insert resonance point into the main dataset ──────────────────────────
-    # This ensures the resonance spike appears in the connected line rather
-    # than as an isolated marker. We insert it at the correct position sorted
-    # by mass (equivalently by descending frequency).
-    if np.isfinite(d_res) and np.isfinite(M_res):
-        f_all   = np.append(f_all,   f_res)
-        d_all   = np.append(d_all,   d_res)
-        M_all   = np.append(M_all,   M_res)
-        # Re-sort by mass ascending (= frequency descending)
-        sort_idx = np.argsort(M_all)
-        f_all    = f_all[sort_idx]
-        d_all    = d_all[sort_idx]
-        M_all    = M_all[sort_idx]
-        fin_all  = np.isfinite(d_all) & np.isfinite(f_all) & (f_all > 0)
-
-    fig, ax1 = plt.subplots(figsize=(4, 3.5))
+    fig, ax1 = plt.subplots(figsize=(5, 4))
     fig.subplots_adjust(top=0.80)
 
-    # ── Main distance reach curve — plotted vs MASS on bottom axis ───────────
-    # Since f ~ 1/M, plotting vs M with log scale and inverted direction
-    # means we plot M on x and d on y, with M increasing left to right.
-    M_fin = M_all[fin_all]
-    d_fin = d_all[fin_all]
-    f_fin = f_all[fin_all]
+    colors = {'ADMX-EFR': 'steelblue', 'DMRadio-GUT': 'darkorange'}
+    linestyles = {'ADMX-EFR': '-', 'DMRadio-GUT': '--'}
+    
+    # Plot distance reach for both detectors
+    for det_key in ['det1', 'det2']:
+        det_data = results[det_key]
+        
+        # Use combined data for smoother plot around resonance
+        M_plot = det_data['M_combined']
+        d_plot = det_data['d_combined']
+        
+        if len(M_plot) == 0:
+            continue
+        
+        # Sort by mass
+        sort_idx = np.argsort(M_plot)
+        M_plot = M_plot[sort_idx]
+        d_plot = d_plot[sort_idx]
+        
+        # Remove any duplicate masses that might cause plotting artifacts
+        _, unique_idx = np.unique(M_plot, return_index=True)
+        M_plot = M_plot[unique_idx]
+        d_plot = d_plot[unique_idx]
+        
+        # Create label
+        label = f"{det_data['name']}: {process_label}, $\\alpha={alpha}$"
+        
+        # Plot distance reach
+        ax1.loglog(M_plot, d_plot,
+                   color=colors[det_data['name']],
+                   linewidth=2.0,
+                   linestyle=linestyles[det_data['name']],
+                   label=label)
+        
+        # Mark resonance point if exists
+        if np.isfinite(det_data['d_res']) and np.isfinite(det_data['M_res']):
+            ax1.scatter([det_data['M_res']], [det_data['d_res']],
+                        color=colors[det_data['name']], s=80, zorder=6,
+                        marker='o' if det_key == 'det1' else 's',
+                        edgecolors='black', linewidth=0.5)
+            
+            # Add annotation for the resonance
+            if det_key == 'det1':
+                log_M_val = np.log10(det_data['M_res'])
+                if abs(log_M_val - round(log_M_val)) < 0.15:
+                    M_label = f'$M = 10^{{{int(round(log_M_val))}}}\\,M_\\odot$'
+                else:
+                    M_label = f'$M = {det_data["M_res"]:.2e}\\,M_\\odot$'
+                
+                ax1.annotate(
+                    M_label + '\n' + '$f = f_{\\rm mech}^{\\rm ADMX}$',
+                    xy         = (det_data['M_res'], det_data['d_res']),
+                    xytext     = (det_data['M_res'] * 4.0, det_data['d_res'] * 0.15),
+                    fontsize   = 8, color=colors[det_data['name']],
+                    arrowprops = dict(arrowstyle='->', color=colors[det_data['name']], lw=0.8),
+                )
+            elif det_key == 'det2' and np.isfinite(det_data['d_res']):
+                ax1.annotate(
+                    '$f = f_{\\rm mech}^{\\rm DMRadio}$',
+                    xy         = (det_data['M_res'], det_data['d_res']),
+                    xytext     = (det_data['M_res'] * 0.3, det_data['d_res'] * 0.3),
+                    fontsize   = 8, color=colors[det_data['name']],
+                    arrowprops = dict(arrowstyle='->', color=colors[det_data['name']], lw=0.8),
+                )
+            
+            # Add vertical line at resonance
+            ax1.axvline(det_data['M_res'], color=colors[det_data['name']], 
+                       linewidth=1.0, linestyle=':', alpha=0.5, zorder=1)
 
-    # Sort by mass ascending for correct line connection
-    sort_m   = np.argsort(M_fin)
-    M_plot   = M_fin[sort_m]
-    d_plot   = d_fin[sort_m]
-    f_plot   = f_fin[sort_m]
-
-    ax1.loglog(M_plot, d_plot,
-               color='steelblue', linewidth=2.0,
-               label=fr'${process_label},\ \alpha={alpha}$')
-
-    # ── Mark the resonance point on the curve ─────────────────────────────────
-    if np.isfinite(d_res) and np.isfinite(M_res):
-        ax1.scatter([M_res], [d_res],
-                    color='firebrick', s=60, zorder=6,
-                    label=fr'$f = f_{{\rm mech}}$')
-
-        log_M_val = np.log10(M_res)
-        if abs(log_M_val - round(log_M_val)) < 0.15:
-            M_label = fr'$M = 10^{{{int(round(log_M_val))}}}\,M_\odot$'
-        else:
-            M_label = fr'$M = {M_res:.2e}\,M_\odot$'
-
-        ax1.annotate(
-            M_label + '\n' + fr'$f = f_{{\rm mech}}$',
-            xy         = (M_res, d_res),
-            xytext     = (M_res * 4.0, d_res * 0.15),
-            fontsize   = 9, color='firebrick',
-            arrowprops = dict(arrowstyle='->', color='firebrick', lw=0.8),
-        )
-
-    # ── Vertical line at the resonant mass ───────────────────────────────────
-    if np.isfinite(M_res):
-        ax1.axvline(M_res, color='firebrick', linewidth=1.0,
-                    linestyle=':', alpha=0.7)
-
-    # ── Right axis: noise curve vs mass ───────────────────────────────────────
-    # The noise curve is defined vs frequency, so we convert a frequency grid
-    # to an equivalent mass grid using the monotone f <-> M relationship
-    # already established from the sweep data.
+    # Add noise curves on right axis - now using a smooth interpolation
     ax_noise = ax1.twinx()
-
-    # Build a monotone interpolator from f -> M using the sorted finite data
-    if len(M_plot) >= 2:
-        # f decreases as M increases — use unique M values
-        _, uniq_m = np.unique(M_plot, return_index=True)
-        M_uniq    = M_plot[uniq_m]
-        f_uniq    = f_plot[uniq_m]
-
-        f_to_M    = interp1d(
-            np.log10(f_uniq[::-1]),   # f decreasing -> M increasing, so reverse
-            np.log10(M_uniq[::-1]),
-            kind='linear', bounds_error=False, fill_value=np.nan
-        )
-
-        freqs_noise = np.logspace(2, 8, 2000)
-        S_h         = noise_equivalent_strain_broadband(det, freqs_noise)
-
-        # Convert noise frequencies to masses
-        log_M_noise = f_to_M(np.log10(freqs_noise))
-        valid_noise = np.isfinite(log_M_noise)
-        M_noise     = 10.0**log_M_noise[valid_noise]
-        Sn_plot     = np.sqrt(S_h[valid_noise])
-
-        # Sort by mass for correct plotting
-        sort_n  = np.argsort(M_noise)
-        ax_noise.loglog(M_noise[sort_n], Sn_plot[sort_n],
-                        color='gray', linewidth=1.2,
-                        linestyle='--', alpha=0.5,
-                        label=r'$\sqrt{S_h^{\rm noise}}$')
-
-    ax_noise.set_ylabel(
-        r'$\left(S_h^{\rm noise}\right)^{1/2}\ [\mathrm{Hz}^{-1/2}]$',
-        fontsize=11, color='gray'
-    )
+    
+    # Create a smooth frequency-to-mass mapping using the coarse data only
+    det1_data = results['det1']
+    
+    # Use the coarse data (not combined) for mapping - this gives smooth interpolation
+    valid_coarse = np.isfinite(det1_data['d']) & np.isfinite(det1_data['M']) & (det1_data['d'] > 0)
+    
+    if valid_coarse.any():
+        M_coarse = det1_data['M'][valid_coarse]
+        f_coarse = det1_data['f'][valid_coarse]
+        
+        # Sort by mass
+        sort_idx = np.argsort(M_coarse)
+        M_coarse_sorted = M_coarse[sort_idx]
+        f_coarse_sorted = f_coarse[sort_idx]
+        
+        # Remove duplicates for interpolation
+        _, unique_idx = np.unique(M_coarse_sorted, return_index=True)
+        M_coarse_unique = M_coarse_sorted[unique_idx]
+        f_coarse_unique = f_coarse_sorted[unique_idx]
+        
+        if len(M_coarse_unique) >= 2:
+            from scipy.interpolate import interp1d
+            # Create mapping from frequency to mass (in log space)
+            # Need to ensure frequencies are monotonic
+            sort_f_idx = np.argsort(f_coarse_unique)
+            f_sorted = f_coarse_unique[sort_f_idx]
+            M_sorted = M_coarse_unique[sort_f_idx]
+            
+            # Remove any duplicates in frequency
+            _, f_unique_idx = np.unique(f_sorted, return_index=True)
+            f_for_interp = f_sorted[f_unique_idx]
+            M_for_interp = M_sorted[f_unique_idx]
+            
+            if len(f_for_interp) >= 2:
+                f_to_M = interp1d(np.log10(f_for_interp), np.log10(M_for_interp),
+                                 kind='linear', bounds_error=False, fill_value=np.nan)
+                
+                # Create smooth frequency array for noise curves
+                freqs_noise = np.logspace(2, 8, 5000)  # Increased points for smoothness
+                
+                # Get noise for both detectors
+                from MagneticWeberBar import noise_equivalent_strain_broadband, ADMX_EFR, DMRADIO_GUT
+                S_h_efr = noise_equivalent_strain_broadband(ADMX_EFR, freqs_noise)
+                S_h_dmradio = noise_equivalent_strain_broadband(DMRADIO_GUT, freqs_noise)
+                
+                # Convert to masses using interpolation
+                log_M_noise = f_to_M(np.log10(freqs_noise))
+                valid_noise = np.isfinite(log_M_noise)
+                
+                if valid_noise.any():
+                    M_noise = 10.0**log_M_noise[valid_noise]
+                    freqs_valid = freqs_noise[valid_noise]
+                    
+                    # Get noise values only where conversion is valid
+                    Sn_efr_valid = np.sqrt(S_h_efr[valid_noise])
+                    Sn_dmradio_valid = np.sqrt(S_h_dmradio[valid_noise])
+                    
+                    # Sort by mass for clean plotting
+                    sort_m_idx = np.argsort(M_noise)
+                    M_noise_sorted = M_noise[sort_m_idx]
+                    Sn_efr_sorted = Sn_efr_valid[sort_m_idx]
+                    Sn_dmradio_sorted = Sn_dmradio_valid[sort_m_idx]
+                    
+                    # Plot smooth noise curves
+                    ax_noise.loglog(M_noise_sorted, Sn_efr_sorted,
+                                   color='gray', linewidth=1.2, linestyle='--', alpha=0.7,
+                                   label=r'ADMX-EFR $\sqrt{S_h^{\rm noise}}$')
+                    ax_noise.loglog(M_noise_sorted, Sn_dmradio_sorted,
+                                   color='darkgray', linewidth=1.2, linestyle=':', alpha=0.7,
+                                   label=r'DMRadio-GUT $\sqrt{S_h^{\rm noise}}$')
+    
+    ax_noise.set_ylabel(r'$\left(S_h^{\rm noise}\right)^{1/2}\ [\mathrm{Hz}^{-1/2}]$',
+                        fontsize=11, color='gray')
     ax_noise.tick_params(axis='y', labelcolor='gray')
-
-    # ── Top axis: frequency ───────────────────────────────────────────────────
-    # Since f ~ 1/M, the top axis runs in decreasing frequency as M increases.
-    # We place frequency ticks at round powers of 10 within the plotted range.
-    ax_top = ax1.twiny()
-    ax_top.set_xscale('log')
-    ax_top.set_xlim(ax1.get_xlim())   # same mass limits
-
-    # Find which masses correspond to round decade frequencies in the band
-    f_min_plot = f_plot.min()
-    f_max_plot = f_plot.max()
-    log_f_min  = np.ceil(np.log10(f_min_plot))
-    log_f_max  = np.floor(np.log10(f_max_plot))
-    log_f_ticks = np.arange(log_f_min, log_f_max + 1, 1)
-
-    M_tick_pos    = []
-    lf_tick_valid = []
-
-    if len(M_plot) >= 2:
-        M_to_logf = interp1d(
-            np.log10(M_uniq),
-            np.log10(f_uniq),
-            kind='linear', bounds_error=False, fill_value=np.nan
-        )
-        xl = ax1.get_xlim()
-        for lf in log_f_ticks:
-            # Find which mass gives this frequency
-            # Since f ~ 1/M, invert: find M from f
-            log_M_at_f = f_to_M(lf)
-            if np.isfinite(log_M_at_f):
-                M_at_f = 10.0**log_M_at_f
-                if xl[0] <= M_at_f <= xl[1]:
-                    M_tick_pos.append(M_at_f)
-                    lf_tick_valid.append(int(lf))
-
-    ax_top.set_xticks(M_tick_pos)
-    ax_top.set_xticklabels(
-        [fr'$10^{{{lf}}}$' for lf in lf_tick_valid], fontsize=9
-    )
-    ax_top.set_xlabel(r'$f\ [\mathrm{Hz}]$', fontsize=12, labelpad=8)
-
-    # ── Bottom axis labels ────────────────────────────────────────────────────
+    
+    # Bottom axis labels
     ax1.set_xlabel(r'$M_{\rm BH}\ [M_\odot]$', fontsize=13)
     ax1.set_ylabel(r'$d_{\rm max}\ [\mathrm{kpc}]$', fontsize=13)
-    ax1.grid(True, which='both', alpha=0.3)
-
+    # ax1.grid(True, which='both', alpha=0.3) # no
+    
+    # Combine legends
     lines1, labs1 = ax1.get_legend_handles_labels()
     lines2, labs2 = ax_noise.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labs1 + labs2,
-               fontsize=10, loc='upper left', frameon=False)
-
+              fontsize=8, loc='upper left', frameon=False)
+    
     if savepath is not None:
         plt.savefig(savepath, dpi=150, bbox_inches='tight')
-
+    
     plt.show()
     return fig, ax1
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Main — edit only this block
 # ─────────────────────────────────────────────────────────────────────────────
@@ -671,63 +780,46 @@ if __name__ == '__main__':
 
     # ── Common parameters ─────────────────────────────────────────────────────
     alpha   = 0.01
-    M_range = (1e-12, 1e4)   # solar masses
+    M_range = (1e-12, 1e4)
     savepath= '4. Detector Distance Reach/distance_reach_mass_sweep.pdf'
 
     # =========================================================================
     # OPTION A: Transition process
     # =========================================================================
-    filepath        = "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat"
-    transition      = '3p 2p'
-    process_label_t = r'|422\rangle \to |322\rangle\ \text{(transition)}'
+    filepath = "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat"
+    transition = '3p 2p'
+    # Use simpler label without \text command
+    process_label_t = r'$|422\rangle \to |322\rangle$ (transition)'
 
     freq_func_t, h_func_t, tau_func_t = make_transition_funcs(
-        alpha      = alpha,
-        transition = transition,
-        filepath   = filepath,
+        alpha=alpha, transition=transition, filepath=filepath,
     )
 
     results_t = run_sweep(
-        freq_func = freq_func_t,
-        h_func    = h_func_t,
-        tau_func  = tau_func_t,
-        M_range   = M_range,
+        freq_func=freq_func_t, h_func=h_func_t, tau_func=tau_func_t,
+        M_range=M_range, rho_star=1.0,
     )
 
-    plot_reach(
-        results       = results_t,
-        alpha         = alpha,
-        process_label = process_label_t,
-        savepath      = savepath,
-    )
+    plot_reach(results_t, alpha, process_label_t, savepath=savepath)
 
     # =========================================================================
     # OPTION B: Annihilation process
     # =========================================================================
-    level           = '2p'
-    n, l, m         = 2, 1, 1
-    astar_init      = 0.99
-    process_label_a = r'|211\rangle\ \text{(annihilation)}'
+    level = '2p'
+    n, l, m = 2, 1, 1
+    astar_init = 0.99
+    # Use simpler label without \text command
+    process_label_a = r'$|211\rangle$ (annihilation)'
 
     source_func_a, tau_func_ann = make_annihilation_source(
-        alpha      = alpha,
-        level      = level,
-        n          = n,
-        l          = l,
-        m          = m,
-        astar_init = astar_init,
-        debug      = True,   # prints full diagnostics for the first mass point
+        alpha=alpha, level=level, n=n, l=l, m=m,
+        astar_init=astar_init, debug=True,
     )
 
     results_a = run_sweep_ann(
-        source_func = source_func_a,
-        tau_func    = tau_func_ann,
-        M_range     = M_range,
+        source_func=source_func_a, tau_func=tau_func_ann,
+        M_range=M_range, rho_star=1.0,
     )
 
-    plot_reach(
-        results       = results_a,
-        alpha         = alpha,
-        process_label = process_label_a,
-        savepath      = savepath.replace('.pdf', '_ann.pdf'),
-    )
+    plot_reach(results_a, alpha, process_label_a, 
+               savepath=savepath.replace('.pdf', '_ann.pdf'))

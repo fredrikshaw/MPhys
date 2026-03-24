@@ -480,6 +480,11 @@ def plot_reach(results, alpha, process_label,
     Plot the detector distance reach from the output of run_sweep()
     or run_sweep_ann().
 
+    The x-axis runs in increasing BH mass (left to right), which means
+    decreasing frequency. Mass is on the bottom axis (log scale) and
+    frequency on the top axis. The resonance point is inserted into the
+    main dataset so it appears in the connected curve.
+
     Parameters
     ----------
     results       : dict  — output of run_sweep() or run_sweep_ann()
@@ -501,85 +506,162 @@ def plot_reach(results, alpha, process_label,
     M_res   = results['M_res']
     f_mech  = det.f_mech
 
-    fig, ax1 = plt.subplots(figsize=(6, 5))
+    # ── Insert resonance point into the main dataset ──────────────────────────
+    # This ensures the resonance spike appears in the connected line rather
+    # than as an isolated marker. We insert it at the correct position sorted
+    # by mass (equivalently by descending frequency).
+    if np.isfinite(d_res) and np.isfinite(M_res):
+        f_all   = np.append(f_all,   f_res)
+        d_all   = np.append(d_all,   d_res)
+        M_all   = np.append(M_all,   M_res)
+        # Re-sort by mass ascending (= frequency descending)
+        sort_idx = np.argsort(M_all)
+        f_all    = f_all[sort_idx]
+        d_all    = d_all[sort_idx]
+        M_all    = M_all[sort_idx]
+        fin_all  = np.isfinite(d_all) & np.isfinite(f_all) & (f_all > 0)
+
+    fig, ax1 = plt.subplots(figsize=(4, 3.5))
     fig.subplots_adjust(top=0.80)
 
-    ax1.loglog(f_all[fin_all], d_all[fin_all],
+    # ── Main distance reach curve — plotted vs MASS on bottom axis ───────────
+    # Since f ~ 1/M, plotting vs M with log scale and inverted direction
+    # means we plot M on x and d on y, with M increasing left to right.
+    M_fin = M_all[fin_all]
+    d_fin = d_all[fin_all]
+    f_fin = f_all[fin_all]
+
+    # Sort by mass ascending for correct line connection
+    sort_m   = np.argsort(M_fin)
+    M_plot   = M_fin[sort_m]
+    d_plot   = d_fin[sort_m]
+    f_plot   = f_fin[sort_m]
+
+    ax1.loglog(M_plot, d_plot,
                color='steelblue', linewidth=2.0,
                label=fr'${process_label},\ \alpha={alpha}$')
 
-    if np.isfinite(d_res):
-        ax1.scatter([f_res], [d_res], color='firebrick', s=60, zorder=6)
+    # ── Mark the resonance point on the curve ─────────────────────────────────
+    if np.isfinite(d_res) and np.isfinite(M_res):
+        ax1.scatter([M_res], [d_res],
+                    color='firebrick', s=60, zorder=6,
+                    label=fr'$f = f_{{\rm mech}}$')
+
         log_M_val = np.log10(M_res)
         if abs(log_M_val - round(log_M_val)) < 0.15:
             M_label = fr'$M = 10^{{{int(round(log_M_val))}}}\,M_\odot$'
         else:
             M_label = fr'$M = {M_res:.2e}\,M_\odot$'
+
         ax1.annotate(
             M_label + '\n' + fr'$f = f_{{\rm mech}}$',
-            xy         = (f_res, d_res),
-            xytext     = (f_res * 6.0, d_res * 0.15),
+            xy         = (M_res, d_res),
+            xytext     = (M_res * 4.0, d_res * 0.15),
             fontsize   = 9, color='firebrick',
             arrowprops = dict(arrowstyle='->', color='firebrick', lw=0.8),
         )
 
-    ax1.axvline(f_mech, color='firebrick', linewidth=1.0,
-                linestyle=':', alpha=0.7)
+    # ── Vertical line at the resonant mass ───────────────────────────────────
+    if np.isfinite(M_res):
+        ax1.axvline(M_res, color='firebrick', linewidth=1.0,
+                    linestyle=':', alpha=0.7)
 
-    ax_noise    = ax1.twinx()
-    freqs_noise = np.logspace(2, 8, 2000)
-    S_h         = noise_equivalent_strain_broadband(det, freqs_noise)
-    ax_noise.loglog(freqs_noise, np.sqrt(S_h), color='gray',
-                    linewidth=1.2, linestyle='--', alpha=0.5,
-                    label=r'$\sqrt{S_h^{\rm noise}}$')
+    # ── Right axis: noise curve vs mass ───────────────────────────────────────
+    # The noise curve is defined vs frequency, so we convert a frequency grid
+    # to an equivalent mass grid using the monotone f <-> M relationship
+    # already established from the sweep data.
+    ax_noise = ax1.twinx()
+
+    # Build a monotone interpolator from f -> M using the sorted finite data
+    if len(M_plot) >= 2:
+        # f decreases as M increases — use unique M values
+        _, uniq_m = np.unique(M_plot, return_index=True)
+        M_uniq    = M_plot[uniq_m]
+        f_uniq    = f_plot[uniq_m]
+
+        f_to_M    = interp1d(
+            np.log10(f_uniq[::-1]),   # f decreasing -> M increasing, so reverse
+            np.log10(M_uniq[::-1]),
+            kind='linear', bounds_error=False, fill_value=np.nan
+        )
+
+        freqs_noise = np.logspace(2, 8, 2000)
+        S_h         = noise_equivalent_strain_broadband(det, freqs_noise)
+
+        # Convert noise frequencies to masses
+        log_M_noise = f_to_M(np.log10(freqs_noise))
+        valid_noise = np.isfinite(log_M_noise)
+        M_noise     = 10.0**log_M_noise[valid_noise]
+        Sn_plot     = np.sqrt(S_h[valid_noise])
+
+        # Sort by mass for correct plotting
+        sort_n  = np.argsort(M_noise)
+        ax_noise.loglog(M_noise[sort_n], Sn_plot[sort_n],
+                        color='gray', linewidth=1.2,
+                        linestyle='--', alpha=0.5,
+                        label=r'$\sqrt{S_h^{\rm noise}}$')
+
     ax_noise.set_ylabel(
         r'$\left(S_h^{\rm noise}\right)^{1/2}\ [\mathrm{Hz}^{-1/2}]$',
         fontsize=11, color='gray'
     )
     ax_noise.tick_params(axis='y', labelcolor='gray')
 
-    f_fin = f_all[fin_all];  M_fin = M_all[fin_all]
-    sort2 = np.argsort(f_fin)
-    f_fin = f_fin[sort2];    M_fin = M_fin[sort2]
-    _, uniq2 = np.unique(f_fin, return_index=True)
-    f_fin    = f_fin[uniq2]; M_fin = M_fin[uniq2]
-
-    log_M_min   = np.ceil(np.log10(M_fin.min()))
-    log_M_max   = np.floor(np.log10(M_fin.max()))
-    log_M_ticks = np.arange(log_M_min, log_M_max + 1, 1)
-    f_tick_pos  = [];  lM_tick_valid = []
-    for lM in log_M_ticks:
-        idx_t = np.argmin(np.abs(M_fin - 10.0**lM))
-        f_t_  = f_fin[idx_t]
-        xl    = ax1.get_xlim()
-        if xl[0] <= f_t_ <= xl[1]:
-            f_tick_pos.append(f_t_)
-            lM_tick_valid.append(int(lM))
-
+    # ── Top axis: frequency ───────────────────────────────────────────────────
+    # Since f ~ 1/M, the top axis runs in decreasing frequency as M increases.
+    # We place frequency ticks at round powers of 10 within the plotted range.
     ax_top = ax1.twiny()
     ax_top.set_xscale('log')
-    ax_top.set_xlim(ax1.get_xlim())
-    ax_top.set_xticks(f_tick_pos)
-    ax_top.set_xticklabels(
-        [fr'$10^{{{lM}}}$' for lM in lM_tick_valid], fontsize=9
-    )
-    ax_top.set_xlabel(r'$M_{\rm BH}\ [M_\odot]$', fontsize=12, labelpad=8)
+    ax_top.set_xlim(ax1.get_xlim())   # same mass limits
 
-    ax1.set_xlabel(r'$f\ [\mathrm{Hz}]$', fontsize=13)
+    # Find which masses correspond to round decade frequencies in the band
+    f_min_plot = f_plot.min()
+    f_max_plot = f_plot.max()
+    log_f_min  = np.ceil(np.log10(f_min_plot))
+    log_f_max  = np.floor(np.log10(f_max_plot))
+    log_f_ticks = np.arange(log_f_min, log_f_max + 1, 1)
+
+    M_tick_pos    = []
+    lf_tick_valid = []
+
+    if len(M_plot) >= 2:
+        M_to_logf = interp1d(
+            np.log10(M_uniq),
+            np.log10(f_uniq),
+            kind='linear', bounds_error=False, fill_value=np.nan
+        )
+        xl = ax1.get_xlim()
+        for lf in log_f_ticks:
+            # Find which mass gives this frequency
+            # Since f ~ 1/M, invert: find M from f
+            log_M_at_f = f_to_M(lf)
+            if np.isfinite(log_M_at_f):
+                M_at_f = 10.0**log_M_at_f
+                if xl[0] <= M_at_f <= xl[1]:
+                    M_tick_pos.append(M_at_f)
+                    lf_tick_valid.append(int(lf))
+
+    ax_top.set_xticks(M_tick_pos)
+    ax_top.set_xticklabels(
+        [fr'$10^{{{lf}}}$' for lf in lf_tick_valid], fontsize=9
+    )
+    ax_top.set_xlabel(r'$f\ [\mathrm{Hz}]$', fontsize=12, labelpad=8)
+
+    # ── Bottom axis labels ────────────────────────────────────────────────────
+    ax1.set_xlabel(r'$M_{\rm BH}\ [M_\odot]$', fontsize=13)
     ax1.set_ylabel(r'$d_{\rm max}\ [\mathrm{kpc}]$', fontsize=13)
     ax1.grid(True, which='both', alpha=0.3)
 
     lines1, labs1 = ax1.get_legend_handles_labels()
     lines2, labs2 = ax_noise.get_legend_handles_labels()
     ax1.legend(lines1 + lines2, labs1 + labs2,
-               fontsize=10, loc='upper right', frameon=False)
+               fontsize=10, loc='upper left', frameon=False)
 
     if savepath is not None:
         plt.savefig(savepath, dpi=150, bbox_inches='tight')
 
     plt.show()
     return fig, ax1
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main — edit only this block
@@ -588,18 +670,18 @@ def plot_reach(results, alpha, process_label,
 if __name__ == '__main__':
 
     # ── Common parameters ─────────────────────────────────────────────────────
-    alpha   = 0.001
+    alpha   = 0.01
     M_range = (1e-12, 1e4)   # solar masses
     savepath= '4. Detector Distance Reach/distance_reach_mass_sweep.pdf'
 
     # =========================================================================
     # OPTION A: Transition process
     # =========================================================================
-    filepath        = "2. Relativistic Superradiance Rate/Mathematica/SR_n4l2m2_at0.990_aMin0.010_aMax1.200_20260317.dat"
-    transition      = '4d 3d'
+    filepath        = "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat"
+    transition      = '3p 2p'
     process_label_t = r'|422\rangle \to |322\rangle\ \text{(transition)}'
 
-    """freq_func_t, h_func_t, tau_func_t = make_transition_funcs(
+    freq_func_t, h_func_t, tau_func_t = make_transition_funcs(
         alpha      = alpha,
         transition = transition,
         filepath   = filepath,
@@ -617,7 +699,7 @@ if __name__ == '__main__':
         alpha         = alpha,
         process_label = process_label_t,
         savepath      = savepath,
-    )"""
+    )
 
     # =========================================================================
     # OPTION B: Annihilation process
@@ -636,51 +718,6 @@ if __name__ == '__main__':
         astar_init = astar_init,
         debug      = True,   # prints full diagnostics for the first mass point
     )
-
-    print("\n" + "="*80)
-    print("ALPHA SCALING DIAGNOSTIC — fixed M = 1 Msun")
-    print("="*80)
-    print(f"{'alpha':>8} | {'Gamma_a [eV]':>14} | {'N_max':>14} | "
-          f"{'tau [s]':>14} | {'A [m^2]':>14} | {'d_max [kpc]':>14}")
-    print("-"*80)
-
-    M_test  = 1.0
-    G_N_nat = 6.708e-57   # [eV^-2]
-
-    for alpha_test in [0.05, 0.10, 0.20, 0.30, 0.40, 0.50]:
-
-        try:
-            r_g_t        = calc_rg_from_bh_mass(M_test)         # [eV^-1]
-            omega_t      = calc_omega_ann(r_g_t, alpha_test, n)  # [eV]
-            ann_t        = float(calc_annihilation_rate(
-                               level, alpha_test, omega_t,
-                               G_N=G_N_nat, r_g=r_g_t
-                           ))                                    # [eV]
-
-            bh_mass_eV_t = r_g_t / G_N_nat                      # [eV]  <-- FIXED
-            delta_t      = calc_delta_astar(astar_init, r_g_t, alpha_test, n, m)
-            n_max_t      = float(calc_n_max(bh_mass_eV_t, delta_t, m))  # dimensionless
-            tau_t        = float(calc_char_t_ann(ann_t, n_max_t)) / EV_TO_SI  # [s]
-
-            h_nat        = n_max_t * np.sqrt(
-                               8 * G_N_nat * ann_t / float(omega_t)
-                           )
-            A_t          = h_nat * INV_EV_TO_M**2               # [m^2]
-
-            f_t          = float(omega_t) * EV_TO_SI / (2 * np.pi)  # [Hz]
-            S_h_t        = noise_equivalent_strain_broadband(
-                               ADMX_EFR, np.array([f_t])
-                           )[0]
-            val          = A_t * np.sqrt(tau_t / S_h_t)
-            d_kpc        = np.sqrt(val) / KPC_TO_M if val > 0 else np.nan
-
-            print(f"{alpha_test:>8.2f} | {ann_t:>14.3e} | {n_max_t:>14.3e} | "
-                  f"{tau_t:>14.3e} | {A_t:>14.3e} | {d_kpc:>14.3e}")
-
-        except Exception as e:
-            print(f"{alpha_test:>8.2f} | FAILED: {e}")
-
-    print("="*80 + "\n")
 
     results_a = run_sweep_ann(
         source_func = source_func_a,

@@ -337,10 +337,6 @@ def noise_equivalent_strain_broadband(det: MagneticWeberBar,
     consistently using kappa^2 (see the fix description in the class
     docstring and in signal_psd_per_strain / thermal_flux_noise_psd).
 
-    On the mechanical resonance the broadband expression is overridden with
-    the exact Weber bar result (Eq. S33) which is independent of EM
-    parameters.
-
     Returns: S_h^noise(f) [Hz^{-1}], shape (len(freqs),)
     """
     S_SQ      = squid_noise_psd(det)                        # flat flux noise
@@ -355,10 +351,6 @@ def noise_equivalent_strain_broadband(det: MagneticWeberBar,
 
     # Noise-equivalent strain
     S_h_noise = S_noise_tot / transduct
-
-    # Override at the mechanical resonance with the exact Eq. S33 result
-    i_res = np.argmin(np.abs(freqs - det.f_mech))
-    S_h_noise[i_res] = noise_equivalent_strain_on_resonance(det)
 
     return S_h_noise
 
@@ -600,7 +592,7 @@ if __name__ == '__main__':
         'DMRadio-GUT': DMRADIO_GUT,
     }
 
-    plot_sensitivity(detectors, plot_LC=True, plot_BBN=True)
+    plot_sensitivity(detectors, plot_LC=False, plot_BBN=False)
 
     # ── Example: plug in your own GW strain ──────────────────────────────────
     # Replace these with your own source calculations.

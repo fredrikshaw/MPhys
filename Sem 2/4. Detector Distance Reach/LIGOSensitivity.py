@@ -405,8 +405,8 @@ def plot_with_mwb_overlay(savepath=None):
 
     ax.set_xlabel(r'$f\ [\mathrm{Hz}]$', fontsize=13)
     ax.set_ylabel(r'$\sqrt{S_h}\ [\mathrm{Hz}^{-1/2}]$', fontsize=13)
-    ax.set_xlim(1e2, f_max)
-    ax.set_ylim(1e-26, 1e-14)
+    ax.set_xlim(1e1, 1e9)
+    ax.set_ylim(1e-25, 1e-17)
     ax.legend(fontsize=8, loc='upper left', frameon=False)
     ax.grid(True)
     

@@ -800,6 +800,29 @@ if __name__ == '__main__':
         M_range=M_range, rho_star=1.0,
     )
 
+    # ── Print resonant mass + distance reach for each detector ────────────────
+    print("\n" + "="*60)
+    print("Resonant Mass and Detector Reach")
+    print("="*60)
+
+    for det_key in ['det1', 'det2']:
+        det = results_t[det_key]
+        
+        name  = det['name']
+        M_res = det['M_res']
+        d_res = det['d_res']
+        f_res = det['f_res']
+        
+        if np.isfinite(M_res) and np.isfinite(d_res):
+            print(f"\n{name}:")
+            print(f"  Resonant mass        = {M_res:.3e} M_sun")
+            print(f"  Resonant frequency   = {f_res:.3e} Hz")
+            print(f"  Distance reach       = {d_res:.3e} kpc")
+        else:
+            print(f"\n{name}: No valid resonance found")
+
+    print("\n" + "="*60 + "\n")
+
     plot_reach(results_t, alpha, process_label_t, savepath=savepath)
 
     # =========================================================================

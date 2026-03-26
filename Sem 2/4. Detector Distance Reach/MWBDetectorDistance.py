@@ -609,8 +609,8 @@ def plot_reach(results, alpha, process_label,
     fig, ax1 = plt.subplots(figsize=(5, 4))
     fig.subplots_adjust(top=0.80)
 
-    colors = {'ADMX-EFR': 'steelblue', 'DMRadio-GUT': 'darkorange'}
-    linestyles = {'ADMX-EFR': '-', 'DMRadio-GUT': '--'}
+    colors = {'ADMX-EFR': 'steelblue', 'DMRadio-GUT': 'teal'}
+    linestyles = {'ADMX-EFR': '-', 'DMRadio-GUT': '-'}
     
     # Plot distance reach for both detectors
     for det_key in ['det1', 'det2']:
@@ -634,7 +634,7 @@ def plot_reach(results, alpha, process_label,
         d_plot = d_plot[unique_idx]
         
         # Create label
-        label = f"{det_data['name']}: {process_label}, $\\alpha={alpha}$"
+        label = f"{det_data['name']}"
         
         # Plot distance reach
         ax1.loglog(M_plot, d_plot,
@@ -645,10 +645,10 @@ def plot_reach(results, alpha, process_label,
         
         # Mark resonance point if exists
         if np.isfinite(det_data['d_res']) and np.isfinite(det_data['M_res']):
-            ax1.scatter([det_data['M_res']], [det_data['d_res']],
+            """ax1.scatter([det_data['M_res']], [det_data['d_res']],
                         color=colors[det_data['name']], s=80, zorder=6,
                         marker='o' if det_key == 'det1' else 's',
-                        edgecolors='black', linewidth=0.5)
+                        edgecolors='black', linewidth=0.5)"""
             
             # Add annotation for the resonance
             if det_key == 'det1':
@@ -658,21 +658,21 @@ def plot_reach(results, alpha, process_label,
                 else:
                     M_label = f'$M = {det_data["M_res"]:.2e}\\,M_\\odot$'
                 
-                ax1.annotate(
+                """ax1.annotate(
                     M_label + '\n' + '$f = f_{\\rm mech}^{\\rm ADMX}$',
                     xy         = (det_data['M_res'], det_data['d_res']),
                     xytext     = (det_data['M_res'] * 4.0, det_data['d_res'] * 0.15),
                     fontsize   = 8, color=colors[det_data['name']],
                     arrowprops = dict(arrowstyle='->', color=colors[det_data['name']], lw=0.8),
-                )
+                )"""
             elif det_key == 'det2' and np.isfinite(det_data['d_res']):
-                ax1.annotate(
+                """ax1.annotate(
                     '$f = f_{\\rm mech}^{\\rm DMRadio}$',
                     xy         = (det_data['M_res'], det_data['d_res']),
                     xytext     = (det_data['M_res'] * 0.3, det_data['d_res'] * 0.3),
                     fontsize   = 8, color=colors[det_data['name']],
                     arrowprops = dict(arrowstyle='->', color=colors[det_data['name']], lw=0.8),
-                )
+                )"""
             
             # Add vertical line at resonance
             ax1.axvline(det_data['M_res'], color=colors[det_data['name']], 
@@ -805,7 +805,7 @@ if __name__ == '__main__':
     # =========================================================================
     # OPTION B: Annihilation process
     # =========================================================================
-    level = '2p'
+    """level = '2p'
     n, l, m = 2, 1, 1
     astar_init = 0.99
     # Use simpler label without \text command
@@ -822,4 +822,4 @@ if __name__ == '__main__':
     )
 
     plot_reach(results_a, alpha, process_label_a, 
-               savepath=savepath.replace('.pdf', '_ann.pdf'))
+               savepath=savepath.replace('.pdf', '_ann.pdf'))"""

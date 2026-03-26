@@ -169,6 +169,36 @@ def asd_at_comb_teeth(ifo):
     return f_comb, asd_comb
 
 
+def get_ligo_noise_psd(freqs, detector_name='adv_ligo'):
+    """
+    Return the LIGO noise PSD S_h(f) for given frequencies.
+    
+    Parameters
+    ----------
+    freqs : array_like
+        Frequencies in Hz
+    detector_name : str
+        Name of the detector ('adv_ligo', 'geo600', 'mhz_gw', 'ghz_gw')
+    
+    Returns
+    -------
+    S_h : np.ndarray
+        Strain PSD in Hz^{-1}
+    """
+    ifo = DETECTORS[detector_name]
+    freqs = np.asarray(freqs)
+    
+    # Only valid above f_FSR
+    S_h = np.zeros_like(freqs)
+    mask = freqs >= ifo.f_FSR
+    S_h[mask] = (asd_power_law(ifo, freqs[mask]))**2
+    
+    # Below f_FSR, set to NaN (not valid)
+    S_h[~mask] = np.nan
+    
+    return S_h
+
+
 # -----------------------------------------------------------------------------
 # Utility: print summary table of f_FSR and A_det
 # -----------------------------------------------------------------------------
@@ -364,6 +394,45 @@ def plot_with_mwb_overlay(savepath=None):
 
     # Interferometer power-law envelopes
     for key, ifo in DETECTORS.items():
+        
+
+        plt.rcParams.update({
+            'text.usetex'         : True,
+            'font.family'         : 'serif',
+            'font.serif'          : ['Computer Modern Roman'],
+            'text.latex.preamble' : r'\usepackage{amsmath}',
+        })
+
+        fig, ax = plt.subplots(figsize=(4, 3.5))
+        fig.subplots_adjust(top=0.88)
+
+        f_min, f_max = 1e4, 1e13
+        f_grid = np.logspace(np.log10(f_min), np.log10(f_max), 5000)
+
+        # Interferometer power-law envelopes
+        for key, ifo in DETECTORS.items():
+            
+            f_env = f_grid[(f_grid >= ifo.f_FSR) & (f_grid <= f_max)]
+            if len(f_env) == 0:
+                continue
+            asd_env = asd_power_law(ifo, f_env)
+            ax.loglog(
+                f_env, asd_env,
+                color=ifo.color, linewidth=1.0,
+                linestyle=ifo.linestyle,
+            )
+            
+            # Add text labels at the starting frequency of each detector
+            ax.text(
+                f_env[0], asd_env[0], ifo.name,
+                fontsize=9, color=ifo.color, ha='left', va='bottom'
+            )
+            
+            f_c, asd_c = asd_at_comb_teeth(ifo)
+            mask = (f_c >= f_min) & (f_c <= f_max)
+            """if mask.any():
+                ax.scatter(f_c[mask], asd_c[mask],
+                           color=ifo.color, s=3, zorder=5, alpha=0.5)"""
         f_env = f_grid[(f_grid >= ifo.f_FSR) & (f_grid <= f_max)]
         if len(f_env) == 0:
             continue

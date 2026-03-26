@@ -322,19 +322,19 @@ def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
         mid_x = M_plot[mid_idx]
         mid_y = d_plot[mid_idx]
 
-        offset = mid_y * 0.1
+        offset = mid_y * 2
         mid_y += offset
 
         # Calculate the slope at the middle point
         if mid_idx > 0 and mid_idx < len(M_plot) - 1:
             dx = np.log10(M_plot[mid_idx + 1] - M_plot[mid_idx - 1])
             dy = np.log10(d_plot[mid_idx + 1] - d_plot[mid_idx - 1])
-            angle = np.degrees(np.arctan2(dy, dx))
+            angle = np.degrees(np.arctan2(dy, dx)) + 210
         else:
             angle = 0  # Default to 0 if slope cannot be calculated
 
         # Add the text label at the middle point
-        ax1.text(mid_x, mid_y, det_data['name'], rotation=angle, fontsize=10, ha='center', va='center')
+        ax1.text(mid_x, mid_y, det_data['name'], rotation=angle, fontsize=10, ha='center', va='center', color=colors[det_data['name']])
 
         
         # Mark resonance
@@ -377,6 +377,9 @@ def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
         mid_x = M_plot[mid_idx]
         mid_y = d_plot[mid_idx]
 
+        offset = mid_y * 2
+        mid_y += offset
+
         # Calculate the slope at the middle point
         if mid_idx > 0 and mid_idx < len(M_plot) - 1:
             dx = np.log10(M_plot[mid_idx + 1]) - np.log10(M_plot[mid_idx - 1])
@@ -387,7 +390,7 @@ def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
             print("[ERR] Cannot compute slope")
 
         # Add the text label at the middle point
-        ax1.text(mid_x, mid_y, 'LIGO HF', rotation=angle, fontsize=10, ha='center', va='center')
+        ax1.text(mid_x, mid_y, 'LIGO HF', color=colors['LIGO HF'], rotation=angle, fontsize=10, ha='center', va='center')
 
 
         

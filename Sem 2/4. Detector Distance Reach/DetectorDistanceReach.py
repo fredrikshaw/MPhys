@@ -322,7 +322,7 @@ def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
         mid_x = M_plot[mid_idx]
         mid_y = d_plot[mid_idx]
 
-        offset = mid_y * 2
+        offset = mid_y * 4
         mid_y += offset
 
         # Calculate the slope at the middle point

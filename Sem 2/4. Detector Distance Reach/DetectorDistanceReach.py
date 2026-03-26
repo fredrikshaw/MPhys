@@ -251,7 +251,7 @@ from MWBDetectorDistance import run_sweep as run_sweep_mwb
 # ─────────────────────────────────────────────────────────────────────────────
 
 def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
-                        savepath=None):
+                        savepath=None, noise=False):
     """
     Plot distance reach for both MWB and LIGO detectors.
     
@@ -275,7 +275,7 @@ def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
         "text.latex.preamble" : r"\usepackage{amsmath}"
     })
 
-    fig, ax1 = plt.subplots(figsize=(8, 6))
+    fig, ax1 = plt.subplots(figsize=(5, 4))
     fig.subplots_adjust(top=0.88)
 
     # Colors for different detectors
@@ -288,7 +288,7 @@ def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
     linestyles = {
         'ADMX-EFR': '-',
         'DMRadio-GUT': '-',
-        'LIGO HF': '--',
+        'LIGO HF': '-',
     }
     
     # Plot MWB detectors
@@ -317,13 +317,33 @@ def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
                    linestyle=linestyles[det_data['name']],
                    label=det_data['name'])
         
+        # Find the middle point of the run
+        mid_idx = len(M_plot) // 3
+        mid_x = M_plot[mid_idx]
+        mid_y = d_plot[mid_idx]
+
+        offset = mid_y * 0.1
+        mid_y += offset
+
+        # Calculate the slope at the middle point
+        if mid_idx > 0 and mid_idx < len(M_plot) - 1:
+            dx = np.log10(M_plot[mid_idx + 1] - M_plot[mid_idx - 1])
+            dy = np.log10(d_plot[mid_idx + 1] - d_plot[mid_idx - 1])
+            angle = np.degrees(np.arctan2(dy, dx))
+        else:
+            angle = 0  # Default to 0 if slope cannot be calculated
+
+        # Add the text label at the middle point
+        ax1.text(mid_x, mid_y, det_data['name'], rotation=angle, fontsize=10, ha='center', va='center')
+
+        
         # Mark resonance
         if np.isfinite(det_data['d_res']) and np.isfinite(det_data['M_res']):
             ax1.axvline(det_data['M_res'], color=colors[det_data['name']], 
                        linewidth=1.0, linestyle=':', alpha=0.5, zorder=1)
             
             # Add annotation for resonance
-            ax1.annotate(
+            """ax1.annotate(
                 f'{det_data["name"]}\n$M = {det_data["M_res"]:.2e} M_\\odot$',
                 xy=(det_data['M_res'], det_data['d_res']),
                 xytext=(det_data['M_res'] * 0.5, det_data['d_res'] * 2),
@@ -331,7 +351,7 @@ def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
                 color=colors[det_data['name']],
                 arrowprops=dict(arrowstyle='->', color=colors[det_data['name']], lw=0.8),
                 ha='center'
-            )
+            )"""
     
     # Plot LIGO detector
     if len(results_ligo['M_combined']) > 0:
@@ -352,13 +372,32 @@ def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
                    linestyle=linestyles['LIGO HF'],
                    label='LIGO HF')
         
+        # Find the middle point of the run
+        mid_idx = len(M_plot) // 2
+        mid_x = M_plot[mid_idx]
+        mid_y = d_plot[mid_idx]
+
+        # Calculate the slope at the middle point
+        if mid_idx > 0 and mid_idx < len(M_plot) - 1:
+            dx = np.log10(M_plot[mid_idx + 1]) - np.log10(M_plot[mid_idx - 1])
+            dy = np.log10(d_plot[mid_idx + 1]) - np.log10(d_plot[mid_idx - 1])
+            angle = np.degrees(np.arctan2(dy, dx))
+        else:
+            angle = 0  # Default to 0 if slope cannot be calculated
+            print("[ERR] Cannot compute slope")
+
+        # Add the text label at the middle point
+        ax1.text(mid_x, mid_y, 'LIGO HF', rotation=angle, fontsize=10, ha='center', va='center')
+
+
+        
         # Mark LIGO resonance
         if np.isfinite(results_ligo['d_res']) and np.isfinite(results_ligo['M_res']):
             ax1.axvline(results_ligo['M_res'], color=colors['LIGO HF'], 
                        linewidth=1.0, linestyle=':', alpha=0.5, zorder=1)
             
             # Add annotation for LIGO resonance
-            ax1.annotate(
+            """ax1.annotate(
                 f'LIGO HF\n$M = {results_ligo["M_res"]:.2e} M_\\odot$',
                 xy=(results_ligo['M_res'], results_ligo['d_res']),
                 xytext=(results_ligo['M_res'] * 2, results_ligo['d_res'] * 0.3),
@@ -366,116 +405,116 @@ def plot_combined_reach(results_mwb, results_ligo, alpha, process_label,
                 color=colors['LIGO HF'],
                 arrowprops=dict(arrowstyle='->', color=colors['LIGO HF'], lw=0.8),
                 ha='center'
-            )
+            )"""
 
     # Add noise curves on right axis
-    ax_noise = ax1.twinx()
-    
-    # Use ADMX-EFR data for frequency-to-mass mapping
-    det1_data = results_mwb['det1']
-    valid_coarse = np.isfinite(det1_data['d']) & np.isfinite(det1_data['M']) & (det1_data['d'] > 0)
-    
-    if valid_coarse.any():
-        M_coarse = det1_data['M'][valid_coarse]
-        f_coarse = det1_data['f'][valid_coarse]
+
+    if noise:
+        ax_noise = ax1.twinx()
         
-        sort_idx = np.argsort(M_coarse)
-        M_coarse_sorted = M_coarse[sort_idx]
-        f_coarse_sorted = f_coarse[sort_idx]
+        # Use ADMX-EFR data for frequency-to-mass mapping
+        det1_data = results_mwb['det1']
+        valid_coarse = np.isfinite(det1_data['d']) & np.isfinite(det1_data['M']) & (det1_data['d'] > 0)
         
-        _, unique_idx = np.unique(M_coarse_sorted, return_index=True)
-        M_coarse_unique = M_coarse_sorted[unique_idx]
-        f_coarse_unique = f_coarse_sorted[unique_idx]
-        
-        if len(M_coarse_unique) >= 2:
-            sort_f_idx = np.argsort(f_coarse_unique)
-            f_sorted = f_coarse_unique[sort_f_idx]
-            M_sorted = M_coarse_unique[sort_f_idx]
+        if valid_coarse.any():
+            M_coarse = det1_data['M'][valid_coarse]
+            f_coarse = det1_data['f'][valid_coarse]
             
-            _, f_unique_idx = np.unique(f_sorted, return_index=True)
-            f_for_interp = f_sorted[f_unique_idx]
-            M_for_interp = M_sorted[f_unique_idx]
+            sort_idx = np.argsort(M_coarse)
+            M_coarse_sorted = M_coarse[sort_idx]
+            f_coarse_sorted = f_coarse[sort_idx]
             
-            if len(f_for_interp) >= 2:
-                f_to_M = interp1d(np.log10(f_for_interp), np.log10(M_for_interp),
-                                 kind='linear', bounds_error=False, fill_value=np.nan)
+            _, unique_idx = np.unique(M_coarse_sorted, return_index=True)
+            M_coarse_unique = M_coarse_sorted[unique_idx]
+            f_coarse_unique = f_coarse_sorted[unique_idx]
+            
+            if len(M_coarse_unique) >= 2:
+                sort_f_idx = np.argsort(f_coarse_unique)
+                f_sorted = f_coarse_unique[sort_f_idx]
+                M_sorted = M_coarse_unique[sort_f_idx]
                 
-                freqs_noise = np.logspace(2, 10, 5000)
+                _, f_unique_idx = np.unique(f_sorted, return_index=True)
+                f_for_interp = f_sorted[f_unique_idx]
+                M_for_interp = M_sorted[f_unique_idx]
                 
-                # MWB noise
-                S_h_efr = noise_equivalent_strain_broadband(ADMX_EFR, freqs_noise)
-                S_h_dmradio = noise_equivalent_strain_broadband(DMRADIO_GUT, freqs_noise)
-                
-                # LIGO noise
-                S_h_ligo = get_ligo_noise_psd(freqs_noise, 'adv_ligo')
-                
-                # Convert to masses
-                log_M_noise = f_to_M(np.log10(freqs_noise))
-                valid_noise = np.isfinite(log_M_noise)
-                
-                if valid_noise.any():
-                    M_noise = 10.0**log_M_noise[valid_noise]
-                    freqs_valid = freqs_noise[valid_noise]
+                if len(f_for_interp) >= 2:
+                    f_to_M = interp1d(np.log10(f_for_interp), np.log10(M_for_interp),
+                                    kind='linear', bounds_error=False, fill_value=np.nan)
+                    
+                    freqs_noise = np.logspace(2, 10, 5000)
                     
                     # MWB noise
-                    Sn_efr_valid = np.sqrt(S_h_efr[valid_noise])
-                    Sn_dmradio_valid = np.sqrt(S_h_dmradio[valid_noise])
+                    S_h_efr = noise_equivalent_strain_broadband(ADMX_EFR, freqs_noise)
+                    S_h_dmradio = noise_equivalent_strain_broadband(DMRADIO_GUT, freqs_noise)
                     
-                    # LIGO noise (where valid)
-                    Sn_ligo_valid = np.sqrt(S_h_ligo[valid_noise])
+                    # LIGO noise
+                    S_h_ligo = get_ligo_noise_psd(freqs_noise, 'adv_ligo')
                     
-                    sort_m_idx = np.argsort(M_noise)
-                    M_noise_sorted = M_noise[sort_m_idx]
-                    Sn_efr_sorted = Sn_efr_valid[sort_m_idx]
-                    Sn_dmradio_sorted = Sn_dmradio_valid[sort_m_idx]
-                    Sn_ligo_sorted = Sn_ligo_valid[sort_m_idx]
+                    # Convert to masses
+                    log_M_noise = f_to_M(np.log10(freqs_noise))
+                    valid_noise = np.isfinite(log_M_noise)
                     
-                    # Plot MWB noise
-                    ax_noise.loglog(M_noise_sorted, Sn_efr_sorted,
-                                   color='gray', linewidth=1.2, linestyle='--', alpha=0.7,
-                                   label=r'ADMX-EFR $\sqrt{S_h^{\rm noise}}$')
-                    ax_noise.loglog(M_noise_sorted, Sn_dmradio_sorted,
-                                   color='darkgray', linewidth=1.2, linestyle=':', alpha=0.7,
-                                   label=r'DMRadio-GUT $\sqrt{S_h^{\rm noise}}$')
-                    
-                    # Plot LIGO noise (only where finite)
-                    valid_ligo_noise = np.isfinite(Sn_ligo_sorted)
-                    if valid_ligo_noise.any():
-                        ax_noise.loglog(M_noise_sorted[valid_ligo_noise], 
-                                       Sn_ligo_sorted[valid_ligo_noise],
-                                       color='purple', linewidth=1.2, linestyle='-.', alpha=0.7,
-                                       label=r'LIGO HF $\sqrt{S_h^{\rm noise}}$')
+                    if valid_noise.any():
+                        M_noise = 10.0**log_M_noise[valid_noise]
+                        freqs_valid = freqs_noise[valid_noise]
+                        
+                        # MWB noise
+                        Sn_efr_valid = np.sqrt(S_h_efr[valid_noise])
+                        Sn_dmradio_valid = np.sqrt(S_h_dmradio[valid_noise])
+                        
+                        # LIGO noise (where valid)
+                        Sn_ligo_valid = np.sqrt(S_h_ligo[valid_noise])
+                        
+                        sort_m_idx = np.argsort(M_noise)
+                        M_noise_sorted = M_noise[sort_m_idx]
+                        Sn_efr_sorted = Sn_efr_valid[sort_m_idx]
+                        Sn_dmradio_sorted = Sn_dmradio_valid[sort_m_idx]
+                        Sn_ligo_sorted = Sn_ligo_valid[sort_m_idx]
+                        
+                        # Plot MWB noise
+                        ax_noise.loglog(M_noise_sorted, Sn_efr_sorted,
+                                    color='gray', linewidth=1.2, linestyle='--', alpha=0.7,
+                                    label=r'ADMX-EFR $\sqrt{S_h^{\rm noise}}$')
+                        ax_noise.loglog(M_noise_sorted, Sn_dmradio_sorted,
+                                    color='darkgray', linewidth=1.2, linestyle=':', alpha=0.7,
+                                    label=r'DMRadio-GUT $\sqrt{S_h^{\rm noise}}$')
+                        
+                        # Plot LIGO noise (only where finite)
+                        valid_ligo_noise = np.isfinite(Sn_ligo_sorted)
+                        if valid_ligo_noise.any():
+                            ax_noise.loglog(M_noise_sorted[valid_ligo_noise], 
+                                        Sn_ligo_sorted[valid_ligo_noise],
+                                        color='purple', linewidth=1.2, linestyle='-.', alpha=0.7,
+                                        label=r'LIGO HF $\sqrt{S_h^{\rm noise}}$')
+        
+        ax_noise.set_ylabel(r'$\left(S_h^{\rm noise}\right)^{1/2}\ [\mathrm{Hz}^{-1/2}]$',
+                            fontsize=11, color='gray')
+        ax_noise.tick_params(axis='y', labelcolor='gray')
     
-    ax_noise.set_ylabel(r'$\left(S_h^{\rm noise}\right)^{1/2}\ [\mathrm{Hz}^{-1/2}]$',
-                        fontsize=11, color='gray')
-    ax_noise.tick_params(axis='y', labelcolor='gray')
     
+    
+        # Combine legends
+        lines1, labs1 = ax1.get_legend_handles_labels()
+        lines2, labs2 = ax_noise.get_legend_handles_labels()
+        
+        # Remove duplicate labels
+        unique_labels = {}
+        for line, label in zip(lines1 + lines2, labs1 + labs2):
+            if label not in unique_labels:
+                unique_labels[label] = line
+        
+        ax1.legend(unique_labels.values(), unique_labels.keys(),
+                fontsize=9, loc='upper left', frameon=False)
+    
+    ax1.grid(True, alpha=0.3)
     # Bottom axis labels
     ax1.set_xlabel(r'$M_{\rm BH}\ [M_\odot]$', fontsize=13)
     ax1.set_ylabel(r'$d_{\rm max}\ [\mathrm{kpc}]$', fontsize=13)
     
-    # Combine legends
-    lines1, labs1 = ax1.get_legend_handles_labels()
-    lines2, labs2 = ax_noise.get_legend_handles_labels()
-    
-    # Remove duplicate labels
-    unique_labels = {}
-    for line, label in zip(lines1 + lines2, labs1 + labs2):
-        if label not in unique_labels:
-            unique_labels[label] = line
-    
-    ax1.legend(unique_labels.values(), unique_labels.keys(),
-              fontsize=9, loc='upper left', frameon=False)
-    
-    ax1.grid(True, alpha=0.3)
-    
-    # Title
-    ax1.set_title(rf'Distance Reach: {process_label}, $\alpha = {alpha}$',
-                 fontsize=12, pad=12)
     
     # Set limits
-    ax1.set_xlim(1e-12, 1e-5)
-    ax1.set_ylim(1e-10, 1e2)
+    ax1.set_xlim(1e-14, 1e0)
+    ax1.set_ylim(1e-7, 1e4)
     
     if savepath is not None:
         plt.savefig(savepath, dpi=150, bbox_inches='tight')

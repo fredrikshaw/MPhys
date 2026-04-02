@@ -648,8 +648,8 @@ def plot_reach(results, alpha, process_label,
     fig, ax1 = plt.subplots(figsize=(5, 4))
     fig.subplots_adjust(top=0.80)
 
-    colors = {'ADMX-EFR': 'steelblue', 'DMRadio-GUT': 'darkorange'}
-    linestyles = {'ADMX-EFR': '-', 'DMRadio-GUT': '--'}
+    colors = {'ADMX-EFR': 'steelblue', 'DMRadio-GUT': 'teal'}
+    linestyles = {'ADMX-EFR': '-', 'DMRadio-GUT': '-'}
     
     # Plot distance reach for both detectors
     for det_key in ['det1', 'det2']:
@@ -672,27 +672,50 @@ def plot_reach(results, alpha, process_label,
         M_plot = M_plot[unique_idx]
         d_plot = d_plot[unique_idx]
         
-        # Plot distance reach without legend entry (label will be added directly on line)
+        # Create label
+        label = f"{det_data['name']}"
+        
+        # Plot distance reach
         ax1.loglog(M_plot, d_plot,
                    color=colors[det_data['name']],
                    linewidth=2.0,
                    linestyle=linestyles[det_data['name']],
-                   label=None)
-
-        # Add detector name near the flat/top region of the reach curve
-        if np.isfinite(d_plot).any():
-            max_d = np.nanmax(d_plot)
-            if np.isfinite(max_d) and max_d > 0:
-                flat_idx = np.where((np.isfinite(d_plot)) & (d_plot >= 0.9 * max_d))[0]
-                if len(flat_idx) > 0:
-                    idx = flat_idx[len(flat_idx) // 2]
+                   label=label)
+        
+        # Mark resonance point if exists
+        if np.isfinite(det_data['d_res']) and np.isfinite(det_data['M_res']):
+            """ax1.scatter([det_data['M_res']], [det_data['d_res']],
+                        color=colors[det_data['name']], s=80, zorder=6,
+                        marker='o' if det_key == 'det1' else 's',
+                        edgecolors='black', linewidth=0.5)"""
+            
+            # Add annotation for the resonance
+            if det_key == 'det1':
+                log_M_val = np.log10(det_data['M_res'])
+                if abs(log_M_val - round(log_M_val)) < 0.15:
+                    M_label = f'$M = 10^{{{int(round(log_M_val))}}}\\,M_\\odot$'
                 else:
-                    idx = int(np.nanargmax(d_plot))
-
-                ax1.text(M_plot[idx], d_plot[idx], det_data['name'],
-                         color=colors[det_data['name']], fontsize=10, fontweight='bold',
-                         ha='center', va='bottom',
-                         bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+                    M_label = f'$M = {det_data["M_res"]:.2e}\\,M_\\odot$'
+                
+                """ax1.annotate(
+                    M_label + '\n' + '$f = f_{\\rm mech}^{\\rm ADMX}$',
+                    xy         = (det_data['M_res'], det_data['d_res']),
+                    xytext     = (det_data['M_res'] * 4.0, det_data['d_res'] * 0.15),
+                    fontsize   = 8, color=colors[det_data['name']],
+                    arrowprops = dict(arrowstyle='->', color=colors[det_data['name']], lw=0.8),
+                )"""
+            elif det_key == 'det2' and np.isfinite(det_data['d_res']):
+                """ax1.annotate(
+                    '$f = f_{\\rm mech}^{\\rm DMRadio}$',
+                    xy         = (det_data['M_res'], det_data['d_res']),
+                    xytext     = (det_data['M_res'] * 0.3, det_data['d_res'] * 0.3),
+                    fontsize   = 8, color=colors[det_data['name']],
+                    arrowprops = dict(arrowstyle='->', color=colors[det_data['name']], lw=0.8),
+                )"""
+            
+            # Add vertical line at resonance
+            ax1.axvline(det_data['M_res'], color=colors[det_data['name']], 
+                       linewidth=1.0, linestyle=':', alpha=0.5, zorder=1)
 
     # Add noise curves on right axis - now using a smooth interpolation
     ax_noise = ax1.twinx()
@@ -816,12 +839,35 @@ if __name__ == '__main__':
         M_range=M_range, rho_star=1.0,
     )
 
+    # ── Print resonant mass + distance reach for each detector ────────────────
+    print("\n" + "="*60)
+    print("Resonant Mass and Detector Reach")
+    print("="*60)
+
+    for det_key in ['det1', 'det2']:
+        det = results_t[det_key]
+        
+        name  = det['name']
+        M_res = det['M_res']
+        d_res = det['d_res']
+        f_res = det['f_res']
+        
+        if np.isfinite(M_res) and np.isfinite(d_res):
+            print(f"\n{name}:")
+            print(f"  Resonant mass        = {M_res:.3e} M_sun")
+            print(f"  Resonant frequency   = {f_res:.3e} Hz")
+            print(f"  Distance reach       = {d_res:.3e} kpc")
+        else:
+            print(f"\n{name}: No valid resonance found")
+
+    print("\n" + "="*60 + "\n")
+
     plot_reach(results_t, alpha, process_label_t, savepath=savepath)
 
     # =========================================================================
     # OPTION B: Annihilation process
     # =========================================================================
-    level = '2p'
+    """level = '2p'
     n, l, m = 2, 1, 1
     astar_init = 0.99
     # Use simpler label without \text command
@@ -838,4 +884,4 @@ if __name__ == '__main__':
     )
 
     plot_reach(results_a, alpha, process_label_a, 
-               savepath=savepath.replace('.pdf', '_ann.pdf'))
+               savepath=savepath.replace('.pdf', '_ann.pdf'))"""

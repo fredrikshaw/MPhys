@@ -79,6 +79,9 @@ class MagneticWeberBar:
     # ── Pickup loop ───────────────────────────────────────────────────────────
     R_p         : float   # Pickup loop radius [m]
 
+    #----
+    name        : Optional[str] = None  # Optional name/label for the configuration
+
     # ── SQUID readout ─────────────────────────────────────────────────────────
     # FIX: replaced (alpha, L_squid) with a single effective coupling kappa.
     # kappa^2 = (alpha^2/4) * (L_squid_eff / L_p), where L_squid_eff is the
@@ -132,6 +135,7 @@ ADMX_EFR = MagneticWeberBar(
     f_mech    = 1.4e3,
     Q_mech    = 1.0e6,
     R_p       = 0.4,
+    name      = 'ADMX-EFR',
 )
 
 DMRADIO_GUT = MagneticWeberBar(
@@ -144,6 +148,7 @@ DMRADIO_GUT = MagneticWeberBar(
     f_mech    = 1.0e3,
     Q_mech    = 1.0e7,
     R_p       = 3.0,
+    name      = 'DMRadio-GUT',
 )
 
 

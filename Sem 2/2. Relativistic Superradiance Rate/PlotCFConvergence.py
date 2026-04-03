@@ -73,19 +73,21 @@ for i, alpha in enumerate(alpha_values):
         df_alpha["SR_rate"],
         color=colour,
         linewidth=1.5,
-        label=rf"$\alpha = {alpha:.3f}$"
+        marker="o",
+        markersize=3.5,
+        label=rf"{alpha:.2f}"
     )
 
 # ── Formatting ───────────────────────────────────────────────────────────────
 ax.set_xscale("log")
 ax.set_yscale("log")
 
-ax.set_xlabel(r"$N_{\mathrm{max}}$", fontsize=13)
-ax.set_ylabel(r"$\Gamma^{\mathrm{sr}}r_g$", fontsize=13)
+ax.set_xlabel(r"$N$", fontsize=13)
+ax.set_ylabel(r"$2\Im(\tilde\omega)$", fontsize=13)
 
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
 
-ax.legend(fontsize=9, frameon=False)
+ax.legend(fontsize=9, frameon=True, loc="upper right", title=r"$\alpha$")
 
 plt.tight_layout()
 

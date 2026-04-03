@@ -21,7 +21,7 @@ a_vals = np.linspace(0.0, 0.9999, 2000)
 aol_max = alpha_over_ell_max(a_vals)
 
 # ── figures ────────────────────────────────────────────────────────────────
-fig1, ax1 = plt.subplots(figsize=(6.5, 5.5))
+fig1, ax1 = plt.subplots(figsize=(5, 4))
 fig1.patch.set_facecolor("white")
 
 fig2, ax2 = plt.subplots(figsize=(6.5, 5.5))
@@ -30,7 +30,7 @@ fig2.patch.set_facecolor("white")
 # ── palette ───────────────────────────────────────────────────────────────
 SR_COLOR   = "#4C72B0"   # blue fill for SR region
 BOUND_COLOR = "#C44E52"  # red curve
-ANNOT_COLOR = "#2ca02c"  # green annotations
+ANNOT_COLOR = BOUND_COLOR
 
 # ══════════════════════════════════════════════════════════════════════════
 # LEFT PANEL  –  α/ℓ vs a*
@@ -42,8 +42,8 @@ ax.fill_between(a_vals, 0, aol_max,
 ax.plot(a_vals, aol_max,
         color=BOUND_COLOR, lw=2.2, label=r"$(\alpha/\ell)_{\max}$")
 
-ax.text(0.8, 0.1, "Superradiant Region",
-    fontsize=14, color="black", weight="bold",
+ax.text(0.72, 0.1, "Superradiant Region",
+    fontsize=12, color="black", weight="bold",
     ha="center", va="center",
     bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="none", alpha=0.6))
 
@@ -52,21 +52,23 @@ ax.axhline(0.5, color="k", ls="--", lw=1.2, alpha=0.7)
 ax.axvline(1.0, color="k", ls=":",  lw=1.0, alpha=0.5)
 
 # annotation: extremal limit
-ax.annotate(r"Extremal limit: $(\alpha/\ell)_{\max} \to \frac{1}{2}$",
+ax.annotate(r" $(\alpha/\ell)_{\max} \to \frac{1}{2}$",
             xy=(0.98, 0.495), xytext=(0.55, 0.42),
             arrowprops=dict(arrowstyle="->", color=ANNOT_COLOR, lw=1.4),
-            fontsize=12, color=ANNOT_COLOR,
+            fontsize=12, color="k",
             ha="center")
 
 # sample spin markers
-for a_s in [0.9, 0.7, 0.5]:
+spin_markers = [0.9, 0.7, 0.5, 1.0 - 1e-6]
+for a_s in spin_markers:
     aol_s = alpha_over_ell_max(a_s)
     ax.plot(a_s, aol_s, "o", color=BOUND_COLOR, ms=6, zorder=5)
-    ax.annotate(f"$\tilde a={a_s}$\n"
-                r"$(\alpha/\ell)_{\rm max}$" + f"$={aol_s:.3f}$",
-                xy=(a_s, aol_s), xytext=(a_s - 0.22, aol_s + 0.03),
-                fontsize=12, color="k",
-                arrowprops=dict(arrowstyle="-", color="gray", lw=0.8))
+    if a_s != spin_markers[-1]:  # skip label for last point to avoid overlap
+        ax.annotate(r"$\tilde a= \,$" + f"${a_s}$\n"
+                    r"$(\alpha/\ell)_{\max}= \,$" + f"${aol_s:.3f}$",
+                    xy=(a_s, aol_s), xytext=(a_s - 0.28, aol_s + 0.03),
+                    fontsize=12, color="k",
+                    arrowprops=dict(arrowstyle="-", color="gray", lw=0.8))
 
 ax.set_xlabel(r" $\tilde a$", fontsize=15)
 ax.set_ylabel(r"$\alpha / \ell$", fontsize=15)
@@ -135,5 +137,5 @@ plt.show()
 
 # ── quick numerical check ─────────────────────────────────────────────────
 print("\nNumerical check of (α/ℓ)_max at selected spins:")
-for a in [0.0, 0.5, 0.9, 0.99, 1.0 - 1e-9]:
+for a in [0.0, 0.6, 0.9, 0.99, 1.0 - 1e-9]:
     print(f"  a* = {a:.4f}  →  (α/ℓ)_max = {alpha_over_ell_max(a):.6f}")

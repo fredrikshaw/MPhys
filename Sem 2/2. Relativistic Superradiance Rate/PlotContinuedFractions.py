@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+import matplotlib.ticker as mticker
 import re
 
 
@@ -41,10 +42,9 @@ FILES = [
     "2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.990_aMin0.010_aMax1.100_20260312.dat",
     "2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.990_aMin0.010_aMax1.600_20260312.dat",
     "2. Relativistic Superradiance Rate/Mathematica/SR_n5l4m4_at0.990_aMin0.010_aMax2.100_20260312.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n6l5m5_at0.990_aMin0.500_aMax2.600_20260312.dat",
 ]
 
-COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#284945", "#284245"]
+COLOURS = ["#68308d", "#a31818","#356E44", "#43d5fa", "#284245"]
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -130,18 +130,19 @@ legend_handles = [
                   linewidth=1.5, label="Non-Relativistic"),
 ]
 
-ax.legend(handles=legend_handles, fontsize=10, frameon=False)
+#ax.legend(handles=legend_handles, fontsize=10, frameon=False)
 
 ax.set_yscale("log")
 ax.set_xlabel(r"$\alpha$", fontsize=13)
 ax.set_ylabel(r"$\Gamma^{\mathrm{sr}} r_g$", fontsize=13)
+ax.yaxis.set_major_locator(mticker.LogLocator(base=10.0, subs=(1.0,), numticks=100))
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
-ax.set_ylim(1e-15, 1e-6)
-ax.set_xlim(0, 3)
+ax.set_ylim(1e-15, 1e-5)
+ax.set_xlim(0, 2.1)
 
 plt.tight_layout()
 
-output_path = Path("2. Relativistic Superradiance Rate/Plots/superradiance_plot.png")
+output_path = Path("2. Relativistic Superradiance Rate/Plots/superradiance_plot.pdf")
 output_path.parent.mkdir(parents=True, exist_ok=True)
 plt.savefig(output_path, dpi=150)
 plt.show()

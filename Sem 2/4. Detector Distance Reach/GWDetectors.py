@@ -28,6 +28,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from typing import Optional
+from scipy.interpolate import interp1d
+from matplotlib.ticker import FuncFormatter
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Physical constants
@@ -48,6 +50,34 @@ INV_EV_TO_M  = HBAR * C_LIGHT / EV_TO_J   # eV^-1 -> m
 KPC_TO_M     = 3.086e19             # kpc -> m
 MPC_TO_M     = 3.086e22             # Mpc -> m
 
+
+# ────────────────────────────────────────────────────────────────────────────
+# Load in the LIGO data 
+# ────────────────────────────────────────────────────────────────────────────
+
+def load_ligo_psd(filepath):
+    """
+    Load LIGO noise PSD file.
+
+    Expected format:
+        f [Hz]   S_h [Hz^-1]   OR   sqrt(S_h) [Hz^-1/2]
+
+    Returns
+    -------
+    interp function: f -> S_h(f)
+    """
+    data = np.loadtxt(filepath)
+
+    f = data[:, 0]
+    S_h = data[:, 1]
+
+    return interp1d(
+        f, S_h,
+        bounds_error=False,
+        fill_value=np.nan
+    )
+
+LIGO_PSD_interp = load_ligo_psd("4. Detector Distance Reach/LIGO-NESPSD.dat")
 
 # ═════════════════════════════════════════════════════════════════════════════
 # ① Magnetic Weber Bar detectors
@@ -262,7 +292,7 @@ class IFOConfig:
     linestyle  : str = '-'
 
     def __post_init__(self):
-        self.f_FSR = C_LIGHT / (2.0 * self.arm_length)   # [Hz]
+        self.f_FSR = 1000 # C_LIGHT / (2.0 * self.arm_length)   # [Hz]
 
 
 # ── IFO detector catalogue ────────────────────────────────────────────────────
@@ -271,9 +301,18 @@ IFO_DETECTORS = {
     'adv_ligo': IFOConfig(
         name       = r'LIGO HF',
         arm_length = 4.0e3,
-        asd_anchor = 4.0e-23,
+        asd_anchor = 1.7e-23,
         n_max      = 1000,
-        color      = 'purple',
+        color      = 'black',
+        linestyle  = '--',
+    ),
+
+    'ligo_data': IFOConfig(
+        name       = r'LIGO',
+        arm_length = 4.0e3,   # not used now
+        asd_anchor = 1.0,     # dummy
+        n_max      = 1,
+        color      = 'black',
         linestyle  = '-',
     ),
 }
@@ -283,23 +322,40 @@ IFO_DETECTORS = {
 
 def ifo_noise_psd(freqs: np.ndarray,
                   detector_key: str = 'adv_ligo') -> np.ndarray:
-    """
-    Noise-equivalent strain PSD S_h(f) [Hz^-1] for the named IFO.
 
-    Returns NaN below f_FSR (model not valid there).
-    """
-    ifo    = IFO_DETECTORS[detector_key]
-    freqs  = np.asarray(freqs, dtype=float)
-    S_h    = np.full_like(freqs, np.nan)
-    mask   = freqs >= ifo.f_FSR
-    S_h[mask] = (ifo.asd_anchor * freqs[mask] / ifo.f_FSR)**2
-    return S_h
+    freqs = np.asarray(freqs, dtype=float)
+
+    if detector_key == 'adv_ligo':
+        # OLD model (power law)
+        ifo = IFO_DETECTORS[detector_key]
+        S_h = np.full_like(freqs, np.nan)
+        mask = freqs >= ifo.f_FSR
+        S_h[mask] = (ifo.asd_anchor * freqs[mask] / ifo.f_FSR)**2
+        return S_h
+
+    elif detector_key == 'ligo_data':
+        # NEW: real PSD
+        return LIGO_PSD_interp(freqs)
+
+    else:
+        raise ValueError(f"Unknown detector key: {detector_key}")
 
 
 def ifo_asd_envelope(ifo: IFOConfig,
                      freqs: np.ndarray) -> np.ndarray:
     """ASD envelope sqrt(S_h) = A_det * f/f_FSR [Hz^{-1/2}]."""
     return ifo.asd_anchor * (freqs / ifo.f_FSR)
+
+
+def _format_log_decade_tick(x, pos):
+    if x <= 0:
+        return ''
+    if x <= 1e3 and np.isclose(x, round(x)):
+        return f'{int(round(x))}'
+    exp = int(round(np.log10(x)))
+    if np.isclose(x, 10 ** exp):
+        return rf'$10^{{{exp}}}$'
+    return ''
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -363,16 +419,26 @@ def plot_all_noise_psds(
 
     # ── IFO detectors ─────────────────────────────────────────────────────────
     for key, ifo in IFO_DETECTORS.items():
-        f_valid = freqs[freqs >= ifo.f_FSR]
-        if len(f_valid) == 0:
+
+        S_h = ifo_noise_psd(freqs, detector_key=key)
+
+        mask = np.isfinite(S_h)
+        if not mask.any():
             continue
-        asd = ifo_asd_envelope(ifo, f_valid)
-        ax.loglog(f_valid, asd,
-                  color=ifo.color, linewidth=1.8,
-                  linestyle=ifo.linestyle, label=ifo.name)
-        # Mark the FSR frequency
-        ax.axvline(ifo.f_FSR, color=ifo.color,
-                   linewidth=0.7, linestyle=':', alpha=0.4)
+
+        ax.loglog(freqs[mask], np.sqrt(S_h[mask]),
+                color=ifo.color,
+                linewidth=1.8,
+                linestyle=ifo.linestyle,
+                label=ifo.name)
+
+        # Optional: only draw FSR line for analytic model
+        if key == 'adv_ligo':
+            ax.axvline(ifo.f_FSR,
+                    color=ifo.color,
+                    linewidth=0.7,
+                    linestyle=':',
+                    alpha=0.4)
 
     # ── BBN bound ─────────────────────────────────────────────────────────────
     if plot_BBN:
@@ -388,9 +454,10 @@ def plot_all_noise_psds(
         r'$\left(S_h^\mathrm{noise}\right)^{1/2}\ [\mathrm{Hz}^{-1/2}]$',
         fontsize=13,
     )
-    ax.set_xlim(f_min, f_max)
+    ax.set_xlim(10, f_max)
     ax.set_ylim(1e-26, 1e-14)
-    ax.legend(fontsize=9, loc='upper left', frameon=False)
+    ax.xaxis.set_major_formatter(FuncFormatter(_format_log_decade_tick))
+    ax.legend(fontsize=9, loc='upper right', frameon=False)
     ax.grid(True, which='both', alpha=0.3)
     plt.tight_layout()
 
@@ -414,9 +481,9 @@ if __name__ == '__main__':
     DMRADIO_GUT.Q_EM   = 2.0e7
 
     plot_all_noise_psds(
-        f_min    = 1e1,
+        f_min    = 1e0,
         f_max    = 1e9,
         plot_LC  = False,
         plot_BBN = False,
-        savepath = '4. Detector Distance Reach/detector_noise_psds.pdf',
+        savepath = '4. Detector Distance Reach/Plots/detector_noise_psds.pdf',
     )

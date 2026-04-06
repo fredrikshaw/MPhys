@@ -419,7 +419,10 @@ def run_sweep(freq_func, h_func, tau_func,
     if include_ligo:
         for key, ifo in IFO_DETECTORS.items():
             print(f"  Sweeping {ifo.name}...")
-            ifo_f_band = (ifo.f_FSR, 1e11)
+            if key == 'ligo_data':
+                ifo_f_band = (10, 1000)  # adjust to your file range
+            else:
+                ifo_f_band = (ifo.f_FSR, 1e11)
             data = _single_det_sweep(
                 freq_func, h_func, tau_func,
                 key, ifo_f_band, M_range, n_coarse, n_dense, rho_star,
@@ -438,9 +441,9 @@ def run_sweep(freq_func, h_func, tau_func,
 _DET_STYLE = {
     'ADMX-EFR'   : {'color': 'steelblue', 'ls': '-'},
     'DMRadio-GUT': {'color': 'teal',       'ls': '-'},
-    'LIGO HF'    : {'color': 'purple',     'ls': '-'},
+    'LIGO HF'    : {'color': 'black',     'ls': '--'},
+    'LIGO'       : {'color': 'black',      'ls': '-'},
 }
-
 
 def plot_reach(results, alpha, process_label,
                savepath=None,
@@ -574,11 +577,11 @@ def plot_reach(results, alpha, process_label,
     if ylim is not None:
         ax1.set_ylim(*ylim)
 
-    title = (
+    """title = (
         process_label + '\n'
         + fr'$\alpha = {alpha}$'
     )
-    ax1.set_title(title, fontsize=10, pad=6)
+    ax1.set_title(title, fontsize=10, pad=6)"""
     ax1.grid(True, which='both', alpha=0.25)
 
     plt.tight_layout()
@@ -602,7 +605,7 @@ if __name__ == '__main__':
     astar_init = 0.99
     M_range    = (1e-12, 1e4)
     rho_star   = 1.0               # SNR threshold
-    savedir    = '4. Detector Distance Reach'
+    savedir    = '4. Detector Distance Reach/Plots'
 
     # ── Choose process: 'transition' or 'annihilation' ────────────────────────
     PROCESS = 'transition'         # <─── change this
@@ -620,7 +623,7 @@ if __name__ == '__main__':
 
         print("Building transition source functions...")
         freq_func, h_func, tau_func = make_transition_source(
-            alpha, transition, n_e, n_g, filepath, debug=True,
+            alpha, transition, n_e, n_g, filepath, debug=False,
         )
 
     elif PROCESS == 'annihilation':
@@ -633,7 +636,7 @@ if __name__ == '__main__':
 
         print("Building annihilation source functions...")
         freq_func, h_func, tau_func = make_annihilation_source(
-            alpha, level, n, l, m, astar_init, debug=True,
+            alpha, level, n, l, m, astar_init, debug=False,
         )
 
     else:
@@ -665,5 +668,5 @@ if __name__ == '__main__':
     plot_reach(
         results, alpha, process_label,
         savepath          = savepath,
-        show_noise_curves = True,
+        show_noise_curves = False,
     )

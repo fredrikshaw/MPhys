@@ -46,7 +46,8 @@ from ParamCalculator import (
     calc_n_max,
     calc_bh_mass,
     calc_delta_astar,
-    calc_char_t_ann
+    calc_char_t_ann,
+    G_N,
 )
 
 relativistic_dir = sem2_dir / "2. Relativistic Superradiance Rate"
@@ -112,7 +113,7 @@ KPC_TO_M     = 3.086e19
 # h_peak for transitions scales as 1/r, so d_max is found by linear inversion.
 # ─────────────────────────────────────────────────────────────────────────────
 
-def make_transition_funcs(alpha, transition, filepath):
+def make_transition_funcs(alpha, transition, filepath, n_e, n_g, debug=False):
     """
     Return (freq_func, h_func, tau_func) for a superradiance transition.
 
@@ -120,27 +121,61 @@ def make_transition_funcs(alpha, transition, filepath):
         f_t = omega_t / 2pi
 
     h_peak ~ 1/r  =>  d_max = h_unit * sqrt(tau / S_h_noise)
+
+    Parameters
+    ----------
+    debug : bool  -- if True, print all intermediate values for first point
     """
+
+    _debug_done = [False]
 
     def freq_func(M_solar):
         r_g_nat     = calc_rg_from_bh_mass(M_solar)
-        omega_t_nat = calc_omega_transition(r_g_nat, alpha, 4, 3)
+        omega_t_nat = calc_omega_transition(r_g_nat, alpha, n_e, n_g)
         return omega_t_nat * EV_TO_SI / (2 * np.pi)
 
     def h_func(f_t, M_solar):
         r_g_nat     = calc_rg_from_bh_mass(M_solar)
         r_g_SI      = r_g_nat * INV_EV_TO_M
+        omega_t_nat = 2 * np.pi * f_t / EV_TO_SI          # convert Hz → eV
         Gamma_t_nat = calc_transition_rate(
-                          transition, alpha, f_t, G_NEWTON, r_g_SI
-                      )
+                        transition, alpha, omega_t_nat,   # ← omega in eV
+                        G_N, r_g_nat                  # ← real G_N and r_g
+                    )
         Gamma_t_SI  = Gamma_t_nat * EV_TO_SI
         Gamma_sr_SI = sr_rate_dimensioned(
                           alpha, M_solar, filepath=filepath, method='cf'
                       )['gamma_SI']
+        Gamma_sr_nat = sr_rate_dimensioned(
+                          alpha, M_solar, filepath=filepath, method='cf'
+                      )['gamma_natural_eV']        
+        
+        tau_char_s   = 1.0 / Gamma_sr_SI
         omega_t_SI  = 2 * np.pi * f_t
-        return np.sqrt(
-            4 * G_NEWTON / omega_t_SI * Gamma_sr_SI**2 / Gamma_t_SI
+        h_unit = np.sqrt(
+            4 * G_N / omega_t_nat * Gamma_sr_nat**2 / Gamma_t_nat
         )
+
+        h_unit *= INV_EV_TO_M  # convert from natural units at r=1 eV^-1 to SI at r=1 m
+
+        if debug and not _debug_done[0]:
+            print(f"\n{'─'*60}")
+            print(f"[TRANS DEBUG] M_solar          = {M_solar:.4e} Msun")
+            print(f"[TRANS DEBUG] r_g              = {r_g_nat:.4e} eV^-1")
+            print(f"[TRANS DEBUG] r_g (SI)         = {r_g_SI:.4e} m")
+            print(f"[TRANS DEBUG] f_t              = {f_t:.4e} Hz")
+            print(f"[TRANS DEBUG] omega_t (SI)     = {omega_t_SI:.4e} rad/s")
+            print(f"[TRANS DEBUG] Gamma_t          = {float(Gamma_t_nat):.4e} eV")
+            print(f"[TRANS DEBUG] Gamma_t (SI)     = {Gamma_t_SI:.4e} s^-1")
+            print(f"[TRANS DEBUG] Gamma_sr         = {Gamma_sr_nat:.4e} eV")
+            print(f"[TRANS DEBUG] Gamma_sr (SI)    = {Gamma_sr_SI:.4e} s^-1")
+            print(f"[TRANS DEBUG] tau_char         = {tau_char_s:.4e} s")
+            print(f"[TRANS DEBUG] h_unit (r=1 m)   = {h_unit:.4e} [dimensionless]")
+            print(f"[TRANS DEBUG] h at 1 kpc       = {h_unit / KPC_TO_M:.4e} [dimensionless]")
+            print(f"{'─'*60}\n")
+            _debug_done[0] = True
+
+        return h_unit
 
     def tau_func(f_t, M_solar):
         return 1.0 / sr_rate_dimensioned(
@@ -151,25 +186,7 @@ def make_transition_funcs(alpha, transition, filepath):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Annihilation source factory
-#
-# For annihilation the peak strain is:
-#
-#   h_peak = (G_N M^2 Delta_a* / m_a r) * sqrt(8 G_N Gamma_a / r^2 omega_ann)
-#          = A / r^2
-#
-# where A = N_max * sqrt(8 G_N Gamma_a / omega_ann)  has units [m^2]
-# and N_max = G_N M^2 Delta_a* / m_a carries dimensions [m^3 s^-2 / (m s^-2)] = [m]
-# (since G_N [m^3 kg^-1 s^-2] * M^2 [kg^2] / m_a [kg] / c^2 [m^2 s^-2] = [m])
-#
-# Because h ~ 1/r^2 rather than 1/r the d_max inversion is different:
-#   SNR = (A/r^2) * sqrt(tau/S_h_noise) = rho*
-#   r^2 = A * sqrt(tau/S_h_noise) / rho*
-#   d_max = sqrt( A * sqrt(tau/S_h_noise) / rho* )
-#
-# make_annihilation_source returns a single source_func(M_solar) -> (f, A)
-# rather than the (freq, h, tau) triple, because the 1/r^2 structure means
-# compute_point_ann handles d_max differently to compute_point.
+# Annihilation source 
 # ─────────────────────────────────────────────────────────────────────────────
 
 def make_annihilation_source(alpha, level, n, l, m, astar_init, debug=False):
@@ -193,13 +210,13 @@ def make_annihilation_source(alpha, level, n, l, m, astar_init, debug=False):
     G_N_nat      = 6.708e-57    # [eV^-2] — defined at factory scope, visible to all closures
     _debug_done  = [False]
 
-    def source_func(M_solar):
+    def h_func(f_t, M_solar): # input f_t even though not used so can be used in run_sweep
         # ── Natural unit quantities ───────────────────────────────────────────
         r_g          = calc_rg_from_bh_mass(M_solar)        # [eV^-1]
         omega_ann    = calc_omega_ann(r_g, alpha, n)         # [eV]
         ann_rate     = calc_annihilation_rate(
                            level, alpha, omega_ann,
-                           G_N=G_N_nat, r_g=r_g
+                           G_N=G_N, r_g=r_g
                        )                                     # [eV]
         delta_a_star = calc_delta_astar(astar_init, r_g, alpha, n, m)
 
@@ -214,12 +231,12 @@ def make_annihilation_source(alpha, level, n, l, m, astar_init, debug=False):
         # ── Source amplitude A ────────────────────────────────────────────────
         # In natural units at r = 1 eV^-1:
         #   h_nat = n_max * sqrt(8 * G_N_nat * ann_rate / omega_ann)
-        # Converting to h = A/r^2 with r in metres:
-        #   A [m^2] = h_nat * INV_EV_TO_M^2
+        # Converting to h = A/r with r in metres:
+        #   A [m] = h_nat * INV_EV_TO_M
         h_nat = float(n_max) * np.sqrt(
-                    8 * G_N_nat * float(ann_rate) / float(omega_ann)
+                    8 * G_N * float(ann_rate) / float(omega_ann)
                 )                                            # dimensionless at r=1 eV^-1
-        A     = h_nat * INV_EV_TO_M**2                      # [m^2]
+        A     = h_nat * INV_EV_TO_M                     # [m]
 
         if debug and not _debug_done[0]:
             ann_rate_SI = float(ann_rate) * EV_TO_SI
@@ -232,18 +249,18 @@ def make_annihilation_source(alpha, level, n, l, m, astar_init, debug=False):
             print(f"[ANN DEBUG] ann_rate         = {float(ann_rate):.4e} eV")
             print(f"[ANN DEBUG] ann_rate (SI)    = {ann_rate_SI:.4e} s^-1")
             print(f"[ANN DEBUG] bh_mass_eV       = {bh_mass_eV:.4e} eV")
-            print(f"[ANN DEBUG] delta_a_star     = {delta_a_star:.4e}")
+            print(f"[ANN DEBUG] delta_a_star     = {delta_a_star:.3f}")
             print(f"[ANN DEBUG] n_max            = {float(n_max):.4e}")
             print(f"[ANN DEBUG] h_nat (r=1eV^-1) = {h_nat:.4e} [dimensionless]")
             print(f"[ANN DEBUG] INV_EV_TO_M      = {INV_EV_TO_M:.4e} m/eV^-1")
-            print(f"[ANN DEBUG] A = h_nat*INV^2  = {A:.4e} m^2")
-            print(f"[ANN DEBUG] h at 1 kpc       = {A / KPC_TO_M**2:.4e} [dimensionless]")
+            print(f"[ANN DEBUG] A = h_nat*INV    = {A:.4e} m")
+            print(f"[ANN DEBUG] h at 1 kpc       = {A / KPC_TO_M:.4e} [dimensionless]")
             print(f"{'─'*60}\n")
             _debug_done[0] = True
 
-        return f_ann, A
+        return A
 
-    def tau_func(f_ann, M_solar):
+    def tau_func(f_t, M_solar):
         r_g          = calc_rg_from_bh_mass(M_solar)        # [eV^-1]
         omega_ann    = calc_omega_ann(r_g, alpha, n)         # [eV]
         ann_rate     = calc_annihilation_rate(
@@ -256,8 +273,13 @@ def make_annihilation_source(alpha, level, n, l, m, astar_init, debug=False):
         n_max        = calc_n_max(bh_mass_eV, delta_a_star, m)   # dimensionless
         tau_eV       = calc_char_t_ann(ann_rate, n_max)      # [eV^-1]
         return float(tau_eV) / EV_TO_SI                      # [s]
+    
+    def freq_func(M_solar):
+        r_g_nat     = calc_rg_from_bh_mass(M_solar)
+        omega_a_nat = calc_omega_ann(r_g_nat, alpha, n)
+        return omega_a_nat * EV_TO_SI / (2 * np.pi)
 
-    return source_func, tau_func
+    return freq_func, h_func, tau_func
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Core computation — transitions (h ~ 1/r)
@@ -307,48 +329,6 @@ def compute_point(M_solar, freq_func, h_func, tau_func,
     return f_t, d_max_kpc, h_unit, tau_val, S_h_noise
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Core computation — annihilation (h ~ 1/r^2)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def compute_point_ann(M_solar, source_func, tau_func,
-                      det=ADMX_EFR, f_band=(1e2, 1e8), rho_star=1.0):
-    """
-    Compute (f, d_max_kpc, A, tau_val, S_h_noise) for one BH mass.
-    For annihilation processes where h_peak = A / r^2.
-
-    SNR = (A/r^2) * sqrt(tau/S_h_noise) = rho*
-    => d_max = sqrt( A * sqrt(tau/S_h_noise) / rho* )
-    """
-    try:
-        f_ann, A = source_func(M_solar)
-    except Exception as exc:
-        # print(f"[VALIDATION] Rejected ann point: M={M_solar} (source_func failed: {exc})")
-        return np.nan, np.nan, np.nan, np.nan, np.nan
-
-    if not (f_band[0] <= f_ann <= f_band[1]):
-        # print(f"[VALIDATION] Rejected ann point: M={M_solar} f={f_ann:.3e} (outside f_band {f_band})")
-        return f_ann, np.nan, np.nan, np.nan, np.nan
-
-    try:
-        tau_val = tau_func(f_ann, M_solar)
-    except Exception as exc:
-        # print(f"[VALIDATION] Rejected ann point: M={M_solar} f={f_ann:.3e} (tau_func failed: {exc})")
-        return f_ann, np.nan, np.nan, np.nan, np.nan
-
-    S_h_noise = noise_equivalent_strain_broadband(
-                    det, np.array([f_ann])
-                )[0]
-
-    d_max_m_sq = A * np.sqrt(tau_val / S_h_noise) / rho_star
-
-    if not np.isfinite(d_max_m_sq) or d_max_m_sq <= 0:
-        # print(f"[VALIDATION] Rejected ann point: M={M_solar} f={f_ann:.3e} d_max_m_sq={d_max_m_sq} (invalid distance)")
-        return f_ann, np.nan, A, tau_val, S_h_noise
-
-    d_max_kpc = np.sqrt(d_max_m_sq) / KPC_TO_M
-
-    return f_ann, d_max_kpc, A, tau_val, S_h_noise
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -493,144 +473,7 @@ def run_sweep(freq_func, h_func, tau_func,
     }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Sweep — annihilation
-# ─────────────────────────────────────────────────────────────────────────────
-
-def run_sweep_ann(source_func, tau_func,
-                  M_range=(1e-12, 1e1), n_coarse=300, n_dense=800,
-                  det1=ADMX_EFR, det2=DMRADIO_GUT, f_band=(1e2, 1e8), rho_star=1.0):
-    """
-    Two-stage mass sweep for annihilation processes (h ~ 1/r^2).
-    Returns results for both detectors.
-    """
-    
-    def _sweep(M_array, det):
-        f_arr, d_arr, M_arr = [], [], []
-        for M in M_array:
-            f, d, _, _, _ = compute_point_ann(
-                M, source_func, tau_func, det, f_band, rho_star
-            )
-            f_arr.append(f);  d_arr.append(d);  M_arr.append(M)
-        return np.array(f_arr), np.array(d_arr), np.array(M_arr)
-
-    M_coarse = np.logspace(np.log10(M_range[0]), np.log10(M_range[1]), n_coarse)
-    
-    # Get results for both detectors
-    f_c1, d_c1, M_c1 = _sweep(M_coarse, det1)
-    f_c2, d_c2, M_c2 = _sweep(M_coarse, det2)
-    
-    # Find resonant masses for both detectors
-    f_mech1 = det1.f_mech
-    f_mech2 = det2.f_mech
-    
-    # Process results for detector 1
-    fin_c1 = np.isfinite(d_c1)
-    M_res1, f_r1, d_r1 = np.nan, np.nan, np.nan
-    d_fine1 = None
-    M_fine1 = None
-    
-    if fin_c1.any():
-        # Find index closest to mechanical frequency
-        idx_closest = np.argmin(np.abs(f_c1[fin_c1] - f_mech1))
-        M_guess = M_c1[fin_c1][idx_closest]
-        
-        # Do dense sweep around the guess
-        M_dense = np.logspace(np.log10(M_guess/10), np.log10(M_guess*10), n_dense)
-        f_dense, d_dense, _ = _sweep(M_dense, det1)
-        
-        # Store dense results for plotting
-        valid_dense = np.isfinite(d_dense)
-        if valid_dense.any():
-            M_fine1 = M_dense[valid_dense]
-            d_fine1 = d_dense[valid_dense]
-            
-            # Find exact resonance from dense sweep
-            idx_res = np.argmax(d_fine1)
-            M_res1 = M_fine1[idx_res]
-            f_r1 = f_dense[valid_dense][idx_res]
-            d_r1 = d_fine1[idx_res]
-    
-    # Process results for detector 2
-    fin_c2 = np.isfinite(d_c2)
-    M_res2, f_r2, d_r2 = np.nan, np.nan, np.nan
-    d_fine2 = None
-    M_fine2 = None
-    
-    if fin_c2.any():
-        # Find index closest to mechanical frequency
-        idx_closest = np.argmin(np.abs(f_c2[fin_c2] - f_mech2))
-        M_guess = M_c2[fin_c2][idx_closest]
-        
-        # Do dense sweep around the guess
-        M_dense = np.logspace(np.log10(M_guess/10), np.log10(M_guess*10), n_dense)
-        f_dense, d_dense, _ = _sweep(M_dense, det2)
-        
-        # Store dense results for plotting
-        valid_dense = np.isfinite(d_dense)
-        if valid_dense.any():
-            M_fine2 = M_dense[valid_dense]
-            d_fine2 = d_dense[valid_dense]
-            
-            # Find exact resonance from dense sweep
-            idx_res = np.argmax(d_fine2)
-            M_res2 = M_fine2[idx_res]
-            f_r2 = f_dense[valid_dense][idx_res]
-            d_r2 = d_fine2[idx_res]
-    
-    # Combine coarse and dense results for plotting
-    valid_c1 = np.isfinite(d_c1)
-    if M_fine1 is not None:
-        M_combined1 = np.concatenate([M_c1[valid_c1], M_fine1])
-        d_combined1 = np.concatenate([d_c1[valid_c1], d_fine1])
-        # Sort by mass
-        sort_idx = np.argsort(M_combined1)
-        M_combined1 = M_combined1[sort_idx]
-        d_combined1 = d_combined1[sort_idx]
-    else:
-        M_combined1 = M_c1[valid_c1]
-        d_combined1 = d_c1[valid_c1]
-    
-    valid_c2 = np.isfinite(d_c2)
-    if M_fine2 is not None:
-        M_combined2 = np.concatenate([M_c2[valid_c2], M_fine2])
-        d_combined2 = np.concatenate([d_c2[valid_c2], d_fine2])
-        # Sort by mass
-        sort_idx = np.argsort(M_combined2)
-        M_combined2 = M_combined2[sort_idx]
-        d_combined2 = d_combined2[sort_idx]
-    else:
-        M_combined2 = M_c2[valid_c2]
-        d_combined2 = d_c2[valid_c2]
-    
-    return {
-        'det1': {
-            'name': 'ADMX-EFR',
-            'f_mech': f_mech1,
-            'f': f_c1[valid_c1],
-            'd': d_c1[valid_c1],
-            'M': M_c1[valid_c1],
-            'd_combined': d_combined1,
-            'M_combined': M_combined1,
-            'f_res': f_r1,
-            'd_res': d_r1,
-            'M_res': M_res1
-        },
-        'det2': {
-            'name': 'DMRadio-GUT',
-            'f_mech': f_mech2,
-            'f': f_c2[valid_c2],
-            'd': d_c2[valid_c2],
-            'M': M_c2[valid_c2],
-            'd_combined': d_combined2,
-            'M_combined': M_combined2,
-            'f_res': f_r2,
-            'd_res': d_r2,
-            'M_res': M_res2
-        }
-    }
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Plotting — works for both processes
+# Plotting 
 # ─────────────────────────────────────────────────────────────────────────────
 
 def plot_reach(results, alpha, process_label,
@@ -825,13 +668,15 @@ if __name__ == '__main__':
     # =========================================================================
     # OPTION A: Transition process
     # =========================================================================
-    filepath = "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat"
+    filepath = "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.999_aMin0.001_aMax0.500_20260402.dat"
     transition = '3p 2p'
+    n_e, n_g = 3, 2
     # Use simpler label without \text command
-    process_label_t = r'$|422\rangle \to |322\rangle$ (transition)'
+    process_label_t = r'$|311\rangle \to |211\rangle$ (transition)'
 
     freq_func_t, h_func_t, tau_func_t = make_transition_funcs(
         alpha=alpha, transition=transition, filepath=filepath,
+        n_e=n_e, n_g=n_g, debug=True,
     )
 
     results_t = run_sweep(
@@ -840,48 +685,29 @@ if __name__ == '__main__':
     )
 
     # ── Print resonant mass + distance reach for each detector ────────────────
-    print("\n" + "="*60)
-    print("Resonant Mass and Detector Reach")
-    print("="*60)
-
-    for det_key in ['det1', 'det2']:
-        det = results_t[det_key]
-        
-        name  = det['name']
-        M_res = det['M_res']
-        d_res = det['d_res']
-        f_res = det['f_res']
-        
-        if np.isfinite(M_res) and np.isfinite(d_res):
-            print(f"\n{name}:")
-            print(f"  Resonant mass        = {M_res:.3e} M_sun")
-            print(f"  Resonant frequency   = {f_res:.3e} Hz")
-            print(f"  Distance reach       = {d_res:.3e} kpc")
-        else:
-            print(f"\n{name}: No valid resonance found")
-
-    print("\n" + "="*60 + "\n")
-
-    plot_reach(results_t, alpha, process_label_t, savepath=savepath)
+    
 
     # =========================================================================
     # OPTION B: Annihilation process
     # =========================================================================
-    """level = '2p'
+    level = '2p'
     n, l, m = 2, 1, 1
     astar_init = 0.99
     # Use simpler label without \text command
     process_label_a = r'$|211\rangle$ (annihilation)'
 
-    source_func_a, tau_func_ann = make_annihilation_source(
+    freq_func_a, h_func_a, tau_func_a = make_annihilation_source(
         alpha=alpha, level=level, n=n, l=l, m=m,
         astar_init=astar_init, debug=True,
     )
 
-    results_a = run_sweep_ann(
-        source_func=source_func_a, tau_func=tau_func_ann,
+    results_a = run_sweep(
+        freq_func=freq_func_a, h_func=h_func_a, tau_func=tau_func_a,
         M_range=M_range, rho_star=1.0,
     )
 
+    plot_reach(results_t, alpha, process_label_t, 
+               savepath=savepath)
+
     plot_reach(results_a, alpha, process_label_a, 
-               savepath=savepath.replace('.pdf', '_ann.pdf'))"""
+               savepath=savepath.replace('.pdf', '_ann.pdf'))

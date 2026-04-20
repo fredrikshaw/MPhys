@@ -68,9 +68,12 @@ for i, alpha in enumerate(alpha_values):
 
     df_alpha = df[df["alpha"] == alpha].sort_values("Nmax")
 
+    y = df_alpha["SR_rate"]
+    y_final = y.iloc[-1]
+
     ax.plot(
         df_alpha["Nmax"],
-        df_alpha["SR_rate"],
+        y/y_final,
         color=colour,
         linewidth=1.5,
         marker="o",
@@ -83,7 +86,7 @@ ax.set_xscale("log")
 ax.set_yscale("log")
 
 ax.set_xlabel(r"$N$", fontsize=13)
-ax.set_ylabel(r"$2\Im(\tilde\omega)$", fontsize=13)
+ax.set_ylabel(r"$\Im(\tilde\omega_N)/\Im(\tilde\omega_{\rm fin})$", fontsize=13)
 
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
 

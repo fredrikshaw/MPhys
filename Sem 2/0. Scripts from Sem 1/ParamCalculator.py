@@ -3,6 +3,13 @@ import numpy as np
 from scipy import constants
 
 
+def _trapezoid(y, x):
+    """NumPy-version-safe trapezoidal integration helper."""
+    if hasattr(np, 'trapezoid'):
+        return np.trapezoid(y, x)
+    return np.trapz(y, x)
+
+
 # This is a file containing all definitions needed to calculate
 # various values related to the superradiant growth and
 # consequent gravitational wave emission of primordial black
@@ -22,7 +29,7 @@ def solid_angle_integral_from_dPdOmega(dPdtheta_func, Ntheta=10000):
     theta = np.linspace(0.0, np.pi, Ntheta)
     dP_dOmega = dPdtheta_func(theta)
     integrand = np.sin(theta) * dP_dOmega  # integrand for polar integral
-    P = 2 * np.pi * np.trapezoid(integrand, theta)
+    P = 2 * np.pi * _trapezoid(integrand, theta)
     return P
 
 

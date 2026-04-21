@@ -88,7 +88,21 @@ if not relativistic_dir.exists():
             break
 sys.path.append(str(relativistic_dir.resolve()))
 
+merger_dir = sem2_dir / "6. PBH spin and mass distribution"
+if not merger_dir.exists():
+    for p in current_dir.parents:
+        candidate = p / "6. PBH spin and mass distribution"
+        if candidate.exists():
+            merger_dir = candidate
+            break
+sys.path.append(str(merger_dir.resolve()))
+
 from SuperradianceRateCF import sr_rate_dimensioned
+from MergerRate import (
+    convert_rate_volume_unit,
+    integrate_rate_over_square_grid,
+    total_rate_above_spin_threshold,
+)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -448,7 +462,15 @@ _DET_STYLE = {
 def plot_reach(results, alpha, process_label,
                savepath=None,
                show_noise_curves=True,
-               xlim=None, ylim=None):
+               xlim=None, ylim=None,
+               show_merger_reach=False,
+               merger_spin_threshold=0.6,
+               merger_spin_model='matched',
+               merger_mass_sigma=0.5,
+               merger_fpbh=1.0,
+               merger_t_over_t0=1.0,
+               merger_num_points=60,
+               merger_rate_grid_points=90):
     """
     Plot d_max vs M_BH for all detectors in results.
 
@@ -466,6 +488,10 @@ def plot_reach(results, alpha, process_label,
         If True, add a right-hand axis with sqrt(S_h^noise) vs M_BH.
     xlim, ylim : tuple, optional
         Axis limits.  Defaults chosen automatically.
+    show_merger_reach : bool
+        If True, overlay the one-event-per-year PBH merger reach curve.
+    merger_spin_threshold : float
+        Final-spin threshold used for the shaded merger-reach region.
     """
     plt.rcParams.update({
         "text.usetex"        : True,
@@ -493,6 +519,67 @@ def plot_reach(results, alpha, process_label,
         if np.isfinite(data['d_res']) and np.isfinite(data['M_res']):
             ax1.axvline(data['M_res'], color=style['color'],
                         linewidth=0.8, linestyle=':', alpha=0.5)
+
+    # ── Optional PBH merger reach overlay ────────────────────────────────────
+    merger_fill = None
+    merger_label = None
+    if show_merger_reach:
+        merger_masses, merger_reach_spin, merger_reach_all = compute_merger_reach_curve(
+            post_merger_mass_range=xlim if xlim is not None else (1e-12, 1e4),
+            num_points=merger_num_points,
+            a_star_threshold=merger_spin_threshold,
+            spin_model=merger_spin_model,
+            mass_sigma=merger_mass_sigma,
+            fpbh=merger_fpbh,
+            t_over_t0=merger_t_over_t0,
+            rate_grid_points=merger_rate_grid_points,
+        )
+
+        ax1.loglog(
+            merger_masses,
+            merger_reach_spin,
+            color='firebrick',
+            linewidth=2.2,
+            linestyle='-',
+            label=rf'PBH mergers, $a_* \geq {merger_spin_threshold:.2f}$',
+        )
+        ax1.loglog(
+            merger_masses,
+            merger_reach_all,
+            color='firebrick',
+            linewidth=1.8,
+            linestyle=':',
+            label='PBH mergers, no spin cut',
+        )
+
+        finite_spin = np.isfinite(merger_reach_spin) & (merger_reach_spin > 0)
+        if finite_spin.any():
+            finite_all = np.isfinite(merger_reach_all) & (merger_reach_all > 0)
+            positive_vals = []
+            if np.any(finite_spin):
+                positive_vals.append(np.nanmax(merger_reach_spin[finite_spin]))
+            if np.any(finite_all):
+                positive_vals.append(np.nanmax(merger_reach_all[finite_all]))
+            if len(positive_vals) == 0:
+                y_top = 1.0
+            else:
+                y_top = max(positive_vals) * 3.0
+
+            ax1.fill_between(
+                merger_masses,
+                merger_reach_spin,
+                y_top,
+                where=finite_spin,
+                color='firebrick',
+                alpha=0.12,
+                interpolate=True,
+                zorder=0,
+            )
+            merger_fill = y_top
+            merger_label = (
+                rf'Shaded region: $\geq 1$ event yr$^{{-1}}$'
+                rf' for $a_* \geq {merger_spin_threshold:.2f}$'
+            )
 
     # ── Noise curves on twin axis ─────────────────────────────────────────────
     if show_noise_curves:
@@ -577,6 +664,21 @@ def plot_reach(results, alpha, process_label,
     if ylim is not None:
         ax1.set_ylim(*ylim)
 
+    if show_merger_reach and merger_fill is not None:
+        y_bottom, y_top_lim = ax1.get_ylim()
+        x_mid = np.sqrt(np.nanmin(merger_masses) * np.nanmax(merger_masses))
+        y_mid = np.sqrt(y_bottom * merger_fill)
+        ax1.text(
+            x_mid,
+            y_mid,
+            merger_label,
+            fontsize=8,
+            color='firebrick',
+            ha='center',
+            va='center',
+            bbox=dict(boxstyle='round,pad=0.25', facecolor='white', edgecolor='none', alpha=0.7),
+        )
+
     """title = (
         process_label + '\n'
         + fr'$\alpha = {alpha}$'
@@ -594,6 +696,89 @@ def plot_reach(results, alpha, process_label,
     return fig, ax1
 
 
+def _rate_density_to_distance_kpc(rate_density_kpc):
+    """Convert a uniform event-rate density [yr^-1 kpc^-3] to a 1-event/year radius [kpc]."""
+    rate = np.asarray(rate_density_kpc, dtype=float)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        distance = np.where(
+            rate > 0,
+            (3.0 / (4.0 * np.pi * rate)) ** (1.0 / 3.0),
+            np.nan,
+        )
+    if np.ndim(rate) == 0:
+        return float(distance)
+    return distance
+
+
+def compute_merger_reach_curve(
+    post_merger_mass_range=(1e-12, 1e4),
+    num_points=60,
+    a_star_threshold=0.6,
+    spin_model='matched',
+    mass_sigma=0.5,
+    fpbh=1.0,
+    t_over_t0=1.0,
+    rate_grid_points=90,
+):
+    """Compute the distance enclosing 1 merger event/year for spin-cut and no-cut cases.
+
+    The plotted x-axis is the post-merger mass M_post, so the merger-rate
+    calculation is performed using component masses centered at M_post / 2.
+    """
+    post_merger_masses = np.logspace(
+        np.log10(post_merger_mass_range[0]),
+        np.log10(post_merger_mass_range[1]),
+        num_points,
+    )
+
+    reach_spin = np.full_like(post_merger_masses, np.nan, dtype=float)
+    reach_all = np.full_like(post_merger_masses, np.nan, dtype=float)
+
+    for idx, mass_post in enumerate(post_merger_masses):
+        component_mass = 0.5 * mass_post
+        m_min = component_mass * np.exp(-5.0 * mass_sigma)
+        m_max = component_mass * np.exp(5.0 * mass_sigma)
+
+        try:
+            rate_spin_kpc = total_rate_above_spin_threshold(
+                m_min=m_min,
+                m_max=m_max,
+                n_points=rate_grid_points,
+                m_c=component_mass,
+                sigma=mass_sigma,
+                a_star_threshold=a_star_threshold,
+                spin_model=spin_model,
+                fpbh=fpbh,
+                t_over_t0=t_over_t0,
+                volume_unit='kpc',
+            )
+            reach_spin[idx] = _rate_density_to_distance_kpc(rate_spin_kpc)
+        except Exception:
+            reach_spin[idx] = np.nan
+
+        try:
+            rate_all_gpc = integrate_rate_over_square_grid(
+                m_min=m_min,
+                m_max=m_max,
+                n_points=rate_grid_points,
+                m_c=component_mass,
+                sigma=mass_sigma,
+                fpbh=fpbh,
+                t_over_t0=t_over_t0,
+                nu_threshold=None,
+            )
+            rate_all_kpc = convert_rate_volume_unit(
+                rate_all_gpc,
+                from_unit='gpc',
+                to_unit='kpc',
+            )
+            reach_all[idx] = _rate_density_to_distance_kpc(rate_all_kpc)
+        except Exception:
+            reach_all[idx] = np.nan
+
+    return post_merger_masses, reach_spin, reach_all
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # Main — edit ONLY this block
 # ═════════════════════════════════════════════════════════════════════════════
@@ -605,7 +790,14 @@ if __name__ == '__main__':
     astar_init = 0.99
     M_range    = (1e-12, 1e4)
     rho_star   = 1.0               # SNR threshold
-    savedir    = '4. Detector Distance Reach/Plots'
+    savedir    = 'Sem 2/4. Detector Distance Reach/Plots'
+    SHOW_MERGER_REACH = True
+    MERGER_SPIN_THRESHOLD = 0.6
+    MERGER_MASS_SIGMA = 0.5
+    MERGER_FPBH = 0.1
+    MERGER_T_OVER_T0 = 1.0
+    MERGER_NUM_POINTS = 60
+    MERGER_RATE_GRID_POINTS = 90
 
     # ── Choose process: 'transition' or 'annihilation' ────────────────────────
     PROCESS = 'transition'         # <─── change this
@@ -616,8 +808,10 @@ if __name__ == '__main__':
         transition    = '3p 2p'
         n_e, n_g      = 3, 2       # principal quantum numbers
         process_label = r'$|322\rangle \to |211\rangle$ (transition)'
-        filepath      = ("2. Relativistic Superradiance Rate/Mathematica/"
-                         "SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat")
+        filepath      = str(
+            sem2_dir / "2. Relativistic Superradiance Rate/Mathematica/"
+                       "SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat"
+        )
         f_band        = (1e2, 1e8)
         savepath      = f'{savedir}/reach_transition.pdf'
 
@@ -669,4 +863,11 @@ if __name__ == '__main__':
         results, alpha, process_label,
         savepath          = savepath,
         show_noise_curves = False,
+        show_merger_reach = SHOW_MERGER_REACH,
+        merger_spin_threshold = MERGER_SPIN_THRESHOLD,
+        merger_mass_sigma = MERGER_MASS_SIGMA,
+        merger_fpbh = MERGER_FPBH,
+        merger_t_over_t0 = MERGER_T_OVER_T0,
+        merger_num_points = MERGER_NUM_POINTS,
+        merger_rate_grid_points = MERGER_RATE_GRID_POINTS,
     )

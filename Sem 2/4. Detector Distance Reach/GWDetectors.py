@@ -26,6 +26,8 @@ Usage
 
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 from scipy.interpolate import interp1d
@@ -77,7 +79,8 @@ def load_ligo_psd(filepath):
         fill_value=np.nan
     )
 
-LIGO_PSD_interp = load_ligo_psd("4. Detector Distance Reach/LIGO-NESPSD.dat")
+current_dir = Path(__file__).resolve().parent
+LIGO_PSD_interp = load_ligo_psd(current_dir / "LIGO-NESPSD.dat")
 
 # ═════════════════════════════════════════════════════════════════════════════
 # ① Magnetic Weber Bar detectors
@@ -485,5 +488,5 @@ if __name__ == '__main__':
         f_max    = 1e9,
         plot_LC  = False,
         plot_BBN = False,
-        savepath = '4. Detector Distance Reach/Plots/detector_noise_psds.pdf',
+        savepath = 'Sem 2/4. Detector Distance Reach/Plots/detector_noise_psds.pdf',
     )

@@ -3,11 +3,15 @@ import numpy as np
 from scipy import constants
 
 
-def _trapezoid(y, x):
-    """NumPy-version-safe trapezoidal integration helper."""
+def _trapezoid(y, x=None, dx=1.0, axis=-1):
+    """NumPy-compatible trapezoidal integration helper.
+
+    Mirrors the NumPy API closely so callers can pass ``x``, ``dx`` and
+    ``axis`` exactly as they would to ``numpy.trapezoid`` or ``numpy.trapz``.
+    """
     if hasattr(np, 'trapezoid'):
-        return np.trapezoid(y, x)
-    return np.trapz(y, x)
+        return np.trapezoid(y, x=x, dx=dx, axis=axis)
+    return np.trapz(y, x=x, dx=dx, axis=axis)
 
 
 # This is a file containing all definitions needed to calculate

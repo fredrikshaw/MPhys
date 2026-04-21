@@ -54,7 +54,7 @@ MPC_TO_M     = 3.086e22             # Mpc -> m
 
 
 # ────────────────────────────────────────────────────────────────────────────
-# Load in the LIGO data 
+# Load in the LIGO data
 # ────────────────────────────────────────────────────────────────────────────
 
 def load_ligo_psd(filepath):
@@ -70,7 +70,7 @@ def load_ligo_psd(filepath):
     """
     data = np.loadtxt(filepath)
 
-    f = data[:, 0]
+    f   = data[:, 0]
     S_h = data[:, 1]
 
     return interp1d(
@@ -139,6 +139,20 @@ class MagneticWeberBar:
         self.ell_eta    = np.sqrt((self.r1**2 + self.r2**2) / 16.0)
         if self.f_LC is None:
             self.f_LC = self.f_mech
+
+    def ring_up_time(self) -> float:
+        """
+        Detector ring-up time [s].
+
+        The minimum signal characteristic time required for the detector to
+        respond meaningfully.  A source with tau < ring_up_time() contributes
+        no detectable distance reach.
+
+        Placeholder: returns 1 s.
+        Replace with the physical expression (e.g. Q_mech / omega_mech)
+        when ready.
+        """
+        return 1.0    # [s]  — placeholder
 
 
 # ── Detector instances ────────────────────────────────────────────────────────
@@ -296,6 +310,20 @@ class IFOConfig:
 
     def __post_init__(self):
         self.f_FSR = 1000 # C_LIGHT / (2.0 * self.arm_length)   # [Hz]
+
+    def ring_up_time(self) -> float:
+        """
+        Detector ring-up time [s].
+
+        The minimum signal characteristic time required for the detector to
+        respond meaningfully.  A source with tau < ring_up_time() contributes
+        no detectable distance reach.
+
+        Placeholder: returns 1 s.
+        Replace with the physical expression (e.g. arm cavity storage time
+        = arm_length / C_LIGHT * finesse) when ready.
+        """
+        return 1.0    # [s]  — placeholder
 
 
 # ── IFO detector catalogue ────────────────────────────────────────────────────

@@ -112,7 +112,8 @@ from MergerRate import (
 #   h_func(f, M_solar)     -> h_unit [dimensionless strain at r = 1 m]
 #   tau_func(f, M_solar)   -> tau [s]
 #
-# d_max = h_unit * sqrt(tau / S_h_noise)   (for both source types)
+# d_max = h_unit * sqrt(tau_obs / S_h_noise)   (for both source types)
+# where tau_obs = min(tau, 1 year), provided tau >= det.ring_up_time()
 # ═════════════════════════════════════════════════════════════════════════════
 
 def make_transition_source(alpha, transition, n_e, n_g, filepath, debug=False):
@@ -284,12 +285,41 @@ def _get_noise(det, f_t):
         raise TypeError(f"det must be MagneticWeberBar or str, got {type(det)}")
 
 
+def _get_det_config(det):
+    """
+    Return the detector config object (MagneticWeberBar or IFOConfig) for det.
+
+    When det is already a dataclass instance this is a no-op; when it is a
+    string key the corresponding IFOConfig is looked up from IFO_DETECTORS.
+    This allows ring_up_time() to be called uniformly on any detector.
+    """
+    if isinstance(det, (MagneticWeberBar, IFOConfig)):
+        return det
+    elif isinstance(det, str):
+        return IFO_DETECTORS[det]
+    else:
+        raise TypeError(f"det must be MagneticWeberBar, IFOConfig, or str, "
+                        f"got {type(det)}")
+
+
 def compute_point(M_solar, freq_func, h_func, tau_func,
                   det, f_band, rho_star=1.0):
     """
     Compute (f, d_max_kpc) for a single BH mass and detector.
 
-    Returns (f, d_max_kpc, h_unit, tau, S_h_noise).
+    Observation time logic
+    ----------------------
+    tau_val   : characteristic signal duration returned by tau_func [s]
+    t_ring    : detector ring-up time from det.ring_up_time() [s]
+    ONE_YEAR  : 365.25 days in seconds
+
+    - If tau_val < t_ring  →  no reach (detector has not rung up); return nan.
+    - Otherwise            →  tau_obs = min(tau_val, ONE_YEAR).
+    - If tau_val > ONE_YEAR a debug warning is printed.
+
+    d_max = h_unit * sqrt(tau_obs / S_h_noise) / rho_star
+
+    Returns (f, d_max_kpc, h_unit, tau_val, S_h_noise).
     Any failure returns np.nan for d_max_kpc; f is returned when known.
     """
     try:
@@ -310,11 +340,25 @@ def compute_point(M_solar, freq_func, h_func, tau_func,
     except Exception:
         return f_t, np.nan, np.nan, np.nan, np.nan
 
+    # ── Ring-up threshold ─────────────────────────────────────────────────────
+    # Resolve the config object so ring_up_time() is always available,
+    # regardless of whether det was passed as an instance or a string key.
+    det_config = _get_det_config(det)
+    t_ring     = det_config.ring_up_time()
+
+    if tau_val < t_ring:
+        return f_t, np.nan, h_unit, tau_val, np.nan
+
     S_h_noise = _get_noise(det, f_t)
     if not np.isfinite(S_h_noise) or S_h_noise <= 0:
         return f_t, np.nan, h_unit, tau_val, np.nan
 
-    d_max_m   = h_unit * np.sqrt(tau_val / S_h_noise) / rho_star
+    # ── Observation time cap ──────────────────────────────────────────────────
+    # Integrate for at most one year; warn if the signal outlasts this.
+    ONE_YEAR_S = 365.25 * 24.0 * 3600.0          # [s]
+    tau_obs = min(tau_val, ONE_YEAR_S)
+
+    d_max_m   = h_unit * np.sqrt(tau_obs / S_h_noise) / rho_star
     d_max_kpc = d_max_m / KPC_TO_M
 
     if not np.isfinite(d_max_kpc) or d_max_kpc <= 0:

@@ -36,7 +36,7 @@ import matplotlib.pyplot as plt
 
 from GWDetectors import (
     # Constants
-    G_N_NAT, EV_TO_SI, INV_EV_TO_M, KPC_TO_M,
+    G_N_NAT, EV_TO_SI, INV_EV_TO_M, KPC_TO_M, ring_up_time,
     # MWB
     MagneticWeberBar, ADMX_EFR, DMRADIO_GUT, MWB_DETECTORS,
     mwb_noise_psd,
@@ -300,7 +300,15 @@ def compute_point(M_solar, freq_func, h_func, tau_func,
     if not np.isfinite(S_h_noise) or S_h_noise <= 0:
         return f_t, np.nan, h_unit, tau_val, np.nan
 
-    d_max_m   = h_unit * np.sqrt(tau_val / S_h_noise) / rho_star
+    ONE_YEAR_S = 365.25 * 24.0 * 3600.0   # [s]
+    if tau_val < ring_up_time:
+        return f_t, np.nan, h_unit, tau_val, S_h_noise
+    """if tau_val > ONE_YEAR_S:
+        print(f"[WARNING] tau = {tau_val:.3e} s  >  1 yr at M = {M_solar:.3e} Msun "
+            f"(f = {f_t:.3e} Hz) — capping observation time at 1 year")"""
+    
+    tau_obs   = min(tau_val, ONE_YEAR_S)
+    d_max_m   = h_unit * np.sqrt(tau_obs / S_h_noise) / rho_star
     d_max_kpc = d_max_m / KPC_TO_M
 
     if not np.isfinite(d_max_kpc) or d_max_kpc <= 0:

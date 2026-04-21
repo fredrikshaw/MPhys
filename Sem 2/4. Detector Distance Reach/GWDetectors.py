@@ -50,6 +50,7 @@ INV_EV_TO_M  = HBAR * C_LIGHT / EV_TO_J   # eV^-1 -> m
 KPC_TO_M     = 3.086e19             # kpc -> m
 MPC_TO_M     = 3.086e22             # Mpc -> m
 
+ring_up_time = 1.0    # [s]  — edit this value
 
 # ────────────────────────────────────────────────────────────────────────────
 # Load in the LIGO data 
@@ -485,5 +486,5 @@ if __name__ == '__main__':
         f_max    = 1e9,
         plot_LC  = False,
         plot_BBN = False,
-        savepath = '4. Detector Distance Reach/Plots/detector_noise_psds.pdf',
+        savepath = '4. Detector Distance Reach/detector_noise_psds.pdf',
     )

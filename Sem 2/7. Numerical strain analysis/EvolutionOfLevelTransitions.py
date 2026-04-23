@@ -4,12 +4,18 @@ import matplotlib.pyplot as plt
 from scipy import constants
 from scipy.integrate import solve_ivp
 from pathlib import Path
+import re
 
 
 # Use ParamCalculator from Sem 2/0. Scripts from Sem 1
 current_dir = Path(__file__).resolve().parent
+sem2_dir = current_dir.parent
 param_dir = current_dir.parent / "0. Scripts from Sem 1"
 sys.path.insert(0, str(param_dir))
+
+# Use CF SR rate utilities from Sem 2/2. Relativistic Superradiance Rate
+relativistic_dir = sem2_dir / "2. Relativistic Superradiance Rate"
+sys.path.insert(0, str(relativistic_dir))
 
 # Import the required functions from ParamCalculator
 from ParamCalculator import (
@@ -19,6 +25,7 @@ from ParamCalculator import (
     calc_rg_from_bh_mass,
     G_N
 )
+from SuperradianceRateCF import sr_rate_dimensioned
 
 SOLAR_MASS = 1.988e30  # [kg]
 
@@ -129,6 +136,34 @@ def calc_h_peak_and_fwhm(times, h):
 
     return h_peak, t_peak, float(t_right - t_left)
 
+
+def _find_sr_file(n: int, l: int, m: int, bh_spin: float, sr_data_dir: Path) -> Path:
+    """Find the SR file for mode (n,l,m) and exact a*, preferring the newest date."""
+    spin_text = f"{bh_spin:.3f}"
+    spin_dot = spin_text
+    spin_underscore = spin_text.replace('.', '_')
+    patterns = (
+        f"SR_n{n}l{l}m{m}_at{spin_dot}_aMin*_aMax*_*.dat",
+        f"SR_n{n}l{l}m{m}_at{spin_underscore}_aMin*_aMax*_*.dat",
+    )
+
+    date_pattern = re.compile(r'_(\d{8})\.dat$')
+    matches = []
+    for pattern in patterns:
+        for path in sr_data_dir.glob(pattern):
+            match = date_pattern.search(path.name)
+            if match is None:
+                continue
+            matches.append((match.group(1), path))
+
+    if not matches:
+        raise FileNotFoundError(
+            f"No SR data file found for mode n={n}, l={l}, m={m}, a*={bh_spin} in '{sr_data_dir}'."
+        )
+
+    matches.sort(key=lambda item: item[0])
+    return matches[-1][1]
+
 # ---------------------------------------------------------------
 #  MAIN SIMULATION
 # ---------------------------------------------------------------
@@ -137,7 +172,10 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
                    transition="3p 2p",
                    gamma_g_override=None, gamma_e_override=None,
                    transition_rate_override=None,
-                   distance_kpc=10, t_max_years=1e6, n_points=int(1e5)):
+                   distance_kpc=10, t_max_years=1e6, n_points=int(1e6),
+                   sr_rate_source='cf',
+                   sr_cf_file_e=None, sr_cf_file_g=None,
+                   sr_cf_method='cf'):
     """
     Run the simulation with logarithmic variable integration.
 
@@ -152,6 +190,11 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
         distance_kpc: Distance in kiloparsecs
         t_max_years: Maximum simulation time in years
         n_points: Number of time points
+        sr_rate_source: 'cf' (default) to use SuperradianceRateCF data,
+                or 'param' to use ParamCalculator analytic rates
+        sr_cf_file_e: Optional SR file path for excited level (used when sr_rate_source='cf')
+        sr_cf_file_g: Optional SR file path for ground level (used when sr_rate_source='cf')
+        sr_cf_method: Interpolation column in SR files ('cf' or 'hydro')
     
     """
     
@@ -198,9 +241,39 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
     # --- Convert a* (bh_spin) to a (not dimensionless) ---
     a = bh_spin * r_g # [eV]^-1
 
-    # Calculate gamma values using ParamCalculator
-    gamma_e = calc_superradiance_rate(l=l_e, m=m_e, n=n_e, a_star=bh_spin, r_g=r_g, alpha=alpha)
-    gamma_g = calc_superradiance_rate(l=l_g, m=m_g, n=n_g, a_star=bh_spin, r_g=r_g, alpha=alpha)
+    sr_source_used = sr_rate_source
+    sr_file_e_used = None
+    sr_file_g_used = None
+
+    if sr_rate_source == 'cf':
+        sr_data_dir = sem2_dir / "2. Relativistic Superradiance Rate" / "Mathematica"
+        sr_file_e = Path(sr_cf_file_e) if sr_cf_file_e is not None else _find_sr_file(
+            n=n_e, l=l_e, m=m_e, bh_spin=bh_spin, sr_data_dir=sr_data_dir
+        )
+        sr_file_g = Path(sr_cf_file_g) if sr_cf_file_g is not None else _find_sr_file(
+            n=n_g, l=l_g, m=m_g, bh_spin=bh_spin, sr_data_dir=sr_data_dir
+        )
+
+        gamma_e = sr_rate_dimensioned(
+            alpha_query=alpha,
+            bh_mass_solar=bh_mass_sm,
+            filepath=str(sr_file_e),
+            method=sr_cf_method,
+        )['gamma_natural_eV']
+        gamma_g = sr_rate_dimensioned(
+            alpha_query=alpha,
+            bh_mass_solar=bh_mass_sm,
+            filepath=str(sr_file_g),
+            method=sr_cf_method,
+        )['gamma_natural_eV']
+
+        sr_file_e_used = str(sr_file_e)
+        sr_file_g_used = str(sr_file_g)
+    elif sr_rate_source == 'param':
+        gamma_e = calc_superradiance_rate(l=l_e, m=m_e, n=n_e, a_star=bh_spin, r_g=r_g, alpha=alpha)
+        gamma_g = calc_superradiance_rate(l=l_g, m=m_g, n=n_g, a_star=bh_spin, r_g=r_g, alpha=alpha)
+    else:
+        raise ValueError("sr_rate_source must be 'cf' or 'param'.")
 
     gamma_e *= ev_to_years # Convert from eV to years^-1
     gamma_g *= ev_to_years # Convert from eV to years^-1
@@ -241,6 +314,10 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
     print(f"Gamma_e = {gamma_e} years⁻¹")
     print(f"Gamma_g = {gamma_g} years⁻¹")
     print(f"transition_rate = {transition_rate} years⁻¹")
+    print(f"SR rate source: {sr_source_used}")
+    if sr_source_used == 'cf':
+        print(f"  SR file (excited): {sr_file_e_used}")
+        print(f"  SR file (ground) : {sr_file_g_used}")
     print(f"Total simulated time = {times[-1]} years")
 
     # --- Event: stop if N_g > 1e100 ---
@@ -302,6 +379,9 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
             'axion_mass': axion_mass,
             'omega_tr': omega_tr,
             'distance_kpc': distance_kpc,
+            'sr_rate_source': sr_source_used,
+            'sr_cf_file_e': sr_file_e_used,
+            'sr_cf_file_g': sr_file_g_used,
         }
     }
 
@@ -475,10 +555,19 @@ def plot_results(results, save_filename=None):
 
 if __name__ == "__main__":
     # Shared simulation parameters
-    alpha = 0.2
-    bh_spin = 0.687
+    alpha = 0.6
+    bh_spin = 0.67
     bh_mass_sm = 1e-6
-    transition = "6g 5g"
+    transition = "4d 3d"
+    t_max = 1  # years
+
+    # SR-rate source options:
+    #   'cf'    -> use SuperradianceRateCF data files (default)
+    #   'param' -> use legacy ParamCalculator analytic rates
+    sr_rate_source = 'param'
+    sr_cf_method = 'cf'
+    sr_cf_file_e = None  # optional explicit path for excited mode SR file
+    sr_cf_file_g = None  # optional explicit path for ground mode SR file
 
     # Run simulation
     results = run_simulation(
@@ -486,7 +575,11 @@ if __name__ == "__main__":
         bh_spin=bh_spin,
         bh_mass_sm=bh_mass_sm,
         transition=transition,
-        t_max_years=1e9
+        t_max_years=t_max,
+        sr_rate_source=sr_rate_source,
+        sr_cf_method=sr_cf_method,
+        sr_cf_file_e=sr_cf_file_e,
+        sr_cf_file_g=sr_cf_file_g,
     )
 
     # Plot results

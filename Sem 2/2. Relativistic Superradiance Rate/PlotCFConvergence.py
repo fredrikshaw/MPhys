@@ -16,11 +16,11 @@ if sem2_dir is None:
     sem2_dir = current_dir.parent
 
 # File (adjust name if needed)
-FILE = "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Convergence/SR_convergence_n2l1m1_at0.600_20260424.csv"
+FILE = "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Convergence/SR_convergence_n2l1m1_at0.500_20260424.csv"
 
 
 # ── Colours (reuse style) ────────────────────────────────────────────────────
-COLOURS = ["#648FFF", "#785EF0", "#DC267F", "#FE6100", "#FFB000"]
+COLOURS = ["#2B7BB9", "#38A09C", "#6DAA65", "#D4A832", "#C85D38"]
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def parse_mathematica_number(s):
@@ -98,7 +98,7 @@ ax.set_ylabel(r"$|\Im(\tilde\omega_N)/\Im(\tilde\omega_{\rm fin}) - 1|$", fontsi
 
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
 
-ax.legend(fontsize=9, frameon=True, loc="lower left", title=r"$\alpha$")
+ax.legend(fontsize=9, frameon=False, loc="lower left", title=r"$\alpha$")
 
 plt.tight_layout()
 

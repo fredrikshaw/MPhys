@@ -30,27 +30,12 @@ from ParamCalculator import calc_superradiance_rate
 
 # ── Configuration ────────────────────────────────────────────────────────────
 FILES = [
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.999_aMin0.010_aMax0.600_20260310.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.999_aMin0.010_aMax1.200_20260310.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.999_aMin0.010_aMax1.700_20260310.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n5l4m4_at0.999_aMin0.010_aMax2.700_20260310.dat",
-   
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n5l4m4_at0.990_aMin0.010_aMax1.909_20260428.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n2l1m1_at0.990_aMin0.010_aMax0.564_20260428.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n5l4m4_at0.900_aMin0.600_aMax1.379_20260428.dat",
+    #"Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n5l4m4_at0.990_aMin0.010_aMax2.100_20260312.dat",
 ]
 
-FILES = [
-    #"Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.600_aMin0.001_aMax0.180_20260403.dat",
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.990_aMin0.010_aMax0.500_20260310.dat",
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.990_aMin0.010_aMax1.100_20260312.dat",
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.990_aMin0.010_aMax1.600_20260312.dat",
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n5l4m4_at0.990_aMin0.010_aMax2.100_20260312.dat",
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.900_aMin0.010_aMax1.379_20260428.dat"
-]
-
-FILES=[
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.990_aMin0.010_aMax1.200_20260317.dat", # Old Way
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.990_aMin0.010_aMax1.909_20260428.dat", # Truncating it after superradiance condition not met
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.990_aMin0.010_aMax2.082_20260428.dat" # use alpha instead of omega_0    
-]
 
 COLOURS = ["#68308d", "#a31818","#356E44", "#43d5fa", "#284245", "green"]
 # ─────────────────────────────────────────────────────────────────────────────
@@ -152,7 +137,7 @@ ax.set_xlabel(r"$\alpha$", fontsize=13)
 ax.set_ylabel(r"$\Gamma^{\mathrm{sr}} r_g$", fontsize=13)
 ax.yaxis.set_major_locator(mticker.LogLocator(base=10.0, subs=(1.0,), numticks=100))
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
-#ax.set_ylim(1e-16, 1e-6)
+ax.set_ylim(1e-16, 1e-6)
 ax.set_xlim(0, 2.1)
 
 plt.tight_layout()

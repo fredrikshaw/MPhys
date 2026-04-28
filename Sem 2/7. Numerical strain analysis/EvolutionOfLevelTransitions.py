@@ -68,28 +68,33 @@ def calc_omega_tr(n_g, n_e, mu_a, alpha):
 #  LOGARITHMIC DIFFERENTIAL EQUATIONS
 # ---------------------------------------------------------------
 
+MAX_EXP = 50
 def rhs_log(t, y, gamma_g, gamma_e, transition_rate):
-    """
-    ODE system for ln(n_g) and ln(n_e) with overflow protection.
-    """
+    """Improved logarithmic RHS function that actually uses log space sensibly"""
     x, y_ = y
-    exp_x = np.exp(np.clip(x, -700, 700))
-    exp_y = np.exp(np.clip(y_, -700, 700))
 
-    dx = gamma_g + transition_rate * exp_y
-    dy = gamma_e - transition_rate * exp_x
+    # diff = y_ - x
+    # if diff < -MAX_EXP or diff > MAX_EXP:
+    #     print(f"[CLIP] Clipper used in rhs_log t={t}, y-x={diff}")
+    # # else:
+    # #     print(f"[NOT CLIPPED] Clipper not used in rhs_log t={t}, y-x={diff}")
 
-    # Limit derivative magnitude to help solver stability
-    dx = np.clip(dx, -1e5, 1e5)
-    dy = np.clip(dy, -1e5, 1e5)
+    # diff = np.clip(diff, -MAX_EXP, MAX_EXP)
+
+    # exp_y_minus_x = np.exp(diff)
+    # exp_x_minus_y = np.exp(-diff)
+
+    dx = gamma_g + transition_rate * np.exp(y_)
+    dy = gamma_e - transition_rate * np.exp(x)
+    # print(f"x: {x}, y: {y_}")
 
     return [dx, dy]
 
 
-def calc_h_peak_and_fwhm(times, h):
+def calc_h_peak_and_fwhm(times, log_h):
     """Return (h_peak, t_peak, fwhm_years) for the strain time series."""
     t = np.asarray(times, dtype=float)
-    hs = np.asarray(h, dtype=float)
+    hs = np.asarray(log_h, dtype=float)
 
     valid = np.isfinite(t) & np.isfinite(hs)
     if not np.any(valid):
@@ -107,27 +112,27 @@ def calc_h_peak_and_fwhm(times, h):
     if not np.isfinite(h_peak) or h_peak <= 0:
         return h_peak, t_peak, np.nan
 
-    half = 0.5 * h_peak
+    log_half = h_peak + np.log10(0.5)
 
     t_left = None
     for i in range(peak_idx, 0, -1):
         y0, y1 = hs[i - 1], hs[i]
-        if (y0 - half) * (y1 - half) <= 0:
+        if (y0 - log_half) * (y1 - log_half) <= 0:
             if y1 == y0:
                 t_left = float(t[i])
             else:
-                frac = (half - y0) / (y1 - y0)
+                frac = (log_half - y0) / (y1 - y0)
                 t_left = float(t[i - 1] + frac * (t[i] - t[i - 1]))
             break
 
     t_right = None
     for i in range(peak_idx, hs.size - 1):
         y0, y1 = hs[i], hs[i + 1]
-        if (y0 - half) * (y1 - half) <= 0:
+        if (y0 - log_half) * (y1 - log_half) <= 0:
             if y1 == y0:
                 t_right = float(t[i])
             else:
-                frac = (half - y0) / (y1 - y0)
+                frac = (log_half - y0) / (y1 - y0)
                 t_right = float(t[i] + frac * (t[i + 1] - t[i]))
             break
 
@@ -320,13 +325,20 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
         print(f"  SR file (ground) : {sr_file_g_used}")
     print(f"Total simulated time = {times[-1]} years")
 
-    # --- Event: stop if N_g > 1e100 ---
+    LOG10E = np.log10(np.e) # Save variable to avoid repeated log calls
+    # --- Event: stop if N_g > some val ---
     def stop_if_ng_too_large(t, y, gamma_g, gamma_e, transition_rate):
         x, y_ = y
-        N_g = np.exp(np.clip(x, -700, 700))
-        return np.log10(N_g) - 100  # Trigger at N_g = 1e100
+        return x * LOG10E - 200  # Trigger at N_g = 1e(whatever is being subtracted)
     stop_if_ng_too_large.terminal = True
     stop_if_ng_too_large.direction = 1
+
+    # --- Event: stop if N_e < 1 ---
+    def stop_if_ne_too_small(t, y, gamma_g, gamma_e, transition_rate):
+        x, y_ = y
+        return y_ - np.log(1.0 - 1e-12)  # Trigger when N_e crosses below 1
+    stop_if_ne_too_small.terminal = True
+    stop_if_ne_too_small.direction = -1
 
     # --- Initial conditions (log variables) ---
     n_g0, n_e0 = 1.0, 1.0
@@ -342,30 +354,35 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
         t_eval=times,
         rtol=1e-6,
         atol=1e-9,
-        events=stop_if_ng_too_large,
+        events=[stop_if_ng_too_large,
+                stop_if_ne_too_small],
     )
 
     # --- Use solver’s native arrays (prevents shape mismatch) ---
     times = sol.t
-    num_g = np.exp(np.clip(sol.y[0], -700, 700))
-    num_e = np.exp(np.clip(sol.y[1], -700, 700))
+    log_num_g = sol.y[0]
+    log_num_e = sol.y[1]
 
     # --- Check for early termination ---
     if sol.t_events[0].size > 0:
         t_stop = sol.t_events[0][0]
-        print(f"\n[WARNING] Integer Overflow: solve_ivp stopped early, N_g exceeded 1e100 at t ≈ {t_stop:.2f} years.\n")
+        print(f"\n[WARNING] Integer Overflow: solve_ivp stopped early, N_g too high or N_e less than one at t ≈ {t_stop:.2f} years.\n")
     else:
         t_stop = times[-1]
 
+    for i, te in enumerate(sol.t_events):
+        print(f"Event {i} triggered at times:", te)
+
     # --- Gravitational-wave strain ---
     transition_rate_ev_calc = transition_rate * inv_ev_to_years
-    h = np.sqrt(4 * G_N / (r**2 * omega_tr) * num_g * num_e * transition_rate_ev_calc)
+    log_h = 0.5 * (log_num_e + log_num_g) + np.log(np.sqrt(4 * G_N / (r**2 * omega_tr) * transition_rate_ev_calc))
 
     results = {
         'times': times,
-        'num_g': num_g,
-        'num_e': num_e,
-        'h': h,
+        'log_num_g': log_num_g,
+        'log_num_e': log_num_e,
+        'log_h': log_h,
+        'status': sol['status'],
         'parameters': {
             'bh_mass_sm': bh_mass_sm,
             'bh_spin': bh_spin,
@@ -408,23 +425,29 @@ def plot_results(results, save_filename=None):
         "figure.titlesize": 18         # Figure title size (if you add one)
     })
 
+    
+    LOG10E = np.log10(np.e) # Save variable to avoid repeated log calls
     times = results['times']
-    num_g = results['num_g']
-    num_e = results['num_e']
-    h = results['h']
+    log_num_g = results['log_num_g'] * LOG10E
+    log_num_e = results['log_num_e'] * LOG10E
+    log_h = results['log_h'] * LOG10E
     params = results['parameters']
+    status = results['status']
 
     # Detect collapse of N_e (minimum)
-    collapse_index = np.argmin(num_e)
-    collapse_time = times[collapse_index]
-    timewindow = max(times) / 17  # [years]
-    xlim = (max(0, collapse_time - timewindow), collapse_time + timewindow - 500)
+    # collapse_index = np.argmin(log_num_e)
+    # collapse_time = times[collapse_index]
+    # timewindow = max(times) / 17  # [years]
+    # xlim = (max(0, collapse_time - timewindow), collapse_time + timewindow - 500)
     
     # Print to terminal (no box)
     print("\n" + "="*60)
     print("SIMULATION RESULTS")
     print("="*60)
-    print(f"Excited-state population collapse at ~{collapse_time:.2f} years.")
+    # print(f"Excited-state population collapse at ~{collapse_time:.2f} years.")
+
+    status_dict = {-1: "Integration step failed", 0: "t_max reached", 1: "A termination event occured"}
+    print(f"Status: {status_dict[status]}")
     
     # Get spectroscopic notation for transitions
     level_e = quantum_numbers_to_spectroscopic(params['n_e'], params['l_e'])
@@ -459,7 +482,7 @@ def plot_results(results, save_filename=None):
     print(f"Transition frequency: {params['omega_tr']:.2e} eV")
 
     # Strain summary: peak and full width at half maximum.
-    h_peak, t_peak, h_fwhm = calc_h_peak_and_fwhm(times, h)
+    h_peak, t_peak, h_fwhm = calc_h_peak_and_fwhm(times, log_h)
     print(f"\nPeak strain h_max: {h_peak:.3e} (dimensionless) at t = {t_peak:.3e} years")
     if np.isfinite(h_fwhm):
         print(f"Strain FWHM: {h_fwhm:.3e} years")
@@ -471,24 +494,24 @@ def plot_results(results, save_filename=None):
     fig, ax1 = plt.subplots()
     
     # Plot with clear labels for legend
-    ax1.plot(times, num_g, label=r'$N_g$', color='blue')
-    ax1.plot(times, num_e, label=r'$N_e$', color='orange')
+    ax1.plot(times, log_num_g, label=r'$\log_{10}	 N_g$', color='blue')
+    ax1.plot(times, log_num_e, label=r'$\log_{10}	 N_e$', color='orange')
     
     # Create second y-axis for strain h
     ax2 = ax1.twinx()
-    ax2.plot(times, h, label=r'$h$', color='black', alpha=0.7, linestyle="dashed")
+    ax2.plot(times, log_h, label=r'$\log_{10}	 h$', color='black', alpha=0.7, linestyle="dashed")
     
     # Set scales and labels
-    ax1.set_yscale('log')
-    ax1.set_ylabel(r'Occupation Number $N$')
+    # ax1.set_yscale('log')
+    ax1.set_ylabel(r'Occupation Number $\log_{10}	 N$')
     ax1.set_xlabel("Time [years]")
     # ax1.set_ylim(1e25, 1e45)
     # ax1.set_xlim(xlim)
     ax1.grid()
     
-    ax2.set_ylabel(r'Strain $h$', color='black')
+    ax2.set_ylabel(r'Strain $\log_{10}	 h$', color='black')
     ax2.tick_params(axis='y', labelcolor='black')
-    ax2.set_yscale('log')
+    # ax2.set_yscale('log')
     # ax2.set_ylim(h_ylim)
     for label in ax2.get_yticklabels()[::2]:
         label.set_visible(False)
@@ -555,16 +578,16 @@ def plot_results(results, save_filename=None):
 
 if __name__ == "__main__":
     # Shared simulation parameters
-    alpha = 0.6
-    bh_spin = 0.67
+    alpha = 0.3
+    bh_spin = 0.99
     bh_mass_sm = 1e-6
     transition = "4d 3d"
-    t_max = 1  # years
+    t_max = 1e-5  # years
 
     # SR-rate source options:
     #   'cf'    -> use SuperradianceRateCF data files (default)
     #   'param' -> use legacy ParamCalculator analytic rates
-    sr_rate_source = 'param'
+    sr_rate_source = 'cf'
     sr_cf_method = 'cf'
     sr_cf_file_e = None  # optional explicit path for excited mode SR file
     sr_cf_file_g = None  # optional explicit path for ground mode SR file

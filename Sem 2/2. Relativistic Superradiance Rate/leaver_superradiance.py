@@ -88,6 +88,79 @@ def _required_prec(l: int, alpha: float, prev_im: float | None = None) -> int:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 0b.  Superradiance condition check
+# ──────────────────────────────────────────────────────────────────────────────
+
+def check_superradiant_regime(n: int, l: int, m: int,
+                               at: float, alpha: float,
+                               raise_on_fail: bool = True) -> dict:
+    """
+    Check whether the (n, l, m, ã, α) configuration is in the superradiant
+    instability regime before running the expensive CF calculation.
+
+    Conditions required for superradiance:
+      1.  m > 0            (co-rotating mode; m ≤ 0 cannot be superradiant)
+      2.  ã > 0            (Schwarzschild BH has no superradiance)
+      3.  α < 1            (bound-state condition: Re(ω) ≈ α < μ = α → auto,
+                            but α ≥ 1 means the 'bound state' is unphysical)
+      4.  α < m·Ω_H        (superradiance condition: ω_r ≈ α < m·Ω_H)
+                            where  Ω_H = ã / (2 r_+),  r_+ = 1 + √(1 − ã²)
+
+    Parameters
+    ----------
+    raise_on_fail : if True (default), raise ValueError with an explanation.
+                    If False, return the status dict without raising.
+
+    Returns
+    -------
+    dict with keys:
+        'superradiant'  : bool  — True if all conditions pass
+        'Omega_H'       : float — horizon angular velocity
+        'm_Omega_H'     : float — superradiance threshold
+        'margin'        : float — m·Ω_H − α  (positive → superradiant)
+        'reason'        : str   — explanation if not superradiant (else '')
+    """
+    import math
+
+    r_plus  = 1.0 + math.sqrt(max(0.0, 1.0 - at * at))
+    Omega_H = at / (2.0 * r_plus) if at > 0 else 0.0
+    threshold = m * Omega_H          # m·Ω_H
+    margin = threshold - alpha        # positive → superradiant
+
+    reason = ""
+    if m <= 0:
+        reason = (f"m = {m} ≤ 0: only co-rotating modes (m > 0) can be "
+                  f"superradiant.  No instability exists for this m.")
+    elif at <= 0.0:
+        reason = ("ã = 0: a Schwarzschild (non-spinning) BH has no "
+                  "ergoregion and cannot support superradiance.")
+    elif margin <= 0.0:
+        reason = (f"α = {alpha:.4g} ≥ m·Ω_H = {m}×{Omega_H:.4g} = "
+                  f"{threshold:.4g}: the superradiance condition "
+                  f"ω_r < m·Ω_H is NOT satisfied.  "
+                  f"Try increasing ã or decreasing α.")
+
+    superradiant = (reason == "")
+
+    result = {
+        "superradiant": superradiant,
+        "Omega_H":      Omega_H,
+        "m_Omega_H":    threshold,
+        "margin":       margin,
+        "reason":       reason,
+    }
+
+    if not superradiant and raise_on_fail:
+        raise ValueError(
+            f"Not in the superradiant regime — aborting computation.\n"
+            f"  {reason}\n"
+            f"  Ω_H = {Omega_H:.6g},  m·Ω_H = {threshold:.6g},  α = {alpha:.6g}"
+        )
+
+    return result
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 1.  Angular eigenvalue  Λ_{lm}(ω)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -384,6 +457,10 @@ def find_qbs_frequency(n: int, l: int, m: int,
     if alpha <= 0.0:
         raise ValueError(f"α must be positive  (got {alpha})")
 
+    # Bail out immediately if not in the superradiant regime — the CF
+    # calculation is expensive and pointless outside this window.
+    check_superradiant_regime(n, l, m, at, alpha, raise_on_fail=True)
+
     if prec is None:
         prec = _required_prec(l, alpha)
     if Nmax is None:
@@ -435,7 +512,7 @@ def superradiance_rate(n: int, l: int, m: int,
     omega = find_qbs_frequency(n, l, m, alpha, a_tilde,
                                omega0_seed=omega0_seed,
                                Nmax=Nmax, prec=prec)
-    return 2*omega.imag
+    return omega.imag
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -484,6 +561,21 @@ Physical rate:  dN/dt = Γ·c³/(2GM).
     print(f"Computing Γ for (n={args.n}, l={args.l}, m={args.m}), "
           f"ã={args.a_tilde}, α={args.alpha} …")
 
+    # Check regime before doing any work
+    status = check_superradiant_regime(
+        args.n, args.l, args.m, args.a_tilde, args.alpha,
+        raise_on_fail=False
+    )
+    print(f"  Ω_H = {status['Omega_H']:.6g},  "
+          f"m·Ω_H = {status['m_Omega_H']:.6g},  "
+          f"α = {args.alpha:.6g},  "
+          f"margin = {status['margin']:+.4g}")
+    if not status["superradiant"]:
+        print(f"\n✗  Not superradiant — aborting.")
+        print(f"   {status['reason']}")
+        sys.exit(0)
+    print("  ✓  Superradiant regime confirmed — running Leaver CF …\n")
+
     try:
         omega = find_qbs_frequency(
             args.n, args.l, args.m, args.alpha, args.a_tilde,
@@ -495,4 +587,3 @@ Physical rate:  dN/dt = Γ·c³/(2GM).
     except (RuntimeError, ValueError) as err:
         print(f"Error: {err}", file=sys.stderr)
         sys.exit(1)
-

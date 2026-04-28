@@ -65,14 +65,19 @@ def parse_quantum_numbers_and_spin(filepath):
 
 # Files and colors for plotting
 FILES = [
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.69_aMin0.02_aMax0.25.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.70_aMin0.02_aMax0.25.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.80_aMin0.05_aMax0.30.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.90_aMin0.05_aMax0.50.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.99_aMin0.05_aMax0.50.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.999_aMin0.03_aMax0.52.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.600_aMin0.001_aMax0.180_20260403.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.700_aMin0.001_aMax0.210_20260403.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.800_aMin0.001_aMax0.300_20260403.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.900_aMin0.001_aMax0.480_20260402.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.999_aMin0.001_aMax0.500_20260402.dat",
 ]
-COLOURS = ["blue", "green", "orange", "red", "purple", "black"]
+COLOURS =  [
+    "#D8B7FF",  # light lavender
+    "#9B30FF",  # bright purple
+    "#6A0DAD",  # medium purple
+    "#4B0082",  # indigo
+    "#2E003E"   # very deep purple
+]
 
 plt.rcParams.update({
     "text.usetex": True,
@@ -81,7 +86,7 @@ plt.rcParams.update({
     "text.latex.preamble": r"\usepackage{amsmath}"
 })
 
-fig, ax = plt.subplots(figsize=(5, 3.5))
+fig, ax = plt.subplots(figsize=(4, 3))
 
 for filepath, colour in zip(FILES, COLOURS):
     label, quantum_numbers, a_t, spin_label = parse_quantum_numbers_and_spin(filepath)
@@ -103,12 +108,12 @@ ax.set_yscale("log")
 ax.set_xlabel(r"$\alpha$", fontsize=13)
 ax.set_ylabel(r"$\Gamma^{\mathrm{sr}} r_g$", fontsize=13)
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
-ax.set_ylim(1e-13, 1e-6)
+ax.set_ylim(1e-16, 1e-6)
 ax.set_xlim(0, 0.52)
 
 plt.tight_layout()
 
-output_path = Path("2. Relativistic Superradiance Rate/Plots/superradiance_plot.pdf")
+output_path = Path("Sem 2/2. Relativistic Superradiance Rate/Plots/superradiance_plot_diff_spins.pdf")
 output_path.parent.mkdir(parents=True, exist_ok=True)
 plt.savefig(output_path, dpi=150)
 plt.show()

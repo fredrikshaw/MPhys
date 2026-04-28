@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import re
+import numpy as np
 
 # ── Path handling (same structure as your script) ─────────────────────────────
 current_dir = Path(__file__).resolve().parent
@@ -15,10 +16,11 @@ if sem2_dir is None:
     sem2_dir = current_dir.parent
 
 # File (adjust name if needed)
-FILE = "2. Relativistic Superradiance Rate/Mathematica/Convergence/SR_convergence_n2l1m1_at0.500_20260402.csv"
+FILE = "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Convergence/SR_convergence_n2l1m1_at0.500_20260424.csv"
+
 
 # ── Colours (reuse style) ────────────────────────────────────────────────────
-COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#284945", "#284245"]
+COLOURS = ["#2B7BB9", "#38A09C", "#6DAA65", "#D4A832", "#C85D38"]
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def parse_mathematica_number(s):
@@ -53,7 +55,7 @@ plt.rcParams.update({
     "text.latex.preamble": r"\usepackage{amsmath}"
 })
 
-fig, ax = plt.subplots(figsize=(4, 3.5))
+fig, ax = plt.subplots(figsize=(4, 2.5))
 
 # ── Load data ────────────────────────────────────────────────────────────────
 df = load_file(FILE)
@@ -71,9 +73,15 @@ for i, alpha in enumerate(alpha_values):
     y = df_alpha["SR_rate"]
     y_final = y.iloc[-1]
 
+    rel_err = np.abs(y / y_final - 1)
+
+    # Drop the final point (it's identically zero by construction)
+    # and any other points that hit floating-point zero
+    mask = rel_err > 0
+
     ax.plot(
-        df_alpha["Nmax"],
-        y/y_final,
+        df_alpha["Nmax"][mask],
+        rel_err[mask],
         color=colour,
         linewidth=1.5,
         marker="o",
@@ -86,16 +94,16 @@ ax.set_xscale("log")
 ax.set_yscale("log")
 
 ax.set_xlabel(r"$N$", fontsize=13)
-ax.set_ylabel(r"$\Im(\tilde\omega_N)/\Im(\tilde\omega_{\rm fin})$", fontsize=13)
+ax.set_ylabel(r"$|\Im(\tilde\omega_N)/\Im(\tilde\omega_{\rm fin}) - 1|$", fontsize=13)
 
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
 
-ax.legend(fontsize=9, frameon=True, loc="upper right", title=r"$\alpha$")
+ax.legend(fontsize=9, frameon=False, loc="lower left", title=r"$\alpha$")
 
 plt.tight_layout()
 
 # ── Save ─────────────────────────────────────────────────────────────────────
-output_path = "2. Relativistic Superradiance Rate/Plots/sr_convergence_plot.pdf"
+output_path = "Sem 2/2. Relativistic Superradiance Rate/Plots/sr_convergence_plot.pdf"
 
 plt.savefig(output_path, dpi=150)
 plt.show()

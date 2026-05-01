@@ -70,7 +70,7 @@ GM_SUN_OVER_C3 = 4.927e-6    # s  (GM_sun/c^3, natural BH time unit)
 
 M_BH_SOLAR = 1e-11    # Initial BH mass [solar masses]
 A_STAR_0   = 0.65    # Initial dimensionless spin  a* = J/M²
-ALPHA_0    = 0.9    # Gravitational coupling  α₀ = M₀μ
+ALPHA_0    = 0.3    # Gravitational coupling  α₀ = M₀μ
                      # Weak-coupling regime: hydrogenic rate valid for α ≲ 0.1
 
 
@@ -421,10 +421,10 @@ def main():
     E_rot0_sol = E_rot[0]  / M_SUN_PLANCK
     E_rotf_sol = E_rot[-1] / M_SUN_PLANCK
     print(f"\n  Christodoulou-Ruffini decomposition:")
-    print(f"  M_irr : {M_irr0_sol:.5f} → {M_irrf_sol:.5f} M_sun"
-          f"  (ΔM_irr = +{M_irrf_sol - M_irr0_sol:.5f}, area theorem ✓)")
-    print(f"  E_rot : {E_rot0_sol:.5f} → {E_rotf_sol:.5f} M_sun")
-    print(f"  M_cloud total : {M_cloud[-1]/M_SUN_PLANCK:.5f} M_sun")
+    print(f"  M_irr : {M_irr0_sol:.5e} → {M_irrf_sol:.5e} M_sun"
+          f"  (ΔM_irr = +{M_irrf_sol - M_irr0_sol:.5e}, area theorem ✓)")
+    print(f"  E_rot : {E_rot0_sol:.5e} → {E_rotf_sol:.5e} M_sun")
+    print(f"  M_cloud total : {M_cloud[-1]/M_SUN_PLANCK:.5e} M_sun")
     print(f"  J conservation = {dJ_frac.max():.2e}  ✓")
     print(f"  Area theorem   = {'✓' if dM_irr.min() >= -1e-6*M_irr[0] else '✗'}")
 

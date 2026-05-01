@@ -70,7 +70,7 @@ GM_SUN_OVER_C3 = 4.927e-6    # s  (GM_sun/c^3, natural BH time unit)
 
 M_BH_SOLAR = 1e-11    # Initial BH mass [solar masses]
 A_STAR_0   = 0.65    # Initial dimensionless spin  a* = J/M²
-ALPHA_0    = 0.1    # Gravitational coupling  α₀ = M₀μ
+ALPHA_0    = 0.9    # Gravitational coupling  α₀ = M₀μ
                      # Weak-coupling regime: hydrogenic rate valid for α ≲ 0.1
 
 
@@ -268,39 +268,69 @@ def main():
     print(f"  M_BH = {M_BH_SOLAR} M_sun  =  {M0:.3e} M_Pl")
     print(f"  ã₀   = {A_STAR_0}")
     print(f"  α₀   = {ALPHA_0}   →  μ = {MU:.3e} M_Pl")
+    # Pre-compute initial SR rates for all levels — used in the level
+    # table, the SR regime check, and the tau_end estimate.
+    g0_all = {(n, l, m): gamma_tilde_sr(ALPHA_0, A_STAR_0, n, l, m)
+              for (n, l, m) in LEVELS}
+
     print(f"\n  Levels tracked:")
     for n, l, m in LEVELS:
-        g0_i = gamma_tilde_sr(ALPHA_0, A_STAR_0, n, l, m)
-        print(f"    |{n}{l}{m}⟩   Γ̃₀ = {g0_i:.3e}   "
-              f"τ_SR = {1/g0_i:.2e}" if g0_i > 0 else
-              f"    |{n}{l}{m}⟩   Γ̃₀ = {g0_i:.3e}   (SR inactive)")
+        g0_i   = g0_all[(n, l, m)]
+        margin = sr_margin(ALPHA_0, A_STAR_0, m)
+        if g0_i > 0:
+            print(f"    |{n}{l}{m}⟩   Γ̃₀ = {g0_i:.3e}   "
+                  f"τ_SR = {1/g0_i:.2e}   margin = {margin:.4f}")
+        else:
+            print(f"    |{n}{l}{m}⟩   Γ̃₀ = 0   (SR inactive, margin = {margin:.4f})")
+
+    # ── SR regime check ──────────────────────────────────────────────
+    # Identify which levels are SR-active at t=0 and find the fastest
+    # one to anchor tau_end. If NO level is SR-active exit cleanly.
+
+    active_t0 = [(n, l, m) for (n, l, m) in LEVELS if g0_all[(n, l, m)] > 0]
+
+    if not active_t0:
+        # No level satisfies the SR condition at the given (α₀, ã₀).
+        # Print the SR margin for every level so the user can diagnose.
+        print("\n  ✗  No levels are superradiant at the initial parameters.")
+        print("     SR condition for level (n,l,m):  α < m·ã/(2r̂₊)")
+        print(f"     Current:  α₀ = {ALPHA_0},  ã₀ = {A_STAR_0}")
+        print(f"     Horizon factor:  ã/(2r̂₊) = {A_STAR_0/(2*rhat_plus(A_STAR_0)):.4f}")
+        print("     SR margins at t=0 (must be > 0 for SR):")
+        for n, l, m in LEVELS[:7]:   # show m=1 family as representative
+            margin = sr_margin(ALPHA_0, A_STAR_0, m)
+            print(f"       |{n}{l}{m}⟩  m·Ω_H − α = {margin:.4f}")
+        print("\n  Increase ã₀ or decrease α₀ to enter the SR regime.")
+        return
+
+    # Fastest SR-active level at t=0 (anchors Phase 1 tau_end)
+    dom_level = max(active_t0, key=lambda nlm: g0_all[nlm])
+    dom_n, dom_l, dom_m = dom_level
+    g0_dom = g0_all[dom_level]
 
     # ── Integration time ─────────────────────────────────────────────
     # tau_end covers two phases:
-    #   Phase 1 — m=1 growth and spindown to ã_f
+    #   Phase 1 — dominant level growth and BH spindown to ã_f
     #   Phase 2 — continued evolution of higher-m levels at ã_f
     #
-    # Phase 2 only includes levels whose rate at ã_f is fast enough to
-    # grow appreciably — specifically within RATE_RATIO of the dominant
-    # m=1 rate.  Levels slower than this floor are cosmologically
-    # suppressed and will never grow within any practical simulation.
+    # Phase 2 only includes levels whose rate at ã_f is within RATE_RATIO
+    # of the dominant rate.  Slower levels are cosmologically suppressed.
 
-    RATE_RATIO = 1e40         # include phase-2 levels up to 10^12× slower
-                               # than |211⟩; adjust upward for larger α
+    RATE_RATIO = 1e40    # raise to include slower phase-2 levels; lower to
+                          # shorten run time at large α
 
-    g0_dom = gamma_tilde_sr(ALPHA_0, A_STAR_0, 2, 1, 1)
-    N_sat  = M0**2 * A_STAR_0
+    N_sat   = M0**2 * A_STAR_0
 
-    # ã after m=1 switch-off: solve α = ã/(2r̂₊) ≈ ã/2 → ã_f ≈ 2α
-    astar_f = min(2.0 * ALPHA_0 * rhat_plus(A_STAR_0), A_STAR_0)
+    # ã after dominant level switches off: α = dom_m·ã/(2r̂₊)
+    # → ã_f ≈ 2α/dom_m (small-α estimate, clamped to initial spin)
+    astar_f = min(2.0 * ALPHA_0 * rhat_plus(A_STAR_0) / dom_m, A_STAR_0)
 
-    tau_phase1 = 3.0 * np.log(max(N_sat, 2.0)) / max(g0_dom, 1e-300)
+    tau_phase1 = 3.0 * np.log(max(N_sat, 2.0)) / g0_dom
 
-    # Phase 2: find slowest SR-active level above the rate floor
     g_floor    = g0_dom / RATE_RATIO
     tau_phase2 = 0.0
     for n, l, m in LEVELS:
-        if m == 1:
+        if m <= dom_m:
             continue
         g_at_af = gamma_tilde_sr(ALPHA_0, astar_f, n, l, m)
         if g_at_af >= g_floor:
@@ -309,14 +339,15 @@ def main():
 
     tau_end = tau_phase1 + tau_phase2
 
-    # Report which levels will contribute in phase 2
-    active_phase2 = [(n, l, m)
-                     for (n, l, m) in LEVELS
-                     if m > 1 and gamma_tilde_sr(ALPHA_0, astar_f, n, l, m) >= g_floor]
+    active_phase2 = [(n, l, m) for (n, l, m) in LEVELS
+                     if m > dom_m
+                     and gamma_tilde_sr(ALPHA_0, astar_f, n, l, m) >= g_floor]
 
-    print(f"\n  Dominant level |211⟩:  Γ̃₀ = {g0_dom:.4e}")
+    print(f"\n  Initially SR-active levels: {len(active_t0)}/{N_LEVELS}")
+    print(f"  Fastest level: |{dom_n}{dom_l}{dom_m}⟩  "
+          f"Γ̃₀ = {g0_dom:.4e}")
     print(f"  e-folding τ_SR = {1/g0_dom:.3e}  =  {1/g0_dom * TAU_TO_YR:.3e} yr")
-    print(f"  Estimated ã after m=1 switch-off: ã_f ≈ {astar_f:.4f}")
+    print(f"  Estimated ã after dominant switch-off: ã_f ≈ {astar_f:.4f}")
     if active_phase2:
         print(f"  Phase-2 levels (rate > {g_floor:.1e}): "
               + ", ".join(f"|{n}{l}{m}⟩" for n, l, m in active_phase2))
@@ -485,7 +516,8 @@ def main():
     ax_main.grid(True, alpha=0.25, linestyle="--")
     ax_main.legend(fontsize=9, loc="upper left", ncol=2)
     ax_main.set_ylim(0, log10N_all.max() * 1.1)
-    ax_main.set_xlim(t_yr[0], t_yr[-1])
+    t_min_pos_main = t_yr[t_yr > 0][0] if np.any(t_yr > 0) else t_yr[1]
+    ax_main.set_xlim(t_min_pos_main, t_yr[-1])
 
     ax_main.set_xscale('log')
 
@@ -507,6 +539,11 @@ def main():
     s4 = fig2.add_subplot(gs2[1, 1])
     tl = r"$t$  [yr]"
 
+    # For log x-axis: t_yr[0] = 0 is undefined in log scale.
+    # Use the first strictly positive time point as the left limit.
+    t_min_pos = t_yr[t_yr > 0][0] if np.any(t_yr > 0) else t_yr[1]
+    t_max     = t_yr[-1]
+
     # S1. SR rates — all levels
     for k, (n, l, m) in enumerate(LEVELS):
         col, ls, lw = level_style(n, l, m)
@@ -519,6 +556,8 @@ def main():
     s1.set_ylabel(r"$\tilde{\Gamma}_{\rm SR}$")
     s1.set_title("Superradiance rates")
     s1.legend(fontsize=7, ncol=2)
+    s1.set_xscale('log')
+    s1.set_xlim(t_min_pos, t_max)
     s1.grid(True, alpha=0.25, which="both", linestyle="--")
 
     # S2. Christodoulou-Ruffini energy decomposition
@@ -532,7 +571,10 @@ def main():
                lw=0.9, alpha=0.5)
     s2.set_xlabel(tl); s2.set_ylabel(r"Mass-energy  $[M_\odot]$")
     s2.set_title("Christodoulou--Ruffini decomposition")
-    s2.legend(fontsize=9); s2.grid(True, alpha=0.25, linestyle="--")
+    s2.legend(fontsize=9)
+    s2.set_xscale('log')
+    s2.set_xlim(t_min_pos, t_max)
+    s2.grid(True, alpha=0.25, linestyle="--")
 
     # S3. Angular momentum budget
     J0 = J_total[0]
@@ -544,7 +586,10 @@ def main():
             label=r"$J_{\rm total}$ (conserved)")
     s3.set_xlabel(tl); s3.set_ylabel(r"$J / J_0$")
     s3.set_title("Angular momentum budget")
-    s3.legend(fontsize=9); s3.grid(True, alpha=0.25, linestyle="--")
+    s3.legend(fontsize=9)
+    s3.set_xscale('log')
+    s3.set_xlim(t_min_pos, t_max)
+    s3.grid(True, alpha=0.25, linestyle="--")
 
     # S4. Phase-space trajectory (α, ã)
     # Show SR boundaries for each distinct m value

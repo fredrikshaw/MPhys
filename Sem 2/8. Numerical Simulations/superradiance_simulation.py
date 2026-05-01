@@ -68,9 +68,9 @@ GM_SUN_OVER_C3 = 4.927e-6    # s  (GM_sun/c^3, natural BH time unit)
 # Physical input parameters  — edit these
 # ══════════════════════════════════════════════════════════════════════
 
-M_BH_SOLAR = 10.0    # Initial BH mass [solar masses]
-A_STAR_0   = 0.99    # Initial dimensionless spin  a* = J/M²
-ALPHA_0    = 0.1   # Gravitational coupling  α₀ = M₀μ
+M_BH_SOLAR = 1e-11    # Initial BH mass [solar masses]
+A_STAR_0   = 0.65    # Initial dimensionless spin  a* = J/M²
+ALPHA_0    = 0.1    # Gravitational coupling  α₀ = M₀μ
                      # Weak-coupling regime: hydrogenic rate valid for α ≲ 0.1
 
 
@@ -234,19 +234,24 @@ def odes(tau, y):
 
 def event_sr_off(tau, y):
     """
-    Fires (terminal) when all m=1 SR conditions switch off simultaneously.
+    Fires (terminal) when the last SR-active level switches off.
 
-    All m=l=1 levels (|211⟩, |311⟩, …, |811⟩) share the same SR
-    threshold α < ã/(2r̂₊), so they all switch off at the same ã.
-    Higher-m levels have lower thresholds and would stay active longer,
-    but their rates are suppressed by α^{4l+5} and contribute negligibly
-    to the dynamics at small α.
+    This is whichever level has the highest m — for our level set
+    (n ≤ 8, m = l) that is |877⟩ with m = 7.  Higher-m levels have
+    a more permissive SR condition (α < m·ã/(2r̂₊)), so they remain
+    SR-active down to lower spin and are the last to switch off.
 
-    Returns the m=1 SR margin; goes negative when SR is off.
+    Each level's own SR condition is already enforced inside
+    gamma_tilde_sr() via the (m·Ω_H − α) factor in hydrogen_gamma —
+    levels stop growing automatically when their threshold is crossed.
+    This event just tells the solver when to stop integrating entirely.
+
+    Returns the m_max SR margin; goes negative when all levels are off.
     """
     Mtil  = max(y[N_LEVELS],     1e-9)
     astar = float(np.clip(y[N_LEVELS + 1], 0.0, 0.99999))
-    return sr_margin(ALPHA_0 * Mtil, astar, m=1)
+    m_max = int(_M_ARR.max())          # = 7 for n ≤ 8
+    return sr_margin(ALPHA_0 * Mtil, astar, m=m_max)
 
 event_sr_off.terminal  = True
 event_sr_off.direction = -1
@@ -270,14 +275,55 @@ def main():
               f"τ_SR = {1/g0_i:.2e}" if g0_i > 0 else
               f"    |{n}{l}{m}⟩   Γ̃₀ = {g0_i:.3e}   (SR inactive)")
 
-    # ── Integration time: set by the fastest-growing level |211⟩ ─────
-    g0_dom  = gamma_tilde_sr(ALPHA_0, A_STAR_0, 2, 1, 1)
-    N_sat   = M0**2 * A_STAR_0
-    tau_end = 3.0 * np.log(max(N_sat, 2.0)) / max(g0_dom, 1e-300)
+    # ── Integration time ─────────────────────────────────────────────
+    # tau_end covers two phases:
+    #   Phase 1 — m=1 growth and spindown to ã_f
+    #   Phase 2 — continued evolution of higher-m levels at ã_f
+    #
+    # Phase 2 only includes levels whose rate at ã_f is fast enough to
+    # grow appreciably — specifically within RATE_RATIO of the dominant
+    # m=1 rate.  Levels slower than this floor are cosmologically
+    # suppressed and will never grow within any practical simulation.
+
+    RATE_RATIO = 1e40         # include phase-2 levels up to 10^12× slower
+                               # than |211⟩; adjust upward for larger α
+
+    g0_dom = gamma_tilde_sr(ALPHA_0, A_STAR_0, 2, 1, 1)
+    N_sat  = M0**2 * A_STAR_0
+
+    # ã after m=1 switch-off: solve α = ã/(2r̂₊) ≈ ã/2 → ã_f ≈ 2α
+    astar_f = min(2.0 * ALPHA_0 * rhat_plus(A_STAR_0), A_STAR_0)
+
+    tau_phase1 = 3.0 * np.log(max(N_sat, 2.0)) / max(g0_dom, 1e-300)
+
+    # Phase 2: find slowest SR-active level above the rate floor
+    g_floor    = g0_dom / RATE_RATIO
+    tau_phase2 = 0.0
+    for n, l, m in LEVELS:
+        if m == 1:
+            continue
+        g_at_af = gamma_tilde_sr(ALPHA_0, astar_f, n, l, m)
+        if g_at_af >= g_floor:
+            tau_i      = np.log(max(N_sat, 2.0)) / g_at_af
+            tau_phase2 = max(tau_phase2, tau_i)
+
+    tau_end = tau_phase1 + tau_phase2
+
+    # Report which levels will contribute in phase 2
+    active_phase2 = [(n, l, m)
+                     for (n, l, m) in LEVELS
+                     if m > 1 and gamma_tilde_sr(ALPHA_0, astar_f, n, l, m) >= g_floor]
 
     print(f"\n  Dominant level |211⟩:  Γ̃₀ = {g0_dom:.4e}")
     print(f"  e-folding τ_SR = {1/g0_dom:.3e}  =  {1/g0_dom * TAU_TO_YR:.3e} yr")
-    print(f"  τ_end estimate = {tau_end:.3e}  =  {tau_end * TAU_TO_YR:.3e} yr")
+    print(f"  Estimated ã after m=1 switch-off: ã_f ≈ {astar_f:.4f}")
+    if active_phase2:
+        print(f"  Phase-2 levels (rate > {g_floor:.1e}): "
+              + ", ".join(f"|{n}{l}{m}⟩" for n, l, m in active_phase2))
+    else:
+        print(f"  No phase-2 levels above rate floor {g_floor:.1e}"
+              f" — higher modes frozen at this α")
+    print(f"  τ_end = {tau_end:.3e}  =  {tau_end * TAU_TO_YR:.3e} yr")
 
     # ── Initial conditions ───────────────────────────────────────────
     # Every level seeded with one quantum from vacuum fluctuations
@@ -421,6 +467,7 @@ def main():
         xytext=(6, -10), textcoords="offset points",
         fontsize=8, color=color_spin,
     )
+    ax_spin.set_xscale('log')
 
     # ── Bottom panel: log₁₀N(t) for all levels ───────────────────────
     for k, (n, l, m) in enumerate(LEVELS):
@@ -439,6 +486,8 @@ def main():
     ax_main.legend(fontsize=9, loc="upper left", ncol=2)
     ax_main.set_ylim(0, log10N_all.max() * 1.1)
     ax_main.set_xlim(t_yr[0], t_yr[-1])
+
+    ax_main.set_xscale('log')
 
     main_path    = os.path.join(_THIS_DIR, 'Plots', 'superradiance_main.pdf')
     main_preview = "Sem 2/8. Numerical Simulations/Plots/superradiance_main.png"

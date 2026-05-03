@@ -71,7 +71,7 @@ GM_SUN_OVER_C3 = 4.927e-6    # s  (GM_sun/c^3, natural BH time unit)
 
 M_BH_SOLAR = 1e-11    # Initial BH mass [solar masses]
 A_STAR_0   = 0.65    # Initial dimensionless spin  a* = J/M²
-ALPHA_0    = 0.3    # Gravitational coupling  α₀ = M₀μ
+ALPHA_0    = 0.1    # Gravitational coupling  α₀ = M₀μ
                      # Weak-coupling regime: hydrogenic rate valid for α ≲ 0.1
 
 
@@ -172,37 +172,119 @@ def gamma_tilde_sr(alpha, astar, n=2, l=1, m=1):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# Annihilation rate  (same-state: |nlm⟩ × |nlm⟩ → gg)
+# ══════════════════════════════════════════════════════════════════════
+
+# Spectroscopic label for l quantum number
+_L_TO_SPEC = {1: 'p', 2: 'd', 3: 'f', 4: 'g', 5: 'h', 6: 'i', 7: 'k'}
+
+def _level_string(n, l):
+    """(n, l) → spectroscopic string, e.g. (2,1)→'2p', (3,2)→'3d'."""
+    spec = _L_TO_SPEC.get(l)
+    return f"{n}{spec}" if spec is not None else None
+
+
+def _check_ann_available(n, l):
+    """
+    Test whether calc_annihilation_rate has a formula for level (n, l).
+
+    Called once at startup with r_g=1, G_N=1 (normalised convention).
+    Returns True only if the call succeeds and returns a finite non-negative
+    number.  A KeyError / NotImplementedError from ConvertedFunctions.py
+    means the rate has not yet been derived for this level.
+    """
+    lev_str = _level_string(n, l)
+    if lev_str is None:
+        return False
+    try:
+        alpha_test = 0.1
+        omega_test = calc_omega_ann(r_g=1.0, alpha=alpha_test, n=n)
+        with np.errstate(over='ignore', invalid='ignore'):
+            val = calc_annihilation_rate(lev_str, alpha=alpha_test,
+                                         omega=omega_test, G_N=1.0, r_g=1.0)
+        return (val is not None
+                and np.isfinite(float(val))
+                and float(val) >= 0.0)
+    except Exception:
+        return False
+
+
+# Pre-computed at module load — one cheap test call per level.
+_ANN_AVAILABLE = {(n, l): _check_ann_available(n, l) for (n, l, m) in LEVELS}
+
+_ann_have    = [(n, l) for (n, l), v in _ANN_AVAILABLE.items() if     v]
+_ann_missing = [(n, l) for (n, l), v in _ANN_AVAILABLE.items() if not v]
+print(f"[annihilation] rates available for {len(_ann_have)}/{len(_ANN_AVAILABLE)} levels")
+if _ann_missing:
+    print(f"[annihilation] rates NOT yet computed for: "
+          + ", ".join(f"|{n}{_L_TO_SPEC.get(l,'?')}⟩" for n, l in _ann_missing))
+
+
+def gamma_tilde_ann(n, l, Mtil):
+    """
+    Dimensionless annihilation rate  Γ̃_a = Γ_a / μ.
+
+    Convention: call calc_annihilation_rate with r_g = 1, G_N = 1.
+    This is the standard GM = 1 convention where the BH mass is normalised
+    to 1.  The returned rate Γ_a is then in units of 1/M_BH.  Converting:
+
+        Γ_a^phys [M_Pl]  =  Γ_a  /  (M₀ · M̃)
+        Γ̃_a               =  Γ_a^phys / μ
+                           =  Γ_a  /  (M₀ · M̃ · μ)
+                           =  Γ_a  /  (α₀ · M̃)      [since μ = α₀/M₀]
+
+    Overflow in ConvertedFunctions.py is suppressed via np.errstate; any
+    NaN/Inf result is caught and returned as 0.
+    """
+    if not _ANN_AVAILABLE.get((n, l), False):
+        return 0.0
+
+    alpha_cur = ALPHA_0 * Mtil
+    omega     = calc_omega_ann(r_g=1.0, alpha=alpha_cur, n=n)
+
+    try:
+        with np.errstate(over='ignore', invalid='ignore'):
+            gamma_a = calc_annihilation_rate(
+                _level_string(n, l),
+                alpha = alpha_cur,
+                omega = omega,
+                G_N   = 1.0,
+                r_g   = 1.0,
+            )
+        val = float(gamma_a)
+        if not np.isfinite(val) or val < 0.0:
+            return 0.0
+        # Convert: Γ̃_a = Γ_a / (α₀ · M̃)
+        return val / (ALPHA_0 * Mtil)
+    except Exception:
+        return 0.0
+
+
+# ══════════════════════════════════════════════════════════════════════
 # ODE system  (multi-level)
 # ══════════════════════════════════════════════════════════════════════
 
 def odes(tau, y):
     """
-    RHS of the multi-level BH-superradiance ODE system.
+    RHS of the multi-level BH-superradiance ODE system with annihilations.
 
     State:  y = [lnN_0, …, lnN_{K-1},  M̃,  ã]
-            where K = N_LEVELS = 28  (all m=l modes, n ≤ 8)
     Time:   τ = t·μ  (dimensionless)
 
     Equations
     ---------
-      d(lnN_i)/dτ  =  Γ̃_SR(n_i, l_i, m_i, α, ã)       [per level]
+      d(lnN_i)/dτ  =  Γ̃_SR_i  −  Γ̃_a_i · N_i
 
-      dM̃/dτ        = −(α₀/M₀²) · Σ_i Γ̃_SR_i · N_i      [summed]
+        Γ̃_SR drives exponential growth; Γ̃_a · N saturates it.
+        Derived from dN/dt = Γ_SR N − Γ_a N², divided by N.
 
-      dã/dτ        =  Σ_i [Γ̃_SR_i · N_i / (M₀² M̃²)]    [summed]
-                       · (2α·ã − m_i)
+      dM̃/dτ  = −(α₀/M₀²) · Σ_i Γ̃_SR_i · N_i        [SR only — BH equations
+      dã/dτ  =  Σ_i [Γ̃_SR_i · N_i / (M₀² M̃²)]        are unchanged by
+                 · (2α·ã − m_i)                         annihilations]
 
-    The m_i factor in the spin equation arises because each axion in
-    level i carries ΔJ = m_i·ħ (not just ħ = 1).  For m_i = 1 this
-    reduces to the single-level formula.
-
-    All levels share the same α(τ) = α₀·M̃(τ) and ã(τ) — the BH
-    backreaction is fully coupled across all levels.
-
-    Conservation laws
-    -----------------
-      d/dτ [ ã·M̃²·M₀² + Σ_i m_i·N_i ] = 0   (total angular momentum)
-      d/dτ [ M̃·M₀ + μ·Σ_i N_i ]        = 0   (total mass-energy)
+    Annihilation acts on the already-formed cloud, radiating energy to
+    gravitational waves that escape to infinity.  It does not directly
+    change M_BH or J_BH — those change only via the SR extraction flux.
     """
     lnN_arr = y[:N_LEVELS]
     Mtil    = max(y[N_LEVELS],     1e-9)
@@ -211,19 +293,22 @@ def odes(tau, y):
     N_arr = np.exp(lnN_arr)
     alpha = ALPHA_0 * Mtil
 
-    # SR rate for every level
-    g_arr = np.array([gamma_tilde_sr(alpha, astar, n, l, m)
-                      for (n, l, m) in LEVELS])
+    # SR rates for every level
+    g_sr_arr = np.array([gamma_tilde_sr(alpha, astar, n, l, m)
+                         for (n, l, m) in LEVELS])
 
-    # Cloud occupation growth
-    dlnN_arr = g_arr                                           # shape (K,)
+    # Annihilation rates for every level (0.0 if formula not yet computed)
+    g_ann_arr = np.array([gamma_tilde_ann(n, l, Mtil)
+                          for (n, l, m) in LEVELS])
 
-    # BH mass change: sum weighted by occupation
-    dMtil = -(ALPHA_0 / M0**2) * np.dot(g_arr, N_arr)
+    # d(lnN_i)/dτ = Γ̃_SR_i − Γ̃_a_i · N_i
+    dlnN_arr = g_sr_arr - g_ann_arr * N_arr
 
-    # BH spin change: each level weighted by its own m_i
-    #   dã/dτ = Σ_i [Γ̃_i N_i / (M₀² M̃²)] (2α ã − m_i)
-    dastar = (np.dot(g_arr * N_arr, 2.0 * alpha * astar - _M_ARR)
+    # BH mass change (SR only)
+    dMtil = -(ALPHA_0 / M0**2) * np.dot(g_sr_arr, N_arr)
+
+    # BH spin change (SR only), each level weighted by its m_i
+    dastar = (np.dot(g_sr_arr * N_arr, 2.0 * alpha * astar - _M_ARR)
               / (M0**2 * Mtil**2))
 
     return list(dlnN_arr) + [dMtil, dastar]
@@ -400,13 +485,27 @@ def main():
     E_rot  = M_BH - M_irr
     dM_irr = M_irr - M_irr[0]
 
-    # SR rates over time for all levels  (N_LEVELS × n_time)
+    # SR rates over time  (N_LEVELS × n_time)
     g_sr_all = np.array([
         [gamma_tilde_sr(a, s, n, l, m) for a, s in zip(alpha, astar)]
         for (n, l, m) in LEVELS
     ])
 
+    # Annihilation rates over time  (N_LEVELS × n_time)
+    # Only evaluated where the formula is available; otherwise 0.
+    g_ann_all = np.zeros((N_LEVELS, len(tau)))
+    for k, (n, l, m) in enumerate(LEVELS):
+        if _ANN_AVAILABLE.get((n, l), False):
+            g_ann_all[k] = np.array([
+                gamma_tilde_ann(n, l, Mt) for Mt in Mtil
+            ])
+
+    # GW power from annihilation per level:  P_GW_i = 2μ · Γ̃_a_i · N_i²
+    # Sum over levels gives total instantaneous power (in Γ̃·μ units).
+    P_GW_total = (2.0 * g_ann_all * N_all**2).sum(axis=0)   # shape (n_time,)
+
     # ── Summary ──────────────────────────────────────────────────────
+    n_ann_active = sum(1 for (n, l, m) in LEVELS if _ANN_AVAILABLE.get((n, l), False))
     print(f"\nResults")
     print(f"  End:  τ = {tau[-1]:.4e}   t = {t_yr[-1]:.4f} yr")
     print(f"  ã   : {A_STAR_0:.4f} → {astar[-1]:.4f}  (Δã = {A_STAR_0 - astar[-1]:.4f})")
@@ -416,7 +515,10 @@ def main():
     for k, (n, l, m) in enumerate(LEVELS):
         peak = lnN_all[k].max() / np.log(10)
         if peak > 0.5:
-            print(f"    |{n}{l}{m}⟩   log₁₀N_max = {peak:.2f}")
+            ann_tag = ("[ann. active]"
+                       if _ANN_AVAILABLE.get((n, l), False) else
+                       "[ann. rate not computed]")
+            print(f"    |{n}{l}{m}⟩   log₁₀N_max = {peak:.2f}   {ann_tag}")
     M_irr0_sol = M_irr[0]  / M_SUN_PLANCK
     M_irrf_sol = M_irr[-1] / M_SUN_PLANCK
     E_rot0_sol = E_rot[0]  / M_SUN_PLANCK
@@ -426,8 +528,13 @@ def main():
           f"  (ΔM_irr = +{M_irrf_sol - M_irr0_sol:.5e}, area theorem ✓)")
     print(f"  E_rot : {E_rot0_sol:.5e} → {E_rotf_sol:.5e} M_sun")
     print(f"  M_cloud total : {M_cloud[-1]/M_SUN_PLANCK:.5e} M_sun")
-    print(f"  J conservation = {dJ_frac.max():.2e}  ✓")
-    print(f"  Area theorem   = {'✓' if dM_irr.min() >= -1e-6*M_irr[0] else '✗'}")
+    print(f"  Annihilation  : {n_ann_active}/{N_LEVELS} levels have computed rates")
+    print(f"  Peak GW power : {P_GW_total.max():.3e}  [Γ̃·μ units]")
+    if n_ann_active > 0:
+        print(f"  J conservation: not exact — GW carries angular momentum (expected)")
+    else:
+        print(f"  J conservation: {dJ_frac.max():.2e}  ✓  (no ann. rates active)")
+    print(f"  Area theorem  : {'✓' if dM_irr.min() >= -1e-6*M_irr[0] else '✗'}")
 
     # ── LaTeX rendering ───────────────────────────────────────────────
     # log₁₀ N for plotting  (calculations remain in natural log throughout)

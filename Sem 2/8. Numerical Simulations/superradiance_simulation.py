@@ -79,7 +79,7 @@ OMEGA_PL_TO_HZ = 1.0 / (2.0 * np.pi * T_PL_S)
 
 M_BH_SOLAR = 1e-11    # Initial BH mass [solar masses]
 A_STAR_0   = 0.65    # Initial dimensionless spin  a* = J/M²
-ALPHA_0    = 0.01    # Gravitational coupling  α₀ = M₀μ
+ALPHA_0    = 0.4    # Gravitational coupling  α₀ = M₀μ
                      # Weak-coupling regime: hydrogenic rate valid for α ≲ 0.1
 
 
@@ -248,21 +248,34 @@ def gamma_tilde_ann(n, l, Mtil):
     """
     if not _ANN_AVAILABLE.get((n, l), False):
         return 0.0
+
+    # alpha is dimensionless (α = M·μ), same in both modules
     alpha_cur = ALPHA_0 * Mtil
-    omega     = calc_omega_ann(r_g=1.0, alpha=alpha_cur, n=n)
+
+    # Convert BH mass to solar masses for calc_rg_from_bh_mass
+    bh_mass_solar = Mtil * M_BH_SOLAR
     try:
+        # r_g and omega in ParamCalculator use eV units
+        r_g_ev = calc_rg_from_bh_mass(bh_mass_solar)
+        omega_ev = calc_omega_ann(r_g=r_g_ev, alpha=alpha_cur, n=n)
+
         with np.errstate(over='ignore', invalid='ignore'):
-            gamma_a = calc_annihilation_rate(
+            # Pass the physical Newton constant G_N from ParamCalculator
+            gamma_a_ev = calc_annihilation_rate(
                 _level_string(n, l),
                 alpha = alpha_cur,
-                omega = omega,
-                G_N   = 1.0,
-                r_g   = 1.0,
+                omega = omega_ev,
+                G_N   = G_N,
+                r_g   = r_g_ev,
             )
-        val = float(gamma_a)
-        if not np.isfinite(val) or val < 0.0:
+
+        val = float(gamma_a_ev)
+        # Gamma_a returned in eV (inverse time). Convert to dimensionless
+        # rate Gamma_tilde = Gamma_a / mu where mu = alpha / r_g (eV).
+        mu_ev = alpha_cur / r_g_ev
+        if not np.isfinite(val) or val <= 0.0 or not np.isfinite(mu_ev) or mu_ev <= 0.0:
             return 0.0
-        return val / (ALPHA_0 * Mtil)      # Γ̃_a = Γ_a / (α₀ · M̃)
+        return val / mu_ev
     except Exception:
         return 0.0
 
@@ -375,6 +388,21 @@ def main():
                   f"τ_SR = {1/g0_i:.2e}   margin = {margin:.4f}")
         else:
             print(f"    |{n}{l}{m}⟩   Γ̃₀ = 0   (SR inactive, margin = {margin:.4f})")
+
+    # ── Annihilation rates at initial parameters ──────────────────────
+    print(f"\n  Annihilation rates at initial parameters:")
+    for n, l, m in LEVELS:
+        if _ANN_AVAILABLE.get((n, l), False):
+            g_ann_0 = gamma_tilde_ann(n, l, 1.0)  
+            if g_ann_0 > 0:
+                print(f"    |{n}{l}{m}⟩   Γ̃_a = {g_ann_0:.3e}   "
+                      f"τ_a = {1/g_ann_0:.2e}")
+            else:
+                print(f"    |{n}{l}{m}⟩   Γ̃_a = 0")
+        else:
+            print(f"    |{n}{l}{m}⟩   Γ̃_a = not computed")
+
+        
 
     # ── SR regime check ──────────────────────────────────────────────
     # Identify which levels are SR-active at t=0 and find the fastest

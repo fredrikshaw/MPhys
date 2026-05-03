@@ -64,6 +64,14 @@ YEAR_S         = 3.156e7     # s per year
 M_SUN_PLANCK   = M_SUN_KG / M_PL_KG    # ≈ 9.137e37  M_Pl per M_sun
 GM_SUN_OVER_C3 = 4.927e-6    # s  (GM_sun/c^3, natural BH time unit)
 
+# GW strain unit conversions
+L_PL_M         = 1.616e-35   # Planck length [m]
+T_PL_S         = 5.391e-44   # Planck time   [s]
+KPC_M          = 3.086e19    # 1 kpc [m]
+KPC_PLANCK     = KPC_M / L_PL_M        # 1 kpc in Planck lengths ≈ 1.910e54
+# GW frequency conversion:  f_GW [Hz] = omega [M_Pl] / (2π × T_PL_S)
+OMEGA_PL_TO_HZ = 1.0 / (2.0 * np.pi * T_PL_S)
+
 
 # ══════════════════════════════════════════════════════════════════════
 # Physical input parameters  — edit these
@@ -71,7 +79,7 @@ GM_SUN_OVER_C3 = 4.927e-6    # s  (GM_sun/c^3, natural BH time unit)
 
 M_BH_SOLAR = 1e-11    # Initial BH mass [solar masses]
 A_STAR_0   = 0.65    # Initial dimensionless spin  a* = J/M²
-ALPHA_0    = 0.1    # Gravitational coupling  α₀ = M₀μ
+ALPHA_0    = 0.01    # Gravitational coupling  α₀ = M₀μ
                      # Weak-coupling regime: hydrogenic rate valid for α ≲ 0.1
 
 
@@ -175,32 +183,30 @@ def gamma_tilde_sr(alpha, astar, n=2, l=1, m=1):
 # Annihilation rate  (same-state: |nlm⟩ × |nlm⟩ → gg)
 # ══════════════════════════════════════════════════════════════════════
 
-# Spectroscopic label for l quantum number
 _L_TO_SPEC = {1: 'p', 2: 'd', 3: 'f', 4: 'g', 5: 'h', 6: 'i', 7: 'k'}
 
 def _level_string(n, l):
-    """(n, l) → spectroscopic string, e.g. (2,1)→'2p', (3,2)→'3d'."""
+    """(n, l) → spectroscopic string expected by calc_annihilation_rate.
+    e.g. (2,1) → '2p', (3,2) → '3d', (4,3) → '4f'. Returns None if unknown.
+    """
     spec = _L_TO_SPEC.get(l)
     return f"{n}{spec}" if spec is not None else None
 
 
 def _check_ann_available(n, l):
     """
-    Test whether calc_annihilation_rate has a formula for level (n, l).
+    Test once at startup whether calc_annihilation_rate has a formula for (n,l).
 
-    Called once at startup with r_g=1, G_N=1 (normalised convention).
-    Returns True only if the call succeeds and returns a finite non-negative
-    number.  A KeyError / NotImplementedError from ConvertedFunctions.py
-    means the rate has not yet been derived for this level.
+    Always called with r_g=1, G_N=1 (GM=1 normalisation) to avoid overflow
+    from large Planck-unit values.  Any exception → False (not yet computed).
     """
     lev_str = _level_string(n, l)
     if lev_str is None:
         return False
     try:
-        alpha_test = 0.1
-        omega_test = calc_omega_ann(r_g=1.0, alpha=alpha_test, n=n)
+        omega_test = calc_omega_ann(r_g=1.0, alpha=0.1, n=n)
         with np.errstate(over='ignore', invalid='ignore'):
-            val = calc_annihilation_rate(lev_str, alpha=alpha_test,
+            val = calc_annihilation_rate(lev_str, alpha=0.1,
                                          omega=omega_test, G_N=1.0, r_g=1.0)
         return (val is not None
                 and np.isfinite(float(val))
@@ -209,39 +215,41 @@ def _check_ann_available(n, l):
         return False
 
 
-# Pre-computed at module load — one cheap test call per level.
-_ANN_AVAILABLE = {(n, l): _check_ann_available(n, l) for (n, l, m) in LEVELS}
-
-_ann_have    = [(n, l) for (n, l), v in _ANN_AVAILABLE.items() if     v]
-_ann_missing = [(n, l) for (n, l), v in _ANN_AVAILABLE.items() if not v]
-print(f"[annihilation] rates available for {len(_ann_have)}/{len(_ANN_AVAILABLE)} levels")
-if _ann_missing:
-    print(f"[annihilation] rates NOT yet computed for: "
-          + ", ".join(f"|{n}{_L_TO_SPEC.get(l,'?')}⟩" for n, l in _ann_missing))
+# Built once at module load.  Guaranteed to always be defined: if the entire
+# block fails for any reason, fall back to an all-False dict so that every
+# downstream `_ANN_AVAILABLE.get(...)` call still works.
+try:
+    _ANN_AVAILABLE = {(n, l): _check_ann_available(n, l) for (n, l, m) in LEVELS}
+    _ann_have    = [(n, l) for (n, l), v in _ANN_AVAILABLE.items() if     v]
+    _ann_missing = [(n, l) for (n, l), v in _ANN_AVAILABLE.items() if not v]
+    print(f"[annihilation] rates available for "
+          f"{len(_ann_have)}/{len(_ANN_AVAILABLE)} levels")
+    if _ann_missing:
+        print(f"[annihilation] NOT yet computed: "
+              + ", ".join(f"|{n}{_L_TO_SPEC.get(l,'?')}⟩"
+                          for n, l in _ann_missing))
+except Exception as _ann_err:
+    print(f"[annihilation] WARNING: availability check failed ({_ann_err}). "
+          f"Annihilation disabled.")
+    _ANN_AVAILABLE = {(n, l): False for (n, l, m) in LEVELS}
 
 
 def gamma_tilde_ann(n, l, Mtil):
     """
-    Dimensionless annihilation rate  Γ̃_a = Γ_a / μ.
+    Dimensionless annihilation rate  Γ̃_a = Γ_a / μ  for level (n, l, m=l).
 
-    Convention: call calc_annihilation_rate with r_g = 1, G_N = 1.
-    This is the standard GM = 1 convention where the BH mass is normalised
-    to 1.  The returned rate Γ_a is then in units of 1/M_BH.  Converting:
+    Convention: r_g = 1, G_N = 1  (GM=1 units, BH mass normalised to 1).
+    Returned Γ_a is in units of 1/M_BH.  Conversion:
 
-        Γ_a^phys [M_Pl]  =  Γ_a  /  (M₀ · M̃)
-        Γ̃_a               =  Γ_a^phys / μ
-                           =  Γ_a  /  (M₀ · M̃ · μ)
-                           =  Γ_a  /  (α₀ · M̃)      [since μ = α₀/M₀]
+        Γ̃_a = Γ_a / (M_BH · μ) = Γ_a / (α₀ · M̃)
 
-    Overflow in ConvertedFunctions.py is suppressed via np.errstate; any
-    NaN/Inf result is caught and returned as 0.
+    Overflow warnings from ConvertedFunctions.py are suppressed; any
+    NaN / Inf / negative result is returned as 0.
     """
     if not _ANN_AVAILABLE.get((n, l), False):
         return 0.0
-
     alpha_cur = ALPHA_0 * Mtil
     omega     = calc_omega_ann(r_g=1.0, alpha=alpha_cur, n=n)
-
     try:
         with np.errstate(over='ignore', invalid='ignore'):
             gamma_a = calc_annihilation_rate(
@@ -254,19 +262,18 @@ def gamma_tilde_ann(n, l, Mtil):
         val = float(gamma_a)
         if not np.isfinite(val) or val < 0.0:
             return 0.0
-        # Convert: Γ̃_a = Γ_a / (α₀ · M̃)
-        return val / (ALPHA_0 * Mtil)
+        return val / (ALPHA_0 * Mtil)      # Γ̃_a = Γ_a / (α₀ · M̃)
     except Exception:
         return 0.0
 
 
 # ══════════════════════════════════════════════════════════════════════
-# ODE system  (multi-level)
+# ODE system  (multi-level, with annihilations)
 # ══════════════════════════════════════════════════════════════════════
 
 def odes(tau, y):
     """
-    RHS of the multi-level BH-superradiance ODE system with annihilations.
+    RHS of the multi-level BH-superradiance ODE system.
 
     State:  y = [lnN_0, …, lnN_{K-1},  M̃,  ã]
     Time:   τ = t·μ  (dimensionless)
@@ -276,15 +283,15 @@ def odes(tau, y):
       d(lnN_i)/dτ  =  Γ̃_SR_i  −  Γ̃_a_i · N_i
 
         Γ̃_SR drives exponential growth; Γ̃_a · N saturates it.
-        Derived from dN/dt = Γ_SR N − Γ_a N², divided by N.
+        Derived from dN/dt = Γ_SR N − Γ_a N² by dividing by N.
 
-      dM̃/dτ  = −(α₀/M₀²) · Σ_i Γ̃_SR_i · N_i        [SR only — BH equations
-      dã/dτ  =  Σ_i [Γ̃_SR_i · N_i / (M₀² M̃²)]        are unchanged by
-                 · (2α·ã − m_i)                         annihilations]
+      dM̃/dτ  = −(α₀/M₀²) · Σ_i Γ̃_SR_i · N_i      [SR only]
+      dã/dτ  =  Σ_i [Γ̃_SR_i N_i / (M₀² M̃²)]       [SR only]
+                 · (2α·ã − m_i)
 
-    Annihilation acts on the already-formed cloud, radiating energy to
-    gravitational waves that escape to infinity.  It does not directly
-    change M_BH or J_BH — those change only via the SR extraction flux.
+    The BH equations are unchanged by annihilation: that process acts on
+    the already-formed cloud, radiating energy as GW that escapes to
+    infinity, and does not directly alter M_BH or J_BH.
     """
     lnN_arr = y[:N_LEVELS]
     Mtil    = max(y[N_LEVELS],     1e-9)
@@ -293,21 +300,21 @@ def odes(tau, y):
     N_arr = np.exp(lnN_arr)
     alpha = ALPHA_0 * Mtil
 
-    # SR rates for every level
+    # SR rates
     g_sr_arr = np.array([gamma_tilde_sr(alpha, astar, n, l, m)
                          for (n, l, m) in LEVELS])
 
-    # Annihilation rates for every level (0.0 if formula not yet computed)
+    # Annihilation rates (0 for levels without computed formulae)
     g_ann_arr = np.array([gamma_tilde_ann(n, l, Mtil)
                           for (n, l, m) in LEVELS])
 
     # d(lnN_i)/dτ = Γ̃_SR_i − Γ̃_a_i · N_i
     dlnN_arr = g_sr_arr - g_ann_arr * N_arr
 
-    # BH mass change (SR only)
+    # BH mass (SR only)
     dMtil = -(ALPHA_0 / M0**2) * np.dot(g_sr_arr, N_arr)
 
-    # BH spin change (SR only), each level weighted by its m_i
+    # BH spin (SR only, each level weighted by m_i)
     dastar = (np.dot(g_sr_arr * N_arr, 2.0 * alpha * astar - _M_ARR)
               / (M0**2 * Mtil**2))
 
@@ -485,14 +492,14 @@ def main():
     E_rot  = M_BH - M_irr
     dM_irr = M_irr - M_irr[0]
 
-    # SR rates over time  (N_LEVELS × n_time)
+    # SR rates over time for all levels  (N_LEVELS × n_time)
     g_sr_all = np.array([
         [gamma_tilde_sr(a, s, n, l, m) for a, s in zip(alpha, astar)]
         for (n, l, m) in LEVELS
     ])
 
     # Annihilation rates over time  (N_LEVELS × n_time)
-    # Only evaluated where the formula is available; otherwise 0.
+    # Only evaluated where the formula is available; 0 elsewhere.
     g_ann_all = np.zeros((N_LEVELS, len(tau)))
     for k, (n, l, m) in enumerate(LEVELS):
         if _ANN_AVAILABLE.get((n, l), False):
@@ -500,9 +507,43 @@ def main():
                 gamma_tilde_ann(n, l, Mt) for Mt in Mtil
             ])
 
-    # GW power from annihilation per level:  P_GW_i = 2μ · Γ̃_a_i · N_i²
-    # Sum over levels gives total instantaneous power (in Γ̃·μ units).
-    P_GW_total = (2.0 * g_ann_all * N_all**2).sum(axis=0)   # shape (n_time,)
+    # ── GW strain from annihilation ──────────────────────────────────
+    #
+    # Formula:  h_i(t) = N_i(t) √[ 8 G_N Γ_a,i(t) / (r² ω_a,i(t)) ]
+    #
+    # In Planck units (G_N = 1):
+    #   Γ_a,i^phys = Γ̃_a,i × μ                    [M_Pl]
+    #   ω_a,i(t)   = 2μ (1 − α²(t)/2n²)            [M_Pl]
+    #   r           = KPC_PLANCK                     [dimensionless, ℓ_Pl]
+    #
+    # ω_a,i is per-level (n-dependent) and slowly time-varying through α.
+    # The GW is emitted at frequency f_GW = ω_a,i / (2π) in physical units.
+
+    # omega_ann_all: annihilation frequency per level per time  (N_LEVELS × n_time)
+    omega_ann_all = np.array([
+        2.0 * MU * (1.0 - alpha**2 / (2.0 * n**2))
+        for (n, l, m) in LEVELS
+    ])                                                 # shape (N_LEVELS, n_time)
+
+    # Physical annihilation rate  Γ_a^phys = Γ̃_a × μ
+    Gamma_a_phys = g_ann_all * MU                      # shape (N_LEVELS, n_time)
+
+    # Strain: h = N √(8 Γ_a / (r² ω_a)), clamped to avoid sqrt of negative
+    with np.errstate(invalid='ignore', divide='ignore'):
+        h_all = N_all * np.sqrt(
+            np.maximum(8.0 * Gamma_a_phys
+                       / (KPC_PLANCK**2 * omega_ann_all), 0.0)
+        )                                              # shape (N_LEVELS, n_time)
+    h_all = np.nan_to_num(h_all, nan=0.0, posinf=0.0)
+
+    # GW frequency per level (evaluated at initial α; slowly varying)
+    f_gw_hz = np.array([
+        2.0 * MU * (1.0 - ALPHA_0**2 / (2.0 * n**2)) * OMEGA_PL_TO_HZ
+        for (n, l, m) in LEVELS
+    ])                                                 # shape (N_LEVELS,)
+
+    # GW power  P_GW = 2μ · Γ̃_a · N² (summed for diagnostic)
+    P_GW_total = (2.0 * g_ann_all * N_all**2).sum(axis=0)
 
     # ── Summary ──────────────────────────────────────────────────────
     n_ann_active = sum(1 for (n, l, m) in LEVELS if _ANN_AVAILABLE.get((n, l), False))
@@ -529,7 +570,13 @@ def main():
     print(f"  E_rot : {E_rot0_sol:.5e} → {E_rotf_sol:.5e} M_sun")
     print(f"  M_cloud total : {M_cloud[-1]/M_SUN_PLANCK:.5e} M_sun")
     print(f"  Annihilation  : {n_ann_active}/{N_LEVELS} levels have computed rates")
-    print(f"  Peak GW power : {P_GW_total.max():.3e}  [Γ̃·μ units]")
+    h_peaks = [(h_all[k].max(), n, l, m) for k,(n,l,m) in enumerate(LEVELS)
+               if h_all[k].max() > 0]
+    if h_peaks:
+        print(f"  Peak GW strains (at 1 kpc):")
+        for h_pk, n, l, m in sorted(h_peaks, reverse=True)[:5]:
+            print(f"    |{n}{l}{m}⟩   h_max = {h_pk:.3e}"
+                  f"   f_GW ≈ {f_gw_hz[LEVELS.index((n,l,m))]:.3e} Hz")
     if n_ann_active > 0:
         print(f"  J conservation: not exact — GW carries angular momentum (expected)")
     else:
@@ -635,6 +682,80 @@ def main():
     fig_main.savefig(main_path,    dpi=150, bbox_inches="tight")
     fig_main.savefig(main_preview, dpi=150, bbox_inches="tight")
     print(f"\nMain figure saved to {main_path}")
+
+    # ══════════════════════════════════════════════════════════════════
+    # GW strain plot: spin panel (top) + h(t) per level (bottom)
+    # Same layout as the occupation number main plot.
+    # Only levels with computed annihilation rates are drawn.
+    # ══════════════════════════════════════════════════════════════════
+    has_strain = any(h_all[k].max() > 0 for k in range(N_LEVELS))
+
+    if has_strain:
+        fig_gw = plt.figure(figsize=(8, 6))
+        gs_gw  = GridSpec(2, 1, figure=fig_gw,
+                          height_ratios=[0.5, 3.5], hspace=0.1)
+        ax_gw_spin = fig_gw.add_subplot(gs_gw[0])
+        ax_gw_h    = fig_gw.add_subplot(gs_gw[1], sharex=ax_gw_spin)
+
+        # ── Top panel: BH spin (identical style to main plot) ────────
+        ax_gw_spin.plot(t_yr, astar, color='k', lw=1.2)
+        ax_gw_spin.set_ylabel(r"$\tilde{a}$", fontsize=11)
+        ax_gw_spin.tick_params(axis="y", labelsize=9)
+        ax_gw_spin.tick_params(axis="x", labelbottom=False)
+        ax_gw_spin.set_ylim(-0.05, 1.10)
+        ax_gw_spin.set_yticks([0.0, 0.5, 1.0])
+        ax_gw_spin.grid(True, alpha=0.25, linestyle="--")
+        ax_gw_spin.axhline(astar[-1], ls=":", color=color_spin, lw=0.8, alpha=0.55)
+        ax_gw_spin.annotate(
+            fr"$\tilde{{a}}_f = {astar[-1]:.3f}$",
+            xy=(t_yr[len(t_yr)//2], astar[-1]),
+            xytext=(0, 5), textcoords="offset points",
+            fontsize=8, color=color_spin,
+        )
+        ax_gw_spin.annotate(
+            fr"$\tilde{{a}}_0 = {A_STAR_0}$",
+            xy=(t_yr[0], A_STAR_0),
+            xytext=(6, -10), textcoords="offset points",
+            fontsize=8, color=color_spin,
+        )
+        ax_gw_spin.set_xscale('log')
+
+        # ── Bottom panel: strain h(t) per level ──────────────────────
+        for k, (n, l, m) in enumerate(LEVELS):
+            if h_all[k].max() <= 0:
+                continue                    # no annihilation rate — skip
+            col, ls, lw = level_style(n, l, m)
+            f_hz = f_gw_hz[k]
+            # Format frequency label  (Hz, kHz, MHz, GHz)
+            if   f_hz >= 1e9:  f_str = fr"$f={f_hz/1e9:.1f}$\,GHz"
+            elif f_hz >= 1e6:  f_str = fr"$f={f_hz/1e6:.1f}$\,MHz"
+            elif f_hz >= 1e3:  f_str = fr"$f={f_hz/1e3:.1f}$\,kHz"
+            else:               f_str = fr"$f={f_hz:.1f}$\,Hz"
+            label = rf"$|{n}{l}{m}\rangle$\;({f_str})"
+            ax_gw_h.semilogy(t_yr, np.maximum(h_all[k], 1e-100),
+                             color=col, ls=ls, lw=lw, label=label)
+
+        ax_gw_h.set_xlabel(r"$t$  [yr]", fontsize=12)
+        ax_gw_h.set_ylabel(r"$h$ (at 1\,kpc)", fontsize=12)
+        ax_gw_h.grid(True, alpha=0.25, which="both", linestyle="--")
+        ax_gw_h.legend(fontsize=8, loc="upper left", ncol=1)
+        ax_gw_h.set_xscale('log')
+        ax_gw_h.set_xlim(t_min_pos_main, t_yr[-1])
+
+        fig_gw.suptitle(
+            fr"GW strain from axion annihilation — $m=l$ levels ($n\leq 8$),  "
+            fr"$M_{{\rm BH}} = {M_BH_SOLAR}\,M_\odot$,  "
+            fr"$\alpha_0 = {ALPHA_0}$,  distance $= 1\,\rm kpc$",
+            fontsize=9, y=1.01,
+        )
+
+        gw_path    = os.path.join(_THIS_DIR, 'Plots', 'superradiance_gw_strain.pdf')
+        gw_preview = "Sem 2/8. Numerical Simulations/Plots/superradiance_gw_strain.png"
+        fig_gw.savefig(gw_path,    dpi=150, bbox_inches="tight")
+        fig_gw.savefig(gw_preview, dpi=150, bbox_inches="tight")
+        print(f"GW strain figure saved to {gw_path}")
+    else:
+        print("GW strain plot skipped — no annihilation rates available for active levels.")
 
     # ══════════════════════════════════════════════════════════════════
     # Secondary plot: SR rates, energy decomposition, J budget, phase space

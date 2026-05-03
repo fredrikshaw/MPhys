@@ -10,33 +10,6 @@ Physical inputs are set in solar masses and dimensionless quantities.
 All internal computation is in natural units (G = c = ħ = 1, Planck).
 Physical units (years, solar masses) are applied only at the plotting stage.
 
-Superradiance rate — hydrogenic (NR) approximation
----------------------------------------------------
-In the weak-coupling regime (α ≪ 1) the quasi-bound-state frequency is
-well approximated by the hydrogen-like analytic formula of Detweiler (1980)
-and Dolan (2007). This is imported directly from leaver_superradiance.py
-as hydrogen_gamma(n, l, m, alpha, at), which returns:
-
-    Γ_NR = 2·r₊·C_{nl}·g_{lm}(ã)·(m·Ω_H − α)·α^{4l+5}
-
-in GM=c=1 units (i.e. in units of 1/M, same convention as the CF result).
-This is the full rate for N: dN/dt = Γ_NR · N in those units.
-
-Converting to the dimensionless Γ̃ = Γ/μ used in the ODE (τ = t·μ):
-
-    Γ̃_SR = Γ_NR / α     (since μ = α/M and M = 1 in GM=1 units)
-
-This is pure arithmetic — no iterative solver, no grid, no precomputation.
-It can be evaluated at every ODE step at negligible cost.
-
-For α ≲ 0.1 the hydrogenic rate agrees with the exact Leaver CF result
-to better than ~10%. Switch to the CF grid version for α ≳ 0.2.
-
-Key References
---------------
-  Detweiler (1980), Phys. Rev. D 22, 2323
-  Dolan (2007), Phys. Rev. D 76, 084001  [arXiv:0705.2880]
-  Brito, Cardoso & Pani (2015) "Superradiance", Living Reviews
 """
 
 import os, sys
@@ -44,6 +17,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
+from pathlib import Path
 
 # ── Leaver module import ───────────────────────────────────────────────────────
 _THIS_DIR   = os.path.dirname(os.path.abspath(__file__))
@@ -52,6 +26,33 @@ sys.path.insert(0, _LEAVER_DIR if os.path.isdir(_LEAVER_DIR) else _THIS_DIR)
 
 from leaver_superradiance import hydrogen_gamma
 
+
+#------ Import ParamCalculator ----------------------------
+current_dir = Path(__file__).resolve().parent
+sem2_dir    = None
+for p in current_dir.parents:
+    if p.name == "Sem 2":
+        sem2_dir = p
+        break
+if sem2_dir is None:
+    sem2_dir = current_dir.parent
+
+script_dir = sem2_dir / "0. Scripts from Sem 1"
+if not script_dir.exists():
+    for p in current_dir.parents:
+        candidate = p / "0. Scripts from Sem 1"
+        if candidate.exists():
+            script_dir = candidate
+            break
+sys.path.append(str(script_dir.resolve()))
+
+from ParamCalculator import (
+    G_N,
+    calc_rg_from_bh_mass,
+    calc_transition_rate,
+    calc_annihilation_rate,
+    calc_omega_ann
+)
 
 # ══════════════════════════════════════════════════════════════════════
 # Physical constants  (unit conversion at plot stage only)

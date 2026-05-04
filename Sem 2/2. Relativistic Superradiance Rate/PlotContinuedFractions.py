@@ -31,9 +31,8 @@ from ParamCalculator import calc_superradiance_rate
 # ── Configuration ────────────────────────────────────────────────────────────
 FILES = [
     "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n2l1m1_at0.990_aMin0.010_aMax0.564_20260428.dat",
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n5l4m4_at0.900_aMin0.600_aMax1.379_20260428.dat",
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/SR_n5l4m4_at0.990_aMin0.010_aMax2.100_20260312.dat",
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n2l1m1_at0.650_aMin0.010_aMax0.203_20260501.dat"
+    #"Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n4l3m3_at0.990_aMin0.300_aMax1.432_20260504.dat"
 ]
 
 
@@ -119,7 +118,7 @@ for filepath, colour in zip(FILES, COLOURS):
             peak_idx = df_cf["CF_Gamma"].idxmax()
             peak_alpha = df_cf.loc[peak_idx, "alpha"]
             peak_gamma = df_cf.loc[peak_idx, "CF_Gamma"]
-            ax.text(peak_alpha, peak_gamma * 1.5, label,
+            ax.text(peak_alpha + 0.15, peak_gamma * 0.8, label,
                     color=colour, fontsize=11, ha="center", va="bottom")
 
 # ── Legend: black lines only ──────────────────────────────────────────────────
@@ -137,8 +136,8 @@ ax.set_xlabel(r"$\alpha$", fontsize=13)
 ax.set_ylabel(r"$\Gamma^{\mathrm{sr}} r_g$", fontsize=13)
 ax.yaxis.set_major_locator(mticker.LogLocator(base=10.0, subs=(1.0,), numticks=100))
 ax.grid(True, which="both", linestyle="--", alpha=0.4)
-#ax.set_ylim(1e-16, 1e-6)
-ax.set_xlim(0, 2.1)
+ax.set_ylim(1e-16, 1e-6)
+ax.set_xlim(0, 2.25)
 
 plt.tight_layout()
 

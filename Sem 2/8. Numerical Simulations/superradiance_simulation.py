@@ -79,7 +79,7 @@ OMEGA_PL_TO_HZ = 1.0 / (2.0 * np.pi * T_PL_S)
 
 M_BH_SOLAR = 1e-11    # Initial BH mass [solar masses]
 A_STAR_0   = 0.65    # Initial dimensionless spin  a* = J/M²
-ALPHA_0    = 0.4    # Gravitational coupling  α₀ = M₀μ
+ALPHA_0    = 0.1    # Gravitational coupling  α₀ = M₀μ
                      # Weak-coupling regime: hydrogenic rate valid for α ≲ 0.1
 
 
@@ -109,7 +109,9 @@ TAU_TO_YR = M_BH_SOLAR * GM_SUN_OVER_C3 / (ALPHA_0 * YEAR_S)
 # Ordering: grouped by l, then ascending n within each l group.
 # |211⟩, |311⟩…|811⟩, |322⟩…|822⟩, |433⟩…|833⟩, …, |877⟩
 
-LEVELS   = [(n, l, l) for l in range(1, 8) for n in range(l + 1, 9)]
+MAX_N = 7
+
+LEVELS   = [(n, l, l) for l in range(1, MAX_N) for n in range(l + 1, MAX_N+1)]
 N_LEVELS = len(LEVELS)   # 28
 
 # Convenience arrays (fixed for the run)
@@ -363,6 +365,17 @@ event_sr_off.terminal  = True
 event_sr_off.direction = -1
 
 
+def event_occupation_decay(tau, y):
+    """
+    Terminal event: stop when the occupation number N drops below 1e10.
+    """
+    lnN = y[0]                     # only one level (index 0)
+    N = np.exp(lnN)
+    return N - 1e10                # crosses zero when N = 1e10
+
+event_occupation_decay.terminal = True
+event_occupation_decay.direction = -1   # trigger when decreasing through threshold
+
 # ══════════════════════════════════════════════════════════════════════
 # Main
 # ══════════════════════════════════════════════════════════════════════
@@ -458,7 +471,7 @@ def main():
             tau_i      = np.log(max(N_sat, 2.0)) / g_at_af
             tau_phase2 = max(tau_phase2, tau_i)
 
-    tau_end = tau_phase1 + tau_phase2
+    tau_end = 1e50# tau_phase1 + tau_phase2
 
     active_phase2 = [(n, l, m) for (n, l, m) in LEVELS
                      if m > dom_m
@@ -488,7 +501,7 @@ def main():
         t_span       = (0.0, tau_end),
         y0           = y0,
         method       = "RK45",
-        events       = [event_sr_off],
+        events       = [event_occupation_decay],
         rtol         = 1e-9,
         atol         = 1e-12,
         dense_output = False,
@@ -555,6 +568,17 @@ def main():
 
     # Physical annihilation rate  Γ_a^phys = Γ̃_a × μ
     Gamma_a_phys = g_ann_all * MU                      # shape (N_LEVELS, n_time)
+
+    # --- Debug: print annihilation rate at peak N and at end ---
+    peak_idx = np.argmax(N_all[0])  # assuming one level
+    print(f"\nDebug: At peak N (t = {t_yr[peak_idx]:.2e} yr):")
+    for k, (n, l, m) in enumerate(LEVELS):
+        if g_ann_all[k].max() > 0:
+            print(f"  |{n}{l}{m}⟩: Γ̃_a = {g_ann_all[k][peak_idx]:.3e}")
+    print(f"At final time (t = {t_yr[-1]:.2e} yr):")
+    for k, (n, l, m) in enumerate(LEVELS):
+        if g_ann_all[k].max() > 0:
+            print(f"  |{n}{l}{m}⟩: Γ̃_a = {g_ann_all[k][-1]:.3e}")
 
     # Strain: h = N √(8 Γ_a / (r² ω_a)), clamped to avoid sqrt of negative
     with np.errstate(invalid='ignore', divide='ignore'):
@@ -682,7 +706,7 @@ def main():
         fontsize=8, color=color_spin,
     )
     ax_spin.set_xscale('log')
-
+    
     # ── Bottom panel: log₁₀N(t) for all levels ───────────────────────
     for k, (n, l, m) in enumerate(LEVELS):
         col, ls, lw = level_style(n, l, m)
@@ -784,6 +808,34 @@ def main():
         print(f"GW strain figure saved to {gw_path}")
     else:
         print("GW strain plot skipped — no annihilation rates available for active levels.")
+
+
+    
+    # ══════════════════════════════════════════════════════════════════════
+    # Additional diagnostic: annihilation rates over time
+    # ══════════════════════════════════════════════════════════════════════
+    if np.any(g_ann_all > 0):
+        fig3, ax3 = plt.subplots(figsize=(8, 5))
+        for k, (n, l, m) in enumerate(LEVELS):
+            if g_ann_all[k].max() > 0:
+                col, ls, lw = level_style(n, l, m)
+                ax3.semilogy(t_yr, g_ann_all[k], color=col, ls=ls, lw=lw,
+                            label=rf"$|{n}{l}{m}\rangle$")
+        ax3.set_xlabel(r"$t$  [yr]", fontsize=12)
+        ax3.set_ylabel(r"$\tilde{\Gamma}_a$", fontsize=12)
+        ax3.set_title("Annihilation rates over time")
+        ax3.legend(fontsize=9)
+        ax3.grid(True, alpha=0.25, which="both", linestyle="--")
+        ax3.set_xscale('log')
+        t_min_pos = t_yr[t_yr > 0][0] if np.any(t_yr > 0) else t_yr[1]
+        ax3.set_xlim(t_min_pos, t_yr[-1])
+        
+        ann_path = os.path.join(_THIS_DIR, 'Plots', 'annihilation_rates.pdf')
+        os.makedirs(os.path.dirname(ann_path), exist_ok=True)
+        fig3.savefig(ann_path, dpi=150, bbox_inches="tight")
+        print(f"Annihilation rates plot saved to {ann_path}")
+    else:
+        print("No positive annihilation rates found in the simulation.")
 
     # ══════════════════════════════════════════════════════════════════
     # Secondary plot: SR rates, energy decomposition, J budget, phase space

@@ -77,9 +77,9 @@ OMEGA_PL_TO_HZ = 1.0 / (2.0 * np.pi * T_PL_S)
 # Physical input parameters  — edit these
 # ══════════════════════════════════════════════════════════════════════
 
-M_BH_SOLAR = 1e-11    # Initial BH mass [solar masses]
-A_STAR_0   = 0.65    # Initial dimensionless spin  a* = J/M²
-ALPHA_0    = 0.1    # Gravitational coupling  α₀ = M₀μ
+M_BH_SOLAR = 1e1    # Initial BH mass [solar masses]
+A_STAR_0   = 0.99    # Initial dimensionless spin  a* = J/M²
+ALPHA_0    = 1.2   # Gravitational coupling  α₀ = M₀μ
                      # Weak-coupling regime: hydrogenic rate valid for α ≲ 0.1
 
 
@@ -109,7 +109,7 @@ TAU_TO_YR = M_BH_SOLAR * GM_SUN_OVER_C3 / (ALPHA_0 * YEAR_S)
 # Ordering: grouped by l, then ascending n within each l group.
 # |211⟩, |311⟩…|811⟩, |322⟩…|822⟩, |433⟩…|833⟩, …, |877⟩
 
-MAX_N = 7
+MAX_N = 6
 
 LEVELS   = [(n, l, l) for l in range(1, MAX_N) for n in range(l + 1, MAX_N+1)]
 N_LEVELS = len(LEVELS)   # 28
@@ -283,6 +283,126 @@ def gamma_tilde_ann(n, l, Mtil):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# Transition rate  (|n_i l_i m_i⟩ → |n_j l_j m_j⟩ + graviton)
+# ══════════════════════════════════════════════════════════════════════
+
+def _tr_key(n_i, l_i, n_j, l_j):
+    """
+    Combined key string for calc_transition_rate.
+
+    Format:  'ni_spec_i nj_spec_j'  e.g. '5p 4p', '6g 5g', '5f 4f'
+    This matches the transition argument convention in ParamCalculator.
+    """
+    spec_i = _L_TO_SPEC.get(l_i)
+    spec_j = _L_TO_SPEC.get(l_j)
+    if spec_i is None or spec_j is None:
+        return None
+    return f"{n_i}{spec_i} {n_j}{spec_j}"
+
+
+def _check_tr_available(n_i, l_i, n_j, l_j):
+    """
+    Test once at startup whether calc_transition_rate has a formula for
+    (n_i, l_i) → (n_j, l_j).
+
+    Same nominal test convention as _check_ann_available: alpha=0.1,
+    r_g=1, G_N=1.  The transition frequency must be positive (n_i > n_j).
+    """
+    key = _tr_key(n_i, l_i, n_j, l_j)
+    if key is None:
+        return False
+    try:
+        alpha_test = 0.1
+        # ω_tr = α³/(2·r_g) × (1/n_j² − 1/n_i²) at r_g=1
+        omega_test = (alpha_test**3 / 2.0) * (1.0 / n_j**2 - 1.0 / n_i**2)
+        if omega_test <= 0.0:
+            return False
+        with np.errstate(over='ignore', invalid='ignore'):
+            val = calc_transition_rate(key, alpha_test, omega_test,
+                                       G_N=1.0, r_g=1.0)
+        return (val is not None
+                and np.isfinite(float(val))
+                and float(val) >= 0.0)
+    except Exception:
+        return False
+
+
+# Build availability dict for all n_i > n_j pairs. Always defined.
+try:
+    _TR_AVAILABLE = {}
+    for n_i, l_i, m_i in LEVELS:
+        for n_j, l_j, m_j in LEVELS:
+            if n_i > n_j:
+                _TR_AVAILABLE[(n_i, l_i, n_j, l_j)] = _check_tr_available(
+                    n_i, l_i, n_j, l_j)
+
+    _tr_have = [k for k, v in _TR_AVAILABLE.items() if v]
+    print(f"[transition]   rates available for "
+          f"{len(_tr_have)}/{len(_TR_AVAILABLE)} pairs")
+    if _tr_have:
+        print(f"[transition]   active pairs: "
+              + ", ".join(f"|{ni}{li}{li}⟩→|{nj}{lj}{lj}⟩"
+                          for ni, li, nj, lj in _tr_have))
+except Exception as _tr_err:
+    print(f"[transition]   WARNING: availability check failed ({_tr_err}). "
+          "Transitions disabled.")
+    _TR_AVAILABLE = {}
+
+# Precomputed index lookup for ODE efficiency
+_LEVEL_IDX = {(n, l, m): k for k, (n, l, m) in enumerate(LEVELS)}
+_TR_PAIRS_IDX = [
+    (_LEVEL_IDX[(n_i, l_i, l_i)], _LEVEL_IDX[(n_j, l_j, l_j)],
+     n_i, l_i, n_j, l_j)
+    for (n_i, l_i, n_j, l_j), avail in _TR_AVAILABLE.items()
+    if avail
+    and (n_i, l_i, l_i) in _LEVEL_IDX
+    and (n_j, l_j, l_j) in _LEVEL_IDX
+]
+
+
+def gamma_tilde_tr(n_i, l_i, n_j, l_j, Mtil):
+    """
+    Dimensionless transition rate  Γ̃_tr = Γ_tr / μ  for
+    |n_i l_i m_i⟩ → |n_j l_j m_j⟩.
+
+    Mirrors gamma_tilde_ann exactly in unit convention:
+      - calc_transition_rate called with combined key e.g. '5p_4p'
+      - r_g in eV  (from calc_rg_from_bh_mass)
+      - G_N from ParamCalculator
+      - Γ_tr [eV] / μ_ev [eV]  → dimensionless Γ̃_tr
+
+    Transition frequency (NR binding energy gap):
+        ω_tr = α³ / (2 r_g_ev) × (1/n_j² − 1/n_i²)   [eV]
+    """
+    if not _TR_AVAILABLE.get((n_i, l_i, n_j, l_j), False):
+        return 0.0
+
+    key           = _tr_key(n_i, l_i, n_j, l_j)
+    alpha_cur     = ALPHA_0 * Mtil
+    bh_mass_solar = Mtil * M_BH_SOLAR
+    try:
+        r_g_ev   = calc_rg_from_bh_mass(bh_mass_solar)
+        mu_ev    = alpha_cur / r_g_ev
+        omega_ev = (alpha_cur**3 / (2.0 * r_g_ev)) * (1.0 / n_j**2 - 1.0 / n_i**2)
+        if omega_ev <= 0.0 or mu_ev <= 0.0:
+            return 0.0
+        with np.errstate(over='ignore', invalid='ignore'):
+            gamma_tr_ev = calc_transition_rate(
+                key,
+                alpha_cur,
+                omega_ev,
+                G_N = G_N,
+                r_g = r_g_ev,
+            )
+        val = float(gamma_tr_ev)
+        if not np.isfinite(val) or val <= 0.0:
+            return 0.0
+        return val / mu_ev
+    except Exception:
+        return 0.0
+
+
+# ══════════════════════════════════════════════════════════════════════
 # ODE system  (multi-level, with annihilations)
 # ══════════════════════════════════════════════════════════════════════
 
@@ -323,8 +443,17 @@ def odes(tau, y):
     g_ann_arr = np.array([gamma_tilde_ann(n, l, Mtil)
                           for (n, l, m) in LEVELS])
 
-    # d(lnN_i)/dτ = Γ̃_SR_i − Γ̃_a_i · N_i
-    dlnN_arr = g_sr_arr - g_ann_arr * N_arr
+    # Transition terms:  dlnN_tr[i] = +Σ_{k→i} Γ̃_tr N_k  −  Σ_{i→j} Γ̃_tr N_j
+    # Both signs come from dividing dN_i/dt = ±Γ_tr N_i N_{other} by N_i.
+    dlnN_tr = np.zeros(N_LEVELS)
+    for idx_i, idx_j, n_i, l_i, n_j, l_j in _TR_PAIRS_IDX:
+        g_tr = gamma_tilde_tr(n_i, l_i, n_j, l_j, Mtil)
+        if g_tr > 0.0:
+            dlnN_tr[idx_i] -= g_tr * N_arr[idx_j]   # upper level loses
+            dlnN_tr[idx_j] += g_tr * N_arr[idx_i]   # lower level gains
+
+    # d(lnN_i)/dτ = SR − ann·N + transition_net
+    dlnN_arr = g_sr_arr - g_ann_arr * N_arr + dlnN_tr
 
     # BH mass (SR only)
     dMtil = -(ALPHA_0 / M0**2) * np.dot(g_sr_arr, N_arr)
@@ -597,8 +726,37 @@ def main():
     # GW power  P_GW = 2μ · Γ̃_a · N² (summed for diagnostic)
     P_GW_total = (2.0 * g_ann_all * N_all**2).sum(axis=0)
 
+    # ── Transition rates over time and GW strain ─────────────────────
+    #
+    # h_tr(i→j) = √(N_i N_j) · √(8 Γ_tr^phys / (r² ω_tr))
+    #
+    # √(N_i N_j) vs N_i² for annihilation: one axion from each level.
+    # Γ_tr^phys = Γ̃_tr × μ,   ω_tr = μ α²/2 (1/n_j² − 1/n_i²)
+
+    n_tr_pairs  = len(_TR_PAIRS_IDX)
+    g_tr_matrix = np.zeros((n_tr_pairs, len(tau)))
+    h_tr_matrix = np.zeros((n_tr_pairs, len(tau)))
+    f_tr_hz     = np.zeros(n_tr_pairs)
+
+    for p, (idx_i, idx_j, n_i, l_i, n_j, l_j) in enumerate(_TR_PAIRS_IDX):
+        g_tr_matrix[p] = np.array([
+            gamma_tilde_tr(n_i, l_i, n_j, l_j, Mt) for Mt in Mtil
+        ])
+        omega_tr_all = MU * (alpha**2 / 2.0) * (1.0 / n_j**2 - 1.0 / n_i**2)
+        omega_tr_all = np.maximum(omega_tr_all, 1e-300)
+        Gamma_tr_phys = g_tr_matrix[p] * MU
+        with np.errstate(invalid='ignore', divide='ignore'):
+            h_pair = (np.sqrt(np.maximum(N_all[idx_i] * N_all[idx_j], 0.0))
+                      * np.sqrt(np.maximum(
+                          8.0 * Gamma_tr_phys / (KPC_PLANCK**2 * omega_tr_all),
+                          0.0)))
+        h_tr_matrix[p] = np.nan_to_num(h_pair, nan=0.0, posinf=0.0)
+        omega_tr_0     = MU * (ALPHA_0**2 / 2.0) * (1.0 / n_j**2 - 1.0 / n_i**2)
+        f_tr_hz[p]     = omega_tr_0 * OMEGA_PL_TO_HZ
+
     # ── Summary ──────────────────────────────────────────────────────
     n_ann_active = sum(1 for (n, l, m) in LEVELS if _ANN_AVAILABLE.get((n, l), False))
+    n_tr_active  = len(_TR_PAIRS_IDX)
     print(f"\nResults")
     print(f"  End:  τ = {tau[-1]:.4e}   t = {t_yr[-1]:.4f} yr")
     print(f"  ã   : {A_STAR_0:.4f} → {astar[-1]:.4f}  (Δã = {A_STAR_0 - astar[-1]:.4f})")
@@ -622,17 +780,29 @@ def main():
     print(f"  E_rot : {E_rot0_sol:.5e} → {E_rotf_sol:.5e} M_sun")
     print(f"  M_cloud total : {M_cloud[-1]/M_SUN_PLANCK:.5e} M_sun")
     print(f"  Annihilation  : {n_ann_active}/{N_LEVELS} levels have computed rates")
+    print(f"  Transitions   : {n_tr_active} pairs have computed rates")
     h_peaks = [(h_all[k].max(), n, l, m) for k,(n,l,m) in enumerate(LEVELS)
                if h_all[k].max() > 0]
     if h_peaks:
-        print(f"  Peak GW strains (at 1 kpc):")
+        print(f"  Peak GW strains — annihilation (at 1 kpc):")
         for h_pk, n, l, m in sorted(h_peaks, reverse=True)[:5]:
             print(f"    |{n}{l}{m}⟩   h_max = {h_pk:.3e}"
                   f"   f_GW ≈ {f_gw_hz[LEVELS.index((n,l,m))]:.3e} Hz")
-    if n_ann_active > 0:
+    if n_tr_active > 0:
+        tr_peaks = sorted(
+            [(h_tr_matrix[p].max(), p) for p in range(n_tr_pairs)
+             if h_tr_matrix[p].max() > 0], reverse=True)
+        if tr_peaks:
+            print(f"  Peak GW strains — transitions (at 1 kpc):")
+            for h_pk, p in tr_peaks[:5]:
+                idx_i, idx_j, n_i, l_i, n_j, l_j = _TR_PAIRS_IDX[p]
+                print(f"    |{n_i}{l_i}{l_i}⟩→|{n_j}{l_j}{l_j}⟩"
+                      f"   h_max = {h_pk:.3e}"
+                      f"   f_GW ≈ {f_tr_hz[p]:.3e} Hz")
+    if n_ann_active > 0 or n_tr_active > 0:
         print(f"  J conservation: not exact — GW carries angular momentum (expected)")
     else:
-        print(f"  J conservation: {dJ_frac.max():.2e}  ✓  (no ann. rates active)")
+        print(f"  J conservation: {dJ_frac.max():.2e}  ✓")
     print(f"  Area theorem  : {'✓' if dM_irr.min() >= -1e-6*M_irr[0] else '✗'}")
 
     # ── LaTeX rendering ───────────────────────────────────────────────
@@ -808,6 +978,70 @@ def main():
         print(f"GW strain figure saved to {gw_path}")
     else:
         print("GW strain plot skipped — no annihilation rates available for active levels.")
+
+    # ══════════════════════════════════════════════════════════════════
+    # GW strain from transitions
+    # ══════════════════════════════════════════════════════════════════
+    has_tr_strain = (n_tr_pairs > 0
+                     and any(h_tr_matrix[p].max() > 0 for p in range(n_tr_pairs)))
+
+    if has_tr_strain:
+        fig_tr = plt.figure(figsize=(8, 6))
+        gs_tr  = GridSpec(2, 1, figure=fig_tr,
+                          height_ratios=[0.5, 3.5], hspace=0.1)
+        ax_tr_spin = fig_tr.add_subplot(gs_tr[0])
+        ax_tr_h    = fig_tr.add_subplot(gs_tr[1], sharex=ax_tr_spin)
+
+        ax_tr_spin.plot(t_yr, astar, color='k', lw=1.2)
+        ax_tr_spin.set_ylabel(r"$\tilde{a}$", fontsize=11)
+        ax_tr_spin.tick_params(axis="y", labelsize=9)
+        ax_tr_spin.tick_params(axis="x", labelbottom=False)
+        ax_tr_spin.set_ylim(-0.05, 1.10)
+        ax_tr_spin.set_yticks([0.0, 0.5, 1.0])
+        ax_tr_spin.grid(True, alpha=0.25, linestyle="--")
+        ax_tr_spin.axhline(astar[-1], ls=":", color=color_spin, lw=0.8, alpha=0.55)
+        ax_tr_spin.annotate(
+            fr"$\tilde{{a}}_f = {astar[-1]:.3f}$",
+            xy=(t_yr[len(t_yr)//2], astar[-1]),
+            xytext=(0, 5), textcoords="offset points",
+            fontsize=8, color=color_spin,
+        )
+        ax_tr_spin.set_xscale('log')
+
+        for p, (idx_i, idx_j, n_i, l_i, n_j, l_j) in enumerate(_TR_PAIRS_IDX):
+            if h_tr_matrix[p].max() <= 0:
+                continue
+            col, ls, lw = level_style(n_i, l_i, l_i)
+            f_hz = f_tr_hz[p]
+            if   f_hz >= 1e9:  f_str = fr"$f={f_hz/1e9:.2g}$\,GHz"
+            elif f_hz >= 1e6:  f_str = fr"$f={f_hz/1e6:.2g}$\,MHz"
+            elif f_hz >= 1e3:  f_str = fr"$f={f_hz/1e3:.2g}$\,kHz"
+            else:               f_str = fr"$f={f_hz:.2g}$\,Hz"
+            label = (rf"$|{n_i}{l_i}{l_i}\rangle \to "
+                     rf"|{n_j}{l_j}{l_j}\rangle$\;({f_str})")
+            ax_tr_h.semilogy(t_yr, np.maximum(h_tr_matrix[p], 1e-100),
+                             color=col, ls=ls, lw=lw, label=label)
+
+        ax_tr_h.set_xlabel(r"$t$  [yr]", fontsize=12)
+        ax_tr_h.set_ylabel(r"$h_{\rm tr}$ (at 1\,kpc)", fontsize=12)
+        ax_tr_h.grid(True, alpha=0.25, which="both", linestyle="--")
+        ax_tr_h.legend(fontsize=8, loc="upper left", ncol=1)
+        ax_tr_h.set_xscale('log')
+        ax_tr_h.set_xlim(t_min_pos_main, t_yr[-1])
+
+        fig_tr.suptitle(
+            fr"GW strain from axion transitions — $m=l$ levels ($n\leq 8$),  "
+            fr"$M_{{\rm BH}} = {M_BH_SOLAR}\,M_\odot$,  "
+            fr"$\alpha_0 = {ALPHA_0}$,  distance $= 1\,\rm kpc$",
+            fontsize=9, y=1.01,
+        )
+        tr_path    = os.path.join(_THIS_DIR, 'Plots', 'superradiance_gw_transitions.pdf')
+        tr_preview = "Sem 2/8. Numerical Simulations/Plots/superradiance_gw_transitions.png"
+        fig_tr.savefig(tr_path,    dpi=150, bbox_inches="tight")
+        fig_tr.savefig(tr_preview, dpi=150, bbox_inches="tight")
+        print(f"Transition GW strain figure saved to {tr_path}")
+    else:
+        print("Transition GW strain plot skipped — no transition rates available.")
 
 
     

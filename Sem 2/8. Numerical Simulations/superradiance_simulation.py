@@ -77,9 +77,9 @@ OMEGA_PL_TO_HZ = 1.0 / (2.0 * np.pi * T_PL_S)
 # Physical input parameters  — edit these
 # ══════════════════════════════════════════════════════════════════════
 
-M_BH_SOLAR = 1e1    # Initial BH mass [solar masses]
-A_STAR_0   = 0.99    # Initial dimensionless spin  a* = J/M²
-ALPHA_0    = 1.2   # Gravitational coupling  α₀ = M₀μ
+M_BH_SOLAR = 1e-11    # Initial BH mass [solar masses]
+A_STAR_0   = 0.65    # Initial dimensionless spin  a* = J/M²
+ALPHA_0    = 0.6   # Gravitational coupling  α₀ = M₀μ
                      # Weak-coupling regime: hydrogenic rate valid for α ≲ 0.1
 
 

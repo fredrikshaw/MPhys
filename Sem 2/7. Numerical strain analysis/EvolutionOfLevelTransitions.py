@@ -57,12 +57,6 @@ def quantum_numbers_to_spectroscopic(n, l):
     
     return f"{n}{l_to_letter[l]}"
 
-# ---------------------------------------------------------------
-#  PHYSICS FUNCTIONS
-# ---------------------------------------------------------------
-
-def calc_omega_tr(n_g, n_e, mu_a, alpha):
-    return 0.5 * mu_a * alpha**2 * (1/n_g**2 - 1/n_e**2)
 
 # ---------------------------------------------------------------
 #  LOGARITHMIC DIFFERENTIAL EQUATIONS
@@ -109,7 +103,7 @@ def calc_h_peak_and_fwhm(times, log_h):
     h_peak = float(hs[peak_idx])
     t_peak = float(t[peak_idx])
 
-    if not np.isfinite(h_peak) or h_peak <= 0:
+    if not np.isfinite(h_peak):
         return h_peak, t_peak, np.nan
 
     log_half = h_peak + np.log10(0.5)
@@ -177,7 +171,7 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
                    transition="3p 2p",
                    gamma_g_override=None, gamma_e_override=None,
                    transition_rate_override=None,
-                   distance_kpc=10, t_max_years=1e6, n_points=int(1e6),
+                   distance_kpc=10, t_max_years=None, n_points=int(1e6),
                    sr_rate_source='cf',
                    sr_cf_file_e=None, sr_cf_file_g=None,
                    sr_cf_method='cf'):
@@ -251,7 +245,7 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
     sr_file_g_used = None
 
     if sr_rate_source == 'cf':
-        sr_data_dir = sem2_dir / "2. Relativistic Superradiance Rate" / "Mathematica"
+        sr_data_dir = sem2_dir / "2. Relativistic Superradiance Rate" / "Mathematica" / "Data"
         sr_file_e = Path(sr_cf_file_e) if sr_cf_file_e is not None else _find_sr_file(
             n=n_e, l=l_e, m=m_e, bh_spin=bh_spin, sr_data_dir=sr_data_dir
         )
@@ -309,6 +303,10 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
 
 
     # --- Time setup ---
+    calculated_t_max = False
+    if t_max_years == None:
+        t_max_years = 5 * 1/gamma_g * (np.log(gamma_e) - np.log(transition_rate))
+        calculate_t_max = True
     times = np.linspace(0, t_max_years, n_points)
     t_span = (0, times[-1])
 
@@ -324,6 +322,10 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
         print(f"  SR file (excited): {sr_file_e_used}")
         print(f"  SR file (ground) : {sr_file_g_used}")
     print(f"Total simulated time = {times[-1]} years")
+    if calculated_t_max:
+        print(f"Calculated t_max: {t_max_years}")
+    else:
+        print(f"User provided t_max: {t_max_years}")
 
     LOG10E = np.log10(np.e) # Save variable to avoid repeated log calls
     # --- Event: stop if N_g > some val ---
@@ -479,13 +481,17 @@ def plot_results(results, save_filename=None):
         print("\nWarning: Gamma values missing from parameters")
     
     print(f"\nTransition rate: {params['transition_rate']:.2e} years⁻¹")
-    print(f"Transition frequency: {params['omega_tr']:.2e} eV")
+    transition_frequency_hz = params['omega_tr'] / 4.135667696e-6  # Convert to GHz
+    print(f"Transition frequency: {params['omega_tr']:.2e} eV ({transition_frequency_hz:.2e} GHz)")
 
     # Strain summary: peak and full width at half maximum.
     h_peak, t_peak, h_fwhm = calc_h_peak_and_fwhm(times, log_h)
-    print(f"\nPeak strain h_max: {h_peak:.3e} (dimensionless) at t = {t_peak:.3e} years")
+    years_to_seconds = 365.25 * 24 * 3600
+    t_peak_seconds = t_peak * years_to_seconds
+    print(f"\nPeak strain h_max: {h_peak:.3e} (dimensionless) at t = {t_peak:.3e} years ({t_peak_seconds:.3e} s)")
     if np.isfinite(h_fwhm):
-        print(f"Strain FWHM: {h_fwhm:.3e} years")
+        h_fwhm_seconds = h_fwhm * years_to_seconds
+        print(f"Strain FWHM: {h_fwhm:.3e} years ({h_fwhm_seconds:.3e} s)")
     else:
         print("Strain FWHM: not defined in sampled time window")
 
@@ -578,11 +584,11 @@ def plot_results(results, save_filename=None):
 
 if __name__ == "__main__":
     # Shared simulation parameters
-    alpha = 0.3
-    bh_spin = 0.99
+    alpha = 1.28
+    bh_spin = 0.9
     bh_mass_sm = 1e-6
-    transition = "4d 3d"
-    t_max = 1e-5  # years
+    transition = "6g 5g"
+    t_max = None
 
     # SR-rate source options:
     #   'cf'    -> use SuperradianceRateCF data files (default)

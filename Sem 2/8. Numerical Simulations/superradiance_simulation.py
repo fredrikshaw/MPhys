@@ -10,8 +10,8 @@ Physical inputs are set in solar masses and dimensionless quantities.
 All internal computation is in natural units (G = c = ħ = 1, Planck).
 Physical units (years, solar masses) are applied only at the plotting stage.
 
-Refactored: simulation run, result storage, and plotting are separated
-into dedicated functions for clarity and reusability.
+Refactored: simulation run, result storage, plotting, and peak analysis
+are separated into dedicated functions for clarity and reusability.
 """
 
 import os, sys
@@ -408,8 +408,6 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
             margin = sr_margin(alpha_0, a_star_0, m)
             print(f"       |{n}{l}{m}⟩  m·Ω_H − α = {margin:.4f}")
         print("\n  Increase ã₀ or decrease α₀ to enter the SR regime.")
-        # Return empty results? Raise an exception or return None.
-        # For now we return an empty results object with flag.
         return None
 
     # Fastest SR-active level at t=0
@@ -583,24 +581,6 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
     print(f"  M_cloud total : {M_cloud[-1]/M_SUN_PLANCK:.5e} M_sun")
     print(f"  Annihilation  : {n_ann_active}/{N_LEVELS} levels have computed rates")
     print(f"  Transitions   : {n_tr_active} pairs have computed rates")
-    h_peaks = [(h_all[k].max(), n, l, m) for k,(n,l,m) in enumerate(LEVELS) if h_all[k].max()>0]
-    if h_peaks:
-        print("  Peak GW strains — annihilation (at 1 kpc):")
-        for h_pk, n, l, m in sorted(h_peaks, reverse=True)[:5]:
-            print(f"    |{n}{l}{m}⟩   h_max = {h_pk:.3e}   f_GW ≈ {f_gw_hz[LEVELS.index((n,l,m))]:.3e} Hz")
-    if n_tr_active > 0:
-        tr_peaks = sorted([(h_tr_matrix[p].max(), p) for p in range(n_tr_pairs)
-                           if h_tr_matrix[p].max() > 0], reverse=True)
-        if tr_peaks:
-            print("  Peak GW strains — transitions (at 1 kpc):")
-            for h_pk, p in tr_peaks[:5]:
-                idx_i, idx_j, n_i, l_i, n_j, l_j = TR_PAIRS_IDX[p]
-                print(f"    |{n_i}{l_i}{l_i}⟩→|{n_j}{l_j}{l_j}⟩   h_max = {h_pk:.3e}   f_GW ≈ {f_tr_hz[p]:.3e} Hz")
-    if n_ann_active > 0 or n_tr_active > 0:
-        print("  J conservation: not exact — GW carries angular momentum (expected)")
-    else:
-        print(f"  J conservation: {dJ_frac.max():.2e}  ✓")
-    print(f"  Area theorem  : {'✓' if dM_irr.min() >= -1e-6*M_irr[0] else '✗'}")
 
     # ── Pack results ──────────────────────────────────────────────────
     res = SimulationResults(
@@ -647,6 +627,139 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         dominant_level=dom_level,
     )
     return res
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Peak characteristic analysis
+# ══════════════════════════════════════════════════════════════════════
+
+def compute_peak_characteristics(results: SimulationResults):
+    """
+    Compute for each annihilation level and transition pair:
+    - peak strain h_max
+    - FWHM (full width at half maximum) in years
+    - time of peak t_peak [yr]
+    - frequency of emission [Hz]
+
+    Returns two lists of dicts, sorted by decreasing peak strain.
+    """
+    if results is None:
+        return [], []
+
+    t_yr = results.t_yr
+    LEVELS = results.LEVELS
+    h_all = results.h_all
+    f_gw_hz = results.f_gw_hz
+
+    # ── Annihilation peaks ────────────────────────────────────────────
+    ann_char = []
+    for k, (n, l, m) in enumerate(LEVELS):
+        h = h_all[k]
+        h_max = np.max(h)
+        if h_max <= 0:
+            continue
+
+        idx_peak = int(np.argmax(h))
+        t_peak = t_yr[idx_peak]
+        half_max = h_max / 2.0
+
+        # Find indices where strain >= half max
+        above = np.where(h >= half_max)[0]
+        fwhm = 0.0
+        if len(above) > 0:
+            # Split into contiguous blocks
+            blocks = np.split(above, np.where(np.diff(above) != 1)[0] + 1)
+            # Find block containing the peak index
+            for blk in blocks:
+                if idx_peak in blk:
+                    if len(blk) > 1:
+                        fwhm = t_yr[blk[-1]] - t_yr[blk[0]]
+                    break
+
+        ann_char.append({
+            'label': f"|{n}{l}{m}⟩",
+            'peak_strain': h_max,
+            'fwhm_yr': fwhm,
+            't_peak_yr': t_peak,
+            'frequency_hz': f_gw_hz[k]
+        })
+
+    # ── Transition peaks ──────────────────────────────────────────────
+    tr_char = []
+    TR_PAIRS_IDX = results.tr_pairs_idx
+    h_tr_matrix = results.h_tr_matrix
+    f_tr_hz = results.f_tr_hz
+
+    for p, (idx_i, idx_j, n_i, l_i, n_j, l_j) in enumerate(TR_PAIRS_IDX):
+        h = h_tr_matrix[p]
+        h_max = np.max(h)
+        if h_max <= 0:
+            continue
+
+        idx_peak = int(np.argmax(h))
+        t_peak = t_yr[idx_peak]
+        half_max = h_max / 2.0
+
+        above = np.where(h >= half_max)[0]
+        fwhm = 0.0
+        if len(above) > 0:
+            blocks = np.split(above, np.where(np.diff(above) != 1)[0] + 1)
+            for blk in blocks:
+                if idx_peak in blk:
+                    if len(blk) > 1:
+                        fwhm = t_yr[blk[-1]] - t_yr[blk[0]]
+                    break
+
+        tr_char.append({
+            'label': f"|{n_i}{l_i}{l_i}⟩→|{n_j}{l_j}{l_j}⟩",
+            'peak_strain': h_max,
+            'fwhm_yr': fwhm,
+            't_peak_yr': t_peak,
+            'frequency_hz': f_tr_hz[p]
+        })
+
+    # Sort by decreasing peak strain
+    ann_char.sort(key=lambda x: x['peak_strain'], reverse=True)
+    tr_char.sort(key=lambda x: x['peak_strain'], reverse=True)
+
+    return ann_char, tr_char
+
+
+def print_peak_tables(ann_char, tr_char):
+    """Print formatted tables of peak characteristics."""
+    # ── Annihilation table ────────────────────────────────────────────
+    if ann_char:
+        print("\n" + "=" * 110)
+        print("  Annihilation Peak Characteristics (sorted by decreasing peak strain at 1 kpc)")
+        print("=" * 110)
+        header = (f"{'Level':<16} {'Peak Strain':>15} {'FWHM [yr]':>15} "
+                  f"{'t_peak [yr]':>18} {'Frequency [Hz]':>18}")
+        print(header)
+        print("-" * 110)
+        for entry in ann_char:
+            print(f"{entry['label']:<16} {entry['peak_strain']:>15.3e} "
+                  f"{entry['fwhm_yr']:>15.3e} {entry['t_peak_yr']:>18.3e} "
+                  f"{entry['frequency_hz']:>18.3e}")
+    else:
+        print("\nNo annihilation peaks to display.")
+
+    # ── Transition table ──────────────────────────────────────────────
+    if tr_char:
+        print("\n" + "=" * 110)
+        print("  Transition Peak Characteristics (sorted by decreasing peak strain at 1 kpc)")
+        print("=" * 110)
+        header = (f"{'Transition':<28} {'Peak Strain':>15} {'FWHM [yr]':>15} "
+                  f"{'t_peak [yr]':>18} {'Frequency [Hz]':>18}")
+        print(header)
+        print("-" * 110)
+        for entry in tr_char:
+            print(f"{entry['label']:<28} {entry['peak_strain']:>15.3e} "
+                  f"{entry['fwhm_yr']:>15.3e} {entry['t_peak_yr']:>18.3e} "
+                  f"{entry['frequency_hz']:>18.3e}")
+    else:
+        print("\nNo transition peaks to display.")
+
+    print("=" * 110)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1010,6 +1123,10 @@ def main():
     if results is None:
         return
 
+    # ── Compute and print peak characteristics ───────────────────────
+    ann_char, tr_char = compute_peak_characteristics(results)
+    print_peak_tables(ann_char, tr_char)
+
     # Create output directory
     plot_dir = os.path.join(_THIS_DIR, 'Plots')
     os.makedirs(plot_dir, exist_ok=True)
@@ -1024,8 +1141,8 @@ def main():
     gw_tr_path = os.path.join(plot_dir, 'superradiance_gw_transitions.pdf')
     plot_gw_transitions(results, save_path=gw_tr_path)
 
-    #ann_rates_path = os.path.join(plot_dir, 'annihilation_rates.pdf')
-    #plot_annihilation_rates(results, save_path=ann_rates_path)
+    ann_rates_path = os.path.join(plot_dir, 'annihilation_rates.pdf')
+    plot_annihilation_rates(results, save_path=ann_rates_path)
 
     diag_path = os.path.join(plot_dir, 'superradiance_diagnostics.pdf')
     plot_diagnostics(results, save_path=diag_path)

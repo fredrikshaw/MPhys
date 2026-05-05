@@ -26,6 +26,7 @@ from ParamCalculator import (
     G_N
 )
 from SuperradianceRateCF import sr_rate_dimensioned
+from leaver_superradiance import hydrogen_gamma
 
 SOLAR_MASS = 1.988e30  # [kg]
 
@@ -190,7 +191,8 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
         t_max_years: Maximum simulation time in years
         n_points: Number of time points
         sr_rate_source: 'cf' (default) to use SuperradianceRateCF data,
-                or 'param' to use ParamCalculator analytic rates
+            'param' to use ParamCalculator analytic rates,
+            or 'hydrogen' to use hydrogen_gamma from leaver_superradiance
         sr_cf_file_e: Optional SR file path for excited level (used when sr_rate_source='cf')
         sr_cf_file_g: Optional SR file path for ground level (used when sr_rate_source='cf')
         sr_cf_method: Interpolation column in SR files ('cf' or 'hydro')
@@ -271,8 +273,13 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
     elif sr_rate_source == 'param':
         gamma_e = calc_superradiance_rate(l=l_e, m=m_e, n=n_e, a_star=bh_spin, r_g=r_g, alpha=alpha)
         gamma_g = calc_superradiance_rate(l=l_g, m=m_g, n=n_g, a_star=bh_spin, r_g=r_g, alpha=alpha)
+    elif sr_rate_source == 'hydrogen':
+        # hydrogen_gamma returns the NR SR growth rate in units of 1/M (GM=c=1).
+        # Convert to physical natural units [eV] using M = r_g [eV^-1].
+        gamma_e = hydrogen_gamma(n=n_e, l=l_e, m=m_e, alpha=alpha, at=bh_spin) / r_g
+        gamma_g = hydrogen_gamma(n=n_g, l=l_g, m=m_g, alpha=alpha, at=bh_spin) / r_g
     else:
-        raise ValueError("sr_rate_source must be 'cf' or 'param'.")
+        raise ValueError("sr_rate_source must be 'cf', 'param', or 'hydrogen'.")
 
     gamma_e *= ev_to_years # Convert from eV to years^-1
     gamma_g *= ev_to_years # Convert from eV to years^-1
@@ -282,6 +289,13 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
         gamma_e = gamma_e_override
     if gamma_g_override is not None:
         gamma_g = gamma_g_override
+
+    if gamma_e <= 0:
+        print("[ERROR] gamma_e is <= zero, most likely the superradiance condition isn't met.")
+        raise ValueError("gamma_e must be > 0 for this simulation.")
+    if gamma_g <= 0:
+        print("[ERROR] gamma_g is <= zero, most likely the superradiance condition isn't met.")
+        raise ValueError("gamma_g must be > 0 for this simulation.")
 
     # Calculate transition frequency using ParamCalculator
     omega_tr = calc_omega_transition(r_g, alpha, n_e, n_g)
@@ -584,16 +598,17 @@ def plot_results(results, save_filename=None):
 
 if __name__ == "__main__":
     # Shared simulation parameters
-    alpha = 1.28
-    bh_spin = 0.9
+    alpha = 0.5
+    bh_spin = 0.65
     bh_mass_sm = 1e-6
-    transition = "6g 5g"
+    transition = "7g 5g"
     t_max = None
 
     # SR-rate source options:
     #   'cf'    -> use SuperradianceRateCF data files (default)
     #   'param' -> use legacy ParamCalculator analytic rates
-    sr_rate_source = 'cf'
+    #   'hydrogen' -> use hydrogen_gamma NR approximation from leaver_superradiance
+    sr_rate_source = 'hydrogen'
     sr_cf_method = 'cf'
     sr_cf_file_e = None  # optional explicit path for excited mode SR file
     sr_cf_file_g = None  # optional explicit path for ground mode SR file

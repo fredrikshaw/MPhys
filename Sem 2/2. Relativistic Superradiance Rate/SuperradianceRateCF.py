@@ -40,6 +40,7 @@ import os
 import re
 import numpy as np
 from scipy.interpolate import CubicSpline
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Physical constants (CODATA 2018 / SI)
@@ -93,6 +94,13 @@ def _parse_mathematica_float(s: str) -> float:
     return float(s)
 
 
+def _parse_filename_number(integer_part: str, fraction_part: Optional[str]) -> float:
+    """Parse a number from filename fragments with an optional decimal part."""
+    if fraction_part is None:
+        return float(integer_part)
+    return float(f"{integer_part}.{fraction_part}")
+
+
 def _parse_metadata_from_filename(filepath: str) -> dict:
     """
     Extract quantum numbers, spin, and alpha range from the filename.
@@ -106,28 +114,26 @@ def _parse_metadata_from_filename(filepath: str) -> dict:
     """
     basename = os.path.basename(filepath)
     # Accept either a dot or an underscore as the decimal separator in the
-    # numeric fields, since the separator can differ between operating systems
-    # and upload tools (e.g. "at0.999" vs "at0_999").
-    sep = r'[._]'
+    # numeric fields, and allow integer-only encodings like aMax2.
     pattern = (
         r'SR_n(\d+)l(\d+)m(\d+)'
-        r'_at(\d+)' + sep + r'(\d+)'
-        r'_aMin(\d+)' + sep + r'(\d+)'
-        r'_aMax(\d+)' + sep + r'(\d+)'
+        r'_at(\d+)(?:[._](\d+))?'
+        r'_aMin(\d+)(?:[._](\d+))?'
+        r'_aMax(\d+)(?:[._](\d+))?'
         r'_(\d{8})\.dat'
     )
     m = re.match(pattern, basename)
     if m is None:
         raise ValueError(
             f"Filename '{basename}' does not match the expected pattern\n"
-            "  SR_n<n>l<l>m<m>_at<a_int>.<a_dec>"
-            "_aMin<amin_int>.<amin_dec>_aMax<amax_int>.<amax_dec>_<YYYYMMDD>.dat\n"
-            "(dots or underscores are accepted as the decimal separator)"
+            "  SR_n<n>l<l>m<m>_at<a_int>[.<a_dec>]"
+            "_aMin<amin_int>[.<amin_dec>]_aMax<amax_int>[.<amax_dec>]_<YYYYMMDD>.dat\n"
+            "(dots or underscores are accepted as the decimal separator; decimals are optional)"
         )
     n, l, mq = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    a_star    = float(f"{m.group(4)}.{m.group(5)}")
-    alpha_min = float(f"{m.group(6)}.{m.group(7)}")
-    alpha_max = float(f"{m.group(8)}.{m.group(9)}")
+    a_star    = _parse_filename_number(m.group(4), m.group(5))
+    alpha_min = _parse_filename_number(m.group(6), m.group(7))
+    alpha_max = _parse_filename_number(m.group(8), m.group(9))
     date      = m.group(10)
     return dict(n=n, l=l, m=mq, a_star=a_star,
                 alpha_min=alpha_min, alpha_max=alpha_max, date=date)

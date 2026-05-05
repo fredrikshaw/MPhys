@@ -33,12 +33,11 @@ from ParamCalculator import calc_superradiance_rate
 
 # ── Configuration ────────────────────────────────────────────────────────────
 FILES = [
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n2l1m1_at0.999_aMin0.010_aMax0.600_20260310.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n3l2m2_at0.999_aMin0.010_aMax1.200_20260310.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n4l3m3_at0.999_aMin0.010_aMax1.700_20260310.dat",
-    "2. Relativistic Superradiance Rate/Mathematica/SR_n5l4m4_at0.999_aMin0.010_aMax2.700_20260310.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n2l1m1_at0.990_aMin0.010_aMax0.564_20260428.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n3l2m2_at0.990_aMin0.050_aMax0.954_20260503.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n4l3m3_at0.990_aMin0.300_aMax1.432_20260504.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n5l4m4_at0.990_aMin0.500_aMax2.100_20260504.dat",
 ]
-
 
 COLOURS = ["#e03c3c", "#e07c3c", "#7842f5", "#284945"]
 # ─────────────────────────────────────────────────────────────────────────────
@@ -136,7 +135,6 @@ ax.legend(fontsize=10, frameon=False)
 # Use a symmetric log scale on the y-axis to compress large outliers while
 # keeping the region near zero linear for readability.
 ax.set_yscale('log')
-ax.set_xscale("log")
 
 # x-axis label: alpha divided by l
 ax.set_xlabel(r"$\alpha / \ell$", fontsize=13)

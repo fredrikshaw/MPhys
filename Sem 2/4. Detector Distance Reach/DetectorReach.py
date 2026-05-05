@@ -381,18 +381,25 @@ def _single_det_sweep(freq_func, h_func, tau_func,
     d_combined, M_combined (coarse + dense), f_res, d_res, M_res.
     """
     def _sweep(M_array):
-        fs, ds, Ms = [], [], []
+        fs, ds, Ms, taus = [], [], [], []
         for M in M_array:
-            f, d, _, _, _ = compute_point(
+            f, d, _, tau, _ = compute_point(
                 M, freq_func, h_func, tau_func, det, f_band, rho_star
             )
-            fs.append(f); ds.append(d); Ms.append(M)
-        return np.array(fs), np.array(ds), np.array(Ms)
+            fs.append(f); ds.append(d); Ms.append(M); taus.append(tau)
+        return np.array(fs), np.array(ds), np.array(Ms), np.array(taus)
 
-    M_coarse            = np.logspace(np.log10(M_range[0]),
-                                      np.log10(M_range[1]), n_coarse)
-    f_c, d_c, M_c       = _sweep(M_coarse)
-    valid_c             = np.isfinite(d_c)
+    M_coarse                  = np.logspace(np.log10(M_range[0]),
+                                            np.log10(M_range[1]), n_coarse)
+    f_c, d_c, M_c, tau_c     = _sweep(M_coarse)
+    valid_c                   = np.isfinite(d_c)
+
+    # ── Diagnose silently when the whole coarse sweep yields nothing ──────────
+    if not valid_c.any():
+        det_name = det.name if isinstance(det, MagneticWeberBar) else (
+            IFO_DETECTORS[det].name if isinstance(det, str) else str(det)
+        )
+        _diagnose_sweep_failure(det_name, M_coarse, f_c, d_c, tau_c, f_band, det)
 
     M_res, f_res, d_res = np.nan, np.nan, np.nan
     M_fine, d_fine      = None, None
@@ -407,7 +414,7 @@ def _single_det_sweep(freq_func, h_func, tau_func,
         M_guess = M_c[valid_c][idx]
         M_dense = np.logspace(np.log10(M_guess / 10),
                               np.log10(M_guess * 10), n_dense)
-        f_d, d_d, _ = _sweep(M_dense)
+        f_d, d_d, _, _tau_d = _sweep(M_dense)
         valid_d = np.isfinite(d_d)
         if valid_d.any():
             M_fine = M_dense[valid_d]
@@ -439,6 +446,132 @@ def _single_det_sweep(freq_func, h_func, tau_func,
         'd_res': d_res,
         'M_res': M_res,
     }
+
+
+def _diagnose_sweep_failure(det_name, M_array, freq_vals, d_vals,
+                            tau_vals, f_band, det):
+    """
+    Called when a coarse sweep produces zero finite d_max values.
+    Prints a single, human-readable summary of *why* no signal was detected,
+    without spamming one line per mass point.
+
+    Parameters
+    ----------
+    det_name  : str            — detector label for the printout
+    M_array   : array          — mass grid used in the coarse sweep
+    freq_vals : array          — f_t computed at each mass (NaN if freq_func failed)
+    d_vals    : array          — d_max at each mass (NaN = no detection)
+    tau_vals  : array          — tau_val at each mass (NaN if not reached)
+    f_band    : (float, float) — the f_band passed to run_sweep
+    det       : MagneticWeberBar | str — detector object / key
+    """
+    prefix = f"  [WARN] {det_name}:"
+
+    # ── Frequency computation failures ────────────────────────────────────────
+    n_freq_nan = int(np.sum(~np.isfinite(freq_vals)))
+    n_total    = len(freq_vals)
+
+    if n_freq_nan == n_total:
+        print(f"{prefix} freq_func raised exceptions for ALL {n_total} mass "
+              f"points — check the source factory inputs (alpha, filepath, etc.).")
+        return
+
+    finite_freqs = freq_vals[np.isfinite(freq_vals)]
+    f_lo, f_hi   = float(np.nanmin(finite_freqs)), float(np.nanmax(finite_freqs))
+    band_lo, band_hi = f_band
+
+    # ── All frequencies below band ─────────────────────────────────────────────
+    if f_hi < band_lo:
+        print(f"{prefix} ALL computed frequencies lie BELOW the band "
+              f"[{band_lo:.2e}, {band_hi:.2e}] Hz. "
+              f"Freq range in sweep: [{f_lo:.2e}, {f_hi:.2e}] Hz. "
+              f"Try a larger alpha or a higher-mass BH range.")
+        return
+
+    # ── All frequencies above band ─────────────────────────────────────────────
+    if f_lo > band_hi:
+        print(f"{prefix} ALL computed frequencies lie ABOVE the band "
+              f"[{band_lo:.2e}, {band_hi:.2e}] Hz. "
+              f"Freq range in sweep: [{f_lo:.2e}, {f_hi:.2e}] Hz. "
+              f"Try a smaller alpha or a lower-mass BH range.")
+        return
+
+    # ── Some frequencies are in-band — investigate why d_max is still NaN ─────
+    in_band_mask = (freq_vals >= band_lo) & (freq_vals <= band_hi)
+    n_in_band    = int(np.sum(in_band_mask))
+
+    # Check: did the noise PSD return NaN for all in-band points?
+    noise_nan_count = 0
+    for f in finite_freqs[(finite_freqs >= band_lo) & (finite_freqs <= band_hi)]:
+        try:
+            sn = _get_noise(det, float(f))
+            if not np.isfinite(sn) or sn <= 0:
+                noise_nan_count += 1
+        except Exception:
+            noise_nan_count += 1
+
+    if noise_nan_count == n_in_band and n_in_band > 0:
+        print(f"{prefix} {n_in_band} mass points have in-band frequencies "
+              f"[{max(band_lo,f_lo):.2e}–{min(band_hi,f_hi):.2e}] Hz "
+              f"but the detector noise PSD returned NaN/zero for ALL of them "
+              f"(frequencies may lie outside the detector's hardware bandwidth).")
+        return
+
+    # Check: did tau < ring-up time kill all in-band points?
+    finite_tau_mask = in_band_mask & np.isfinite(tau_vals)
+    if finite_tau_mask.any():
+        try:
+            det_config = _get_det_config(det)
+            t_ring = det_config.ring_up_time()
+            n_tau_fail = int(np.sum(tau_vals[finite_tau_mask] < t_ring))
+            n_tau_fin  = int(np.sum(finite_tau_mask))
+            if n_tau_fail == n_tau_fin:
+                tau_min = float(np.nanmin(tau_vals[finite_tau_mask]))
+                print(f"{prefix} {n_tau_fin} in-band points had tau < ring-up "
+                      f"time ({t_ring:.2e} s) for ALL of them. "
+                      f"Shortest tau = {tau_min:.2e} s. "
+                      f"Signal duration is too short for this detector.")
+                return
+        except Exception:
+            pass
+
+    # Generic catch-all for mixed / unknown reasons
+    frac_in = n_in_band / n_total
+    print(f"{prefix} {n_in_band}/{n_total} mass points ({100*frac_in:.0f}%) "
+          f"have in-band frequencies but d_max was NaN for all. "
+          f"Freq range in sweep: [{f_lo:.2e}, {f_hi:.2e}] Hz. "
+          f"Possible causes: h_func/tau_func exceptions, zero strain, "
+          f"or non-finite noise PSD. Run with debug=True for details.")
+
+
+def _check_filepath(filepath, alpha, M_range):
+    """
+    Validate that the superradiance .dat file is accessible and that
+    sr_rate_dimensioned can be called without error for a test mass.
+    Prints a clear warning (once) if anything is wrong.
+
+    Returns True if OK, False if something failed.
+    """
+    import os
+    if not os.path.isfile(filepath):
+        print(f"\n[ERROR] Superradiance file NOT FOUND:\n"
+              f"        {filepath}\n"
+              f"        Check that the path is correct relative to your "
+              f"working directory.")
+        return False
+
+    # Try a call at the geometric-mean mass of the sweep range
+    M_test = np.sqrt(M_range[0] * M_range[1])
+    try:
+        sr_rate_dimensioned(alpha, M_test, filepath=filepath, method='cf')
+    except Exception as exc:
+        print(f"\n[ERROR] sr_rate_dimensioned failed on a test call "
+              f"(M={M_test:.2e} Msun, alpha={alpha}):\n"
+              f"        {type(exc).__name__}: {exc}\n"
+              f"        The file exists but could not be read or parsed.")
+        return False
+
+    return True
 
 
 def run_sweep(freq_func, h_func, tau_func,
@@ -559,10 +692,6 @@ def plot_reach(results, alpha, process_label,
                    color=style['color'], linewidth=2.0,
                    linestyle=style['ls'], label=name)
 
-        # Vertical line at resonance mass
-        if np.isfinite(data['d_res']) and np.isfinite(data['M_res']):
-            ax1.axvline(data['M_res'], color=style['color'],
-                        linewidth=0.8, linestyle=':', alpha=0.5)
 
     # ── Optional PBH merger reach overlay ────────────────────────────────────
     merger_fill = None
@@ -830,7 +959,7 @@ def compute_merger_reach_curve(
 if __name__ == '__main__':
 
     # ── Common parameters ─────────────────────────────────────────────────────
-    alpha      = 0.01
+    alpha      = 0.4
     astar_init = 0.99
     M_range    = (1e-12, 1e4)
     rho_star   = 1.0               # SNR threshold
@@ -863,6 +992,10 @@ if __name__ == '__main__':
         freq_func, h_func, tau_func = make_transition_source(
             alpha, transition, n_e, n_g, filepath, debug=False,
         )
+        # Validate the superradiance file before committing to a long sweep
+        if not _check_filepath(filepath, alpha, M_range):
+            print("[ABORT] Cannot proceed without a valid superradiance file.")
+            sys.exit(1)
 
     elif PROCESS == 'annihilation':
         # Annihilation: |n l m>

@@ -10,11 +10,12 @@ Physical inputs are set in solar masses and dimensionless quantities.
 All internal computation is in natural units (G = c = ħ = 1, Planck).
 Physical units (years, solar masses) are applied only at the plotting stage.
 
-Refactored: simulation run, result storage, plotting, and peak analysis
-are separated into dedicated functions for clarity and reusability.
+Refactored: simulation run, result storage, plotting, peak analysis,
+and data export are separated into dedicated functions.
 """
 
 import os, sys
+import csv
 import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
@@ -247,8 +248,9 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
 
     Returns
     -------
-    SimulationResults
+    SimulationResults or None
         Object containing all simulation data and metadata.
+        Returns None if no level is SR-active at initial parameters.
     """
     # ── Internal derived quantities ──────────────────────────────────
     M0  = M_BH_solar * M_SUN_PLANCK    # Initial BH mass [M_Pl]
@@ -389,7 +391,7 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
     event_sr_off.direction = -1
 
     def event_occupation_decay(tau, y):
-        lnN = y[0]   # dominant level is first? Not necessarily, but fine
+        lnN = y[0]   # stop if the first level's N drops too low
         N = np.exp(lnN)
         return N - 1e10
     event_occupation_decay.terminal = True
@@ -402,7 +404,6 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
 
     if not active_t0:
         print("\n  ✗  No levels are superradiant at the initial parameters.")
-        # Print margins for diagnosis
         print("     SR margins at t=0:")
         for n, l, m in LEVELS[:7]:
             margin = sr_margin(alpha_0, a_star_0, m)
@@ -480,7 +481,7 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         t_span       = (0.0, tau_end),
         y0           = y0,
         method       = "RK45",
-        events       = [event_occupation_decay],  # you could also include event_sr_off
+        events       = [event_occupation_decay],
         rtol         = 1e-9,
         atol         = 1e-12,
         dense_output = False,
@@ -636,7 +637,7 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
 def compute_peak_characteristics(results: SimulationResults):
     """
     Compute for each annihilation level and transition pair:
-    - peak strain h_max
+    - peak strain h_max (at 1 kpc)
     - FWHM (full width at half maximum) in years
     - time of peak t_peak [yr]
     - frequency of emission [Hz]
@@ -726,7 +727,7 @@ def compute_peak_characteristics(results: SimulationResults):
 
 
 def print_peak_tables(ann_char, tr_char):
-    """Print formatted tables of peak characteristics."""
+    """Print formatted tables of peak characteristics to console."""
     # ── Annihilation table ────────────────────────────────────────────
     if ann_char:
         print("\n" + "=" * 110)
@@ -761,6 +762,46 @@ def print_peak_tables(ann_char, tr_char):
 
     print("=" * 110)
 
+
+def save_peak_tables(ann_char, tr_char, results: SimulationResults, output_dir="Data"):
+    """
+    Save peak characteristic tables as .dat files in output_dir.
+    File names contain process type, BH mass (scientific), alpha, and spin.
+    """
+    if results is None:
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Format mass: e.g. 1e-11 → "1e-11"
+    mass_str = f"M{results.M_BH_solar:.0e}".replace('e-0', 'e-').replace('e+0', 'e')
+    # Format alpha and spin: e.g., alpha0.60, a0.65
+    alpha_str = f"alpha{results.alpha_0:.2f}".rstrip('0').rstrip('.') if '.' in f"{results.alpha_0:.2f}" else f"alpha{results.alpha_0:.2f}"
+    spin_str = f"a{results.a_star_0:.2f}".rstrip('0').rstrip('.') if '.' in f"{results.a_star_0:.2f}" else f"a{results.a_star_0:.2f}"
+
+    fieldnames = ['label', 'peak_strain', 'fwhm_yr', 't_peak_yr', 'frequency_hz']
+
+    # Annihilation table
+    if ann_char:
+        ann_filename = f"peaks_annihilation_{mass_str}_{alpha_str}_{spin_str}.dat"
+        ann_path = os.path.join(output_dir, ann_filename)
+        with open(ann_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter='\t')
+            writer.writeheader()
+            for entry in ann_char:
+                writer.writerow({k: entry[k] for k in fieldnames})
+        print(f"Saved annihilation peak table to {ann_path}")
+
+    # Transition table
+    if tr_char:
+        tr_filename = f"peaks_transitions_{mass_str}_{alpha_str}_{spin_str}.dat"
+        tr_path = os.path.join(output_dir, tr_filename)
+        with open(tr_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter='\t')
+            writer.writeheader()
+            for entry in tr_char:
+                writer.writerow({k: entry[k] for k in fieldnames})
+        print(f"Saved transition peak table to {tr_path}")
 
 # ══════════════════════════════════════════════════════════════════════
 # Plotting functions
@@ -1016,7 +1057,7 @@ def plot_diagnostics(results: SimulationResults, save_path=None):
     alpha = results.alpha
     astar = results.astar
     _M_ARR = results._M_ARR
-    M_SUN_PLANCK = 9.137e37  # reuse local
+    M_SUN_PLANCK = 9.137e37  # reuse local constant
 
     t_min_pos = t_yr[t_yr > 0][0] if np.any(t_yr > 0) else t_yr[1]
     t_max = t_yr[-1]
@@ -1127,7 +1168,11 @@ def main():
     ann_char, tr_char = compute_peak_characteristics(results)
     print_peak_tables(ann_char, tr_char)
 
-    # Create output directory
+    # ── Save peak tables to Data folder ──────────────────────────────
+    data_dir = os.path.join(_THIS_DIR, 'Data')
+    save_peak_tables(ann_char, tr_char, results, output_dir=data_dir)
+
+    # Create output directory for plots
     plot_dir = os.path.join(_THIS_DIR, 'Plots')
     os.makedirs(plot_dir, exist_ok=True)
 
@@ -1141,8 +1186,8 @@ def main():
     gw_tr_path = os.path.join(plot_dir, 'superradiance_gw_transitions.pdf')
     plot_gw_transitions(results, save_path=gw_tr_path)
 
-    ann_rates_path = os.path.join(plot_dir, 'annihilation_rates.pdf')
-    plot_annihilation_rates(results, save_path=ann_rates_path)
+    #ann_rates_path = os.path.join(plot_dir, 'annihilation_rates.pdf')
+    #plot_annihilation_rates(results, save_path=ann_rates_path)
 
     diag_path = os.path.join(plot_dir, 'superradiance_diagnostics.pdf')
     plot_diagnostics(results, save_path=diag_path)

@@ -10,8 +10,19 @@ This script compares:
 
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 from SimplePostMergerSpin import solve_a_star_self_consistent
+
+
+def get_plot_output_path(filename):
+	"""Return a path inside the local Plots subfolder for saved figures."""
+	if os.path.isabs(filename):
+		return filename
+
+	plots_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Plots")
+	os.makedirs(plots_dir, exist_ok=True)
+	return os.path.join(plots_dir, filename)
 
 
 def a_star_high_nu(nu):
@@ -36,7 +47,7 @@ def matched_a_star(nu, nu_low=0.10, nu_high=0.20):
 
 	For nu <= nu_low   : use low-nu expression
 	For nu >= nu_high  : use high-nu expression
-	Between the two    : smooth interpolation
+	Between the two	: smooth interpolation
 	"""
 	nu = np.asarray(nu)
 
@@ -94,7 +105,7 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 	log_y=False,
 	log_floor=1e-3,
 	save_fig=False,
-	filename="matched_spin_hist_lognormal.png",
+	filename="matched_spin_hist_lognormal.pdf",
 	show=True,
 ):
 	"""
@@ -129,7 +140,7 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 	save_fig : bool, optional
 		Whether to save the figure. Default False
 	filename : str, optional
-		Filename for saved figure. Default "matched_spin_hist_lognormal.png"
+		Filename for saved figure. Default "matched_spin_hist_lognormal.pdf"
 	show : bool, optional
 		Whether to display the figure. Default True
 	"""
@@ -242,8 +253,9 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 	plt.tight_layout()
 
 	if save_fig:
-		plt.savefig(filename, dpi=300, bbox_inches="tight")
-		print(f"Saved figure: {filename}")
+		output_path = get_plot_output_path(filename)
+		plt.savefig(output_path, dpi=300, bbox_inches="tight")
+		print(f"Saved figure: {output_path}")
 
 	if show:
 		plt.show()
@@ -273,11 +285,26 @@ def plot_all_a_star_models(
 	nu_low_valid_max=0.10,
 	nu_high_valid_min=0.20,
 	save_fig=False,
-	filename="a_star_f_vs_nu_matched.png",
+	filename="a_star_f_vs_nu_matched.pdf",
 	show=True,
 ):
 	"""Plot asymptotic, matched, and BKL final spin models on one figure."""
 	nu_values = np.linspace(nu_min, nu_max, num_points)
+	
+	plt.rcParams.update({
+		"text.usetex": True,
+		"font.family": "serif",
+		"font.serif": ["Computer Modern Roman"],
+		"text.latex.preamble": r"\usepackage{amsmath}",
+		# Add these font size settings:
+		"font.size": 16,			   # Base font size
+		"axes.titlesize": 16,		  # Axis title size
+		"axes.labelsize": 16,		  # Axis label size
+		"xtick.labelsize": 14,		 # X-tick label size
+		"ytick.labelsize": 14,		 # Y-tick label size
+		"legend.fontsize": 14,		 # Legend font size
+		"figure.titlesize": 18		 # Figure title size (if you add one)
+	})
 
 	low_curve = a_star_low_nu(nu_values)
 	high_curve = a_star_high_nu(nu_values)
@@ -287,13 +314,13 @@ def plot_all_a_star_models(
 	fig, ax = plt.subplots(figsize=(10, 6))
 
 	ax.plot(nu_values, low_curve, "--", color="tab:blue", linewidth=2,
-			label=r"Small-$\nu$ expansion: $2\sqrt{3}\,\nu - 3.87\,\nu^2$")
+			label=r"Small-$\nu$ fit")
 	ax.plot(nu_values, high_curve, "--", color="tab:orange", linewidth=2,
-			label=r"Large-$\nu$ fit: $0.13 + 2.24\,\nu$")
+			label=r"Large-$\nu$ fit")
 	ax.plot(nu_values, matched_curve, "-", color="tab:green", linewidth=2.5,
 			label="Matched asymptotic model")
 	ax.plot(nu_values, bkl_spins, "-", color="tab:red", linewidth=2,
-			label="Self-consistent ISCO model (SimplePostMergerSpin)")
+			label="Self-consistent ISCO model")
 
 	if not np.all(bkl_converged):
 		failed = nu_values[~bkl_converged]
@@ -306,22 +333,23 @@ def plot_all_a_star_models(
 			label="BKL non-converged points",
 		)
 
-	ax.axvspan(nu_min, nu_low_valid_max, alpha=0.12, color="tab:blue", label="Small-$\\nu$ validity")
-	ax.axvspan(nu_low_valid_max, nu_high_valid_min, alpha=0.10, color="tab:green", label="Matching region")
-	ax.axvspan(nu_high_valid_min, nu_max, alpha=0.12, color="tab:orange", label="Large-$\\nu$ validity")
+	ax.axvspan(nu_min, nu_low_valid_max, alpha=0.5, color="tab:blue", label="Small-$\\nu$ validity")
+	ax.axvspan(nu_low_valid_max, nu_high_valid_min, alpha=0.5, color="tab:green", label="Matching region")
+	ax.axvspan(nu_high_valid_min, nu_max, alpha=0.5, color="tab:orange", label="Large-$\\nu$ validity")
 
 	ax.set_xlim(nu_min, nu_max)
-	ax.set_xlabel(r"Symmetric mass ratio $\nu = m_1 m_2 / (m_1+m_2)^2$", fontsize=12)
-	ax.set_ylabel(r"Final spin $a_{*,f}$", fontsize=12)
-	ax.set_title(r"Final Spin $a_{*,f}$ vs $\nu$: Asymptotics, Matching, and ISCO Model", fontsize=13)
+	ax.set_xlabel(r"$\nu$")
+	ax.set_ylabel(r"$a_{*,f}$")
+	# ax.set_title(r"Final Spin $a_{*,f}$ vs $\nu$: Asymptotics, Matching, and ISCO Model", fontsize=13)
 	ax.grid(alpha=0.3)
-	ax.legend(fontsize=9, loc="best")
+	ax.legend(loc="best")
 
 	plt.tight_layout()
 
 	if save_fig:
-		plt.savefig(filename, dpi=300, bbox_inches="tight")
-		print(f"Saved figure: {filename}")
+		output_path = get_plot_output_path(filename)
+		plt.savefig(output_path, dpi=300, bbox_inches="tight")
+		print(f"Saved figure: {output_path}")
 
 	if show:
 		plt.show()
@@ -330,7 +358,7 @@ def plot_all_a_star_models(
 
 
 if __name__ == "__main__":
-	plot_all_a_star_models(save_fig=False, show=False)
+	plot_all_a_star_models(save_fig=True, show=True)
 	plot_matched_spin_histogram_from_lognormal_mergers(
 		N_mergers=2000000,
 		M_central=1e6,
@@ -339,5 +367,5 @@ if __name__ == "__main__":
 		save_fig=False,
 		include_mass_hist=True,
 		log_y=True,
-		show=True,
+		show=False,
 	)

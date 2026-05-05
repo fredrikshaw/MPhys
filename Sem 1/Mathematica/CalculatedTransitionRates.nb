@@ -10,10 +10,10 @@
 NotebookFileLineBreakTest
 NotebookFileLineBreakTest
 NotebookDataPosition[       154,          7]
-NotebookDataLength[    202873,       4392]
-NotebookOptionsPosition[    202508,       4378]
-NotebookOutlinePosition[    202910,       4394]
-CellTagsIndexPosition[    202867,       4391]
+NotebookDataLength[    209498,       4522]
+NotebookOptionsPosition[    209133,       4508]
+NotebookOutlinePosition[    209535,       4524]
+CellTagsIndexPosition[    209492,       4521]
 WindowFrame->Normal*)
 
 (* Beginning of Notebook Content *)
@@ -3706,7 +3706,136 @@ Cell[BoxData[{
         RowBox[{"(", 
          RowBox[{"12544", "+", 
           SuperscriptBox["\[Alpha]", "2"]}], ")"}], "30"]}], ")"}]}]}], ";"}],
-   "\[IndentingNewLine]", "\[IndentingNewLine]", "\[IndentingNewLine]"}], "\[IndentingNewLine]", 
+   "\[IndentingNewLine]"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{
+   RowBox[{"dPd\[CapitalOmega]8fto7f", " ", "=", " ", 
+    RowBox[{
+     RowBox[{"(", 
+      RowBox[{"3937262487050993503493489991514270466048", " ", "GN", " ", 
+       SuperscriptBox["\[Alpha]", "12"], " ", 
+       SuperscriptBox[
+        RowBox[{"(", 
+         RowBox[{
+         "479506824171307584063486618876968716175129321709074644992", "+", 
+          RowBox[{"818900340482354302827000913019847766890778953963798528", " ", 
+           SuperscriptBox["\[Alpha]", "2"]}], "-", 
+          RowBox[{"571140987309513813505595563477790706368425161129984", " ", 
+           SuperscriptBox["\[Alpha]", "4"]}], "+", 
+          RowBox[{"557082544151299407660747802532029264395459624960", " ", 
+           SuperscriptBox["\[Alpha]", "6"]}], "-", 
+          RowBox[{"132758018936154810734210120472776619977605120", " ", 
+           SuperscriptBox["\[Alpha]", "8"]}], "+", 
+          RowBox[{"10343676655160644880003603262086961954816", " ", 
+           SuperscriptBox["\[Alpha]", "10"]}], "+", 
+          RowBox[{"2587764208169803848658749007494905856", " ", 
+           SuperscriptBox["\[Alpha]", "12"]}], "-", 
+          RowBox[{"474787815698623467142703615049728", " ", 
+           SuperscriptBox["\[Alpha]", "14"]}], "+", 
+          RowBox[{"28380676468748528149069824000", " ", 
+           SuperscriptBox["\[Alpha]", "16"]}], "-", 
+          RowBox[{"563316828562175385600000", " ", 
+           SuperscriptBox["\[Alpha]", "18"]}], "+", 
+          RowBox[{"163767353904000000", " ", 
+           SuperscriptBox["\[Alpha]", "20"]}], "-", 
+          RowBox[{"399111268359375", " ", 
+           SuperscriptBox["\[Alpha]", "22"]}], "-", 
+          RowBox[{"96", " ", 
+           SuperscriptBox["\[Alpha]", "2"], " ", 
+           RowBox[{"(", 
+            RowBox[{
+             RowBox[{
+             "-", "4273419396902994526579604838476680874572260254416896"}], "-", 
+             RowBox[{"691578960437634207005836377231136547039342493696", " ", 
+              SuperscriptBox["\[Alpha]", "2"]}], "+", 
+             RowBox[{"1480279009002706710377251232795666163538329600", " ", 
+              SuperscriptBox["\[Alpha]", "4"]}], "-", 
+             RowBox[{"1039710377903464670207837274403386419052544", " ", 
+              SuperscriptBox["\[Alpha]", "6"]}], "+", 
+             RowBox[{"214371942890899873446903299576199905280", " ", 
+              SuperscriptBox["\[Alpha]", "8"]}], "-", 
+             RowBox[{"27579551415206806167770346440097792", " ", 
+              SuperscriptBox["\[Alpha]", "10"]}], "+", 
+             RowBox[{"2827513975919181653703003209728", " ", 
+              SuperscriptBox["\[Alpha]", "12"]}], "-", 
+             RowBox[{"347364847858096870726041600", " ", 
+              SuperscriptBox["\[Alpha]", "14"]}], "+", 
+             RowBox[{"25433665525169112960000", " ", 
+              SuperscriptBox["\[Alpha]", "16"]}], "-", 
+             RowBox[{"930386761530187500", " ", 
+              SuperscriptBox["\[Alpha]", "18"]}], "+", 
+             RowBox[{"12094280859375", " ", 
+              SuperscriptBox["\[Alpha]", "20"]}]}], ")"}], " ", 
+           RowBox[{"Cos", "[", 
+            RowBox[{"2", " ", "\[Theta]k"}], "]"}]}], "-", 
+          RowBox[{"33", " ", 
+           SuperscriptBox["\[Alpha]", "4"], " ", 
+           RowBox[{"(", 
+            RowBox[{
+             RowBox[{
+             "-", "3735838231550111505993390642482252002520727552000"}], "+", 
+             RowBox[{"2316534424456846912733896379276613675059773440", " ", 
+              SuperscriptBox["\[Alpha]", "2"]}], "-", 
+             RowBox[{"734669960233099461980652498270067571556352", " ", 
+              SuperscriptBox["\[Alpha]", "4"]}], "+", 
+             RowBox[{"156802177347523518021324055566656471040", " ", 
+              SuperscriptBox["\[Alpha]", "6"]}], "-", 
+             RowBox[{"40944971533163273181264720596828160", " ", 
+              SuperscriptBox["\[Alpha]", "8"]}], "+", 
+             RowBox[{"7319235103138154399927747215360", " ", 
+              SuperscriptBox["\[Alpha]", "10"]}], "-", 
+             RowBox[{"711442067634395206700236800", " ", 
+              SuperscriptBox["\[Alpha]", "12"]}], "+", 
+             RowBox[{"33972956223771156480000", " ", 
+              SuperscriptBox["\[Alpha]", "14"]}], "-", 
+             RowBox[{"755125365456000000", " ", 
+              SuperscriptBox["\[Alpha]", "16"]}], "+", 
+             RowBox[{"5497400390625", " ", 
+              SuperscriptBox["\[Alpha]", "18"]}]}], ")"}], " ", 
+           RowBox[{"Cos", "[", 
+            RowBox[{"4", " ", "\[Theta]k"}], "]"}]}], "+", 
+          RowBox[{"8769924893760090117562057938587583764653670400", " ", 
+           SuperscriptBox["\[Alpha]", "6"], " ", 
+           RowBox[{"Cos", "[", 
+            RowBox[{"6", " ", "\[Theta]k"}], "]"}]}], "-", 
+          RowBox[{"4952040374465286841267354228386054159728640", " ", 
+           SuperscriptBox["\[Alpha]", "8"], " ", 
+           RowBox[{"Cos", "[", 
+            RowBox[{"6", " ", "\[Theta]k"}], "]"}]}], "+", 
+          RowBox[{"1017690465705818952336866124164958781440", " ", 
+           SuperscriptBox["\[Alpha]", "10"], " ", 
+           RowBox[{"Cos", "[", 
+            RowBox[{"6", " ", "\[Theta]k"}], "]"}]}], "-", 
+          RowBox[{"63477319030386544459933090106572800", " ", 
+           SuperscriptBox["\[Alpha]", "12"], " ", 
+           RowBox[{"Cos", "[", 
+            RowBox[{"6", " ", "\[Theta]k"}], "]"}]}], "-", 
+          RowBox[{"3124405801321944438707689881600", " ", 
+           SuperscriptBox["\[Alpha]", "14"], " ", 
+           RowBox[{"Cos", "[", 
+            RowBox[{"6", " ", "\[Theta]k"}], "]"}]}], "+", 
+          RowBox[{"564407285509719604592640000", " ", 
+           SuperscriptBox["\[Alpha]", "16"], " ", 
+           RowBox[{"Cos", "[", 
+            RowBox[{"6", " ", "\[Theta]k"}], "]"}]}], "-", 
+          RowBox[{"22610872483418419200000", " ", 
+           SuperscriptBox["\[Alpha]", "18"], " ", 
+           RowBox[{"Cos", "[", 
+            RowBox[{"6", " ", "\[Theta]k"}], "]"}]}], "+", 
+          RowBox[{"318592384110000000", " ", 
+           SuperscriptBox["\[Alpha]", "20"], " ", 
+           RowBox[{"Cos", "[", 
+            RowBox[{"6", " ", "\[Theta]k"}], "]"}]}]}], ")"}], "2"], " ", 
+       SuperscriptBox[
+        RowBox[{"Sin", "[", "\[Theta]k", "]"}], "4"]}], ")"}], "/", 
+     RowBox[{"(", 
+      RowBox[{"15527624944602856885604560375213623046875", " ", "\[Pi]", " ", 
+       SuperscriptBox["rg", "4"], " ", 
+       SuperscriptBox[
+        RowBox[{"(", 
+         RowBox[{"12544", "+", 
+          SuperscriptBox["\[Alpha]", "2"]}], ")"}], "30"]}], ")"}]}]}], ";"}],
+   "\[IndentingNewLine]", "\[IndentingNewLine]"}], "\[IndentingNewLine]", 
  RowBox[{
   RowBox[{
    RowBox[{"dPd\[CapitalOmega]8ito7i", " ", "=", " ", 
@@ -4360,20 +4489,21 @@ Cell[BoxData[{
           SuperscriptBox["\[Alpha]", "2"]}]}], ")"}], "42"]}], ")"}]}]}], 
   ";"}], "\[IndentingNewLine]"}], "Input",
  CellChangeTimes->CompressedData["
-1:eJwd0W9Ik1EUBvCpzWppGogUrDDNnBkm2FyuUSqzZg7CnLpwkpnZWstWLW0V
-ON1SQV3zQyppWKhpNvJdzZqy2tJhUqZrkr5hgYTgogwh+zOYq/d5P1x+POec
-y+VytpdcOHY6kMFg8KgDP7n50yc7ltI3k3UzcEekJb6EUqlXJMCFXa80WkpP
-jv8GVEf151cjl0VJoY3DyqihdCkUQtid+1QGi+VkEW3Acjlk70tRQVN6SBPs
-8xUY4Pis7gGcz5T0QfXzKSt02u3D8HuhaBFKex55YAeTH6ujXBN3MA6K67gi
-SG4rOAIlcoMasqtjK+Dy2rkGej5ysQnaVqUDcCJGZKb7t72zsNS15SM0HRDf
-0VOu9I61Q+looRMSlUNjUJWl80F1xNgq1Arl3Jt4L2M6BYr9meeh9XFJOeyL
-bndDfcufD5AoCluCEc6ZH1CYnb6+FvOCayzI+dfMg0QiMxVaEq8qoHJk6Bwk
-BxdaoGCTow3Ko+Pnad+lfqHvH/3FrMM/T5DB0GqcS4ZCVRAXuhruvoGm1t4J
-qK2yBnVhz/2WYBiS93AnVHISOJDseu2CxMg4LdtQm9NNmeSx5cLll6GXYb3u
-lBpa1gU3Qpd7hdZ4PI6g82iMGe7ef98HyTOztL7wytUe1N+r/FC1Z/BQo4Xa
-o4OVBT3ZA2eh0ZumhMKLmmcwjR9uhSsVpklY3GmegvcOy37SeXLDb+goy9Y0
-UQq2pl2H4632UAOlVZ8YBpN43ySQU2vOh+zhKi1c0HTWQHF8xQsoCQi0Q+KS
-W3KLUubjFsB6ppOAgiuOJ3CvIe8tLG3+PAEbY5L/Qu3Gr174H7m34e0=
+1:eJwd0WtIU2EYB3AvzWppGogUrDDNNjOWYPOyRqnM0hyEOXWhki2ztZatWtoq
+cLo1DXXND6mkYeE1G3lWs6ZYmzpMynRN0hMWSAguyhBaF2Fa538+vPz4v+/z
+8vDw7JRePH7Gz8fHJ5E68JOLP32qdSllK1k9A3eFWaKllAqdPAYu7BlWayjd
+WWs3oSq8N7cSuSRcAoc4zNQqSqdcLoQd2c8KYJGMLKT1XS6FrMR4JTSlBNbD
+Hm+eAY7ParvgfJq4B6peTFmhw2YbhN/z0xehpPOxG7Yy+FFaynXsQ2woqual
+Q3JH3lEolhlUkFUZVQaX18/V0vVhi/VwaFXSByci0830+92VWVjs3PYRmg6K
+7ukoPd1jLVAymu+ARPnAGFRmaL1QFTq2CjVCGe8W+qVOx0PRWtoFaH0iLYU9
+ES0uqGv88wEShcFLMNQx8wMKM1M26lEvuM6EnH8NCZDgMpKghXtNDhUjA+ch
+2b/QCAVb7M1QFhE9T/su6Qv9/9gvRjXmPEkGQKtxLg4Klf486Ky9/waamron
+oKbC6t+OPfdaAmBgzqPdUMGJ4UCy/bUTEiPjtCyDPquDMtY9lA2XXwVdgTXa
+0ypo2RBQB50uD63xBJug82ikGe498NALybOztN6Q8tVO3L9XrkHlvv7DdRZq
+j3ZmBnRn9p2DxpVkBRReUj+HyfwQK/SUmSZhUZt5Cj44UvCTzpObfkN7Saa6
+nlKwPfkGHG+yBRkorTpuMIxN+CaGHL05F7IGKzRwQd1WBUXRZS+h2NfPBonL
+LvEdygIvLw/WMBwEFFy1P4X7DTlvYXHD5wlYFxn3F2o2f12Bnq5hvRFzeBJu
+w/80h+ur
   "],ExpressionUUID->"ece2fd46-39f3-6e4a-8f65-d36d77f13159"]
 },
 WindowSize->{718.5, 729.75},
@@ -4393,7 +4523,7 @@ CellTagsIndex->{}
 *)
 (*NotebookFileOutline
 Notebook[{
-Cell[554, 20, 201950, 4356, 18928, "Input",ExpressionUUID->"ece2fd46-39f3-6e4a-8f65-d36d77f13159"]
+Cell[554, 20, 208575, 4486, 19653, "Input",ExpressionUUID->"ece2fd46-39f3-6e4a-8f65-d36d77f13159"]
 }
 ]
 *)

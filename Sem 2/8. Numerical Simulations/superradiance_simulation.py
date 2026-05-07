@@ -309,10 +309,7 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         try:
             r_g_ev = calc_rg_from_bh_mass(bh_mass_solar)
             mu_ev = alpha_cur / r_g_ev
-            with np.errstate(over='ignore'):
-                omega_ev = (alpha_cur**3 / (2.0 * r_g_ev)) * (1.0 / n_j**2 - 1.0 / n_i**2)
-            if not np.isfinite(omega_ev) or omega_ev <= 0.0:
-                return 0.0
+            omega_ev = calc_omega_ann(r_g=r_g_ev, alpha=alpha_cur, n=n)
             with np.errstate(over='ignore', invalid='ignore'):
                 gamma_a_ev = calc_annihilation_rate(
                     _level_string(n, l), alpha=alpha_cur,
@@ -1240,9 +1237,9 @@ def main():
 
     # ── Alpha sweep parameters ────────────────────────────────────────
     RUN_ALPHA_SWEEP = True   # set True to run the sweep instead of a single sim
-    N_ALPHA_POINTS  = 25      # number of geometrically-spaced alpha values
-    ALPHA_MIN       = 0.3   # lower bound of the sweep
-    ALPHA_MAX       = 0.8     # upper bound of the sweep
+    N_ALPHA_POINTS  = 4      # number of geometrically-spaced alpha values
+    ALPHA_MIN       = 0.2   # lower bound of the sweep
+    ALPHA_MAX       = 0.3     # upper bound of the sweep
 
     if RUN_ALPHA_SWEEP:
         run_alpha_sweep(

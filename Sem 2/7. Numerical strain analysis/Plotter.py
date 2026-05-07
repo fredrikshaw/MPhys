@@ -95,7 +95,7 @@ def make_scatter_plot(data, is_annihilation=False):
 
 
 if __name__ == "__main__":
-    pickle_file = "ann_peak_data_alpha_over_l_0p15.pkl"  # change as needed
+    pickle_file = "tran_peak_data_alpha_over_l_0p15.pkl"  # change as needed
 
     is_annihilation = pickle_file.startswith("ann_")
 

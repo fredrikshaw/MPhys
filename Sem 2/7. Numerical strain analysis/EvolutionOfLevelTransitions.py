@@ -172,7 +172,7 @@ def _find_sr_file(n: int, l: int, m: int, bh_spin: float, sr_data_dir: Path) -> 
 def parse_level(level_str):
     l_to_number = {
         's': 0, 'p': 1, 'd': 2, 'f': 3, 'g': 4, 'h': 5,
-        'i': 6, 'j': 7, 'k': 8, 'l': 9, 'm': 10, 'n': 11, 'o': 12, 'q': 13
+        'i': 6, 'k': 7, 'l': 8, 'm': 9, 'n': 10, 'o': 11, 'q': 12, 'r': 13
     }
     n = int(level_str[:-1])
     l_letter = level_str[-1]
@@ -192,7 +192,8 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
                    distance_kpc=10, t_max_years=None, n_points=int(1e6),
                    sr_rate_source='cf',
                    sr_cf_file_e=None, sr_cf_file_g=None,
-                   sr_cf_method='cf'):
+                   sr_cf_method='cf',
+                   verbose=False):
     """
     Run the simulation with logarithmic variable integration.
 
@@ -303,7 +304,7 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
         raise ValueError("gamma_g must be > 0 for this simulation.")
 
     # Calculate transition frequency using ParamCalculator
-    omega_tr = calc_omega_transition(r_g, alpha, n_e, n_g)
+    omega = calc_omega_transition(r_g, alpha, n_e, n_g)
     
     # --- Transition rate using ParamCalculator ----
     if transition_rate_override is None:
@@ -311,7 +312,7 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
         transition_rate_ev = calc_transition_rate(
             transition=transition,
             alpha=alpha,
-            omega=omega_tr,
+            omega=omega,
             G_N=G_N,
             r_g=r_g
         )
@@ -329,22 +330,23 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
     times = np.linspace(0, t_max_years, n_points)
     t_span = (0, times[-1])
 
-    print("Simulation parameters:")
-    print(f"BH mass: {bh_mass_sm} solar masses")
-    print(f"BH spin: {bh_spin}")
-    print(f"Alpha: {alpha}")
-    print(f"Gamma_e = {gamma_e} years⁻¹")
-    print(f"Gamma_g = {gamma_g} years⁻¹")
-    print(f"transition_rate = {transition_rate} years⁻¹")
-    print(f"SR rate source: {sr_source_used}")
-    if sr_source_used == 'cf':
-        print(f"  SR file (excited): {sr_file_e_used}")
-        print(f"  SR file (ground) : {sr_file_g_used}")
-    print(f"Total simulated time = {times[-1]} years")
-    if calculated_t_max:
-        print(f"Calculated t_max: {t_max_years}")
-    else:
-        print(f"User provided t_max: {t_max_years}")
+    if verbose:
+        print("Simulation parameters:")
+        print(f"BH mass: {bh_mass_sm} solar masses")
+        print(f"BH spin: {bh_spin}")
+        print(f"Alpha: {alpha}")
+        print(f"Gamma_e = {gamma_e} years⁻¹")
+        print(f"Gamma_g = {gamma_g} years⁻¹")
+        print(f"transition_rate = {transition_rate} years⁻¹")
+        print(f"SR rate source: {sr_source_used}")
+        if sr_source_used == 'cf':
+            print(f"  SR file (excited): {sr_file_e_used}")
+            print(f"  SR file (ground) : {sr_file_g_used}")
+        print(f"Total simulated time = {times[-1]} years")
+        if calculated_t_max:
+            print(f"Calculated t_max: {t_max_years}")
+        else:
+            print(f"User provided t_max: {t_max_years}")
 
     LOG10E = np.log10(np.e) # Save variable to avoid repeated log calls
     # --- Event: stop if N_g > some val ---
@@ -387,16 +389,18 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
     # --- Check for early termination ---
     if sol.t_events[0].size > 0:
         t_stop = sol.t_events[0][0]
-        print(f"\n[WARNING] Integer Overflow: solve_ivp stopped early, N_g too high or N_e less than one at t ≈ {t_stop:.2f} years.\n")
+        if verbose:
+            print(f"\n[WARNING] Integer Overflow: solve_ivp stopped early, N_g too high or N_e less than one at t ≈ {t_stop:.2f} years.\n")
     else:
         t_stop = times[-1]
 
-    for i, te in enumerate(sol.t_events):
-        print(f"Event {i} triggered at times:", te)
+    if verbose:
+        for i, te in enumerate(sol.t_events):
+            print(f"Event {i} triggered at times:", te)
 
     # --- Gravitational-wave strain ---
     transition_rate_ev_calc = transition_rate * inv_ev_to_years
-    log_h = 0.5 * (log_num_e + log_num_g) + np.log(np.sqrt(4 * G_N / (r**2 * omega_tr) * transition_rate_ev_calc))
+    log_h = 0.5 * (log_num_e + log_num_g) + np.log(np.sqrt(4 * G_N / (r**2 * omega) * transition_rate_ev_calc))
 
     results = {
         'times': times,
@@ -415,7 +419,7 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
             'gamma_e': gamma_e,
             'transition_rate': transition_rate,
             'axion_mass': axion_mass,
-            'omega_tr': omega_tr,
+            'omega': omega,
             'distance_kpc': distance_kpc,
             'sr_rate_source': sr_source_used,
             'sr_cf_file_e': sr_file_e_used,
@@ -436,16 +440,15 @@ def scan_transitions_and_save(
     n_points=int(1e5),
     sr_rate_source="hydrogen",
     sr_cf_method="cf",
+    verbose=False,
 ):
 
     peak_data = {}
 
     for transition in transitions:
-        print(f"\nRunning transition: {transition}")
         level_e_str, level_g_str = transition.strip().split()
         n_g, l_g = parse_level(level_g_str)
         alpha = alpha_over_l * l_g
-        print(f"Using alpha = {alpha} calculated from alpha_over_l = {alpha_over_l} and l_g = {l_g}")
 
         try:
             results = run_simulation(
@@ -458,6 +461,7 @@ def scan_transitions_and_save(
                 n_points=n_points,
                 sr_rate_source=sr_rate_source,
                 sr_cf_method=sr_cf_method,
+                verbose=verbose,
             )
 
             times = results["times"]
@@ -470,6 +474,7 @@ def scan_transitions_and_save(
                 "h_peak": 10**h_peak_log10 if np.isfinite(h_peak_log10) else np.nan,
                 "t_peak_years": t_peak,
                 "t_fwhm_years": t_fwhm,
+                "alpha": alpha,
                 "parameters": results["parameters"],
                 "status": results["status"],
                 "success": True,
@@ -483,6 +488,7 @@ def scan_transitions_and_save(
                 "h_peak": np.nan,
                 "t_peak_years": np.nan,
                 "t_fwhm_years": np.nan,
+                "alpha": np.nan,
                 "parameters": None,
                 "status": None,
                 "success": False,
@@ -493,6 +499,40 @@ def scan_transitions_and_save(
         pickle.dump(peak_data, f)
 
     print(f"\nSaved peak data to {output_pickle}")
+
+    print("\nInput parameters:")
+    print(f"  bh_mass_sm    : {bh_mass_sm}")
+    print(f"  bh_spin       : {bh_spin}")
+    print(f"  alpha_over_l  : {alpha_over_l}")
+    print(f"  distance_kpc  : {distance_kpc}")
+    print(f"  t_max_years   : {t_max_years}")
+    print(f"  n_points      : {n_points}")
+    print(f"  sr_rate_source: {sr_rate_source}")
+    print(f"  sr_cf_method  : {sr_cf_method}")
+    print(f"  n_transitions : {len(transitions)}")
+
+    header = f"{'Process':<14} {'h_peak':>12} {'h_peak_log10':>14} {'t_peak [yr]':>14} {'t_fwhm [yr]':>14} {'omega [eV]':>12} {'alpha':>10}"
+    print("\n" + header)
+    print("-" * len(header))
+    for transition in transitions:
+        row = peak_data.get(transition, {})
+        params = row.get("parameters") or {}
+        h_peak = row.get("h_peak", np.nan)
+        h_peak_log10 = row.get("h_peak_log10", np.nan)
+        t_peak = row.get("t_peak_years", np.nan)
+        t_fwhm = row.get("t_fwhm_years", np.nan)
+        omega = params.get("omega", np.nan)
+        alpha = row.get("alpha", np.nan)
+
+        print(
+            f"{transition:<14} "
+            f"{h_peak:>12.3e} "
+            f"{h_peak_log10:>14.3e} "
+            f"{t_peak:>14.3e} "
+            f"{t_fwhm:>14.3e} "
+            f"{omega:>12.3e} "
+            f"{alpha:>10.3e}"
+        )
 
     return peak_data
 
@@ -571,8 +611,8 @@ def plot_results(results, save_filename=None):
         print("\nWarning: Gamma values missing from parameters")
     
     print(f"\nTransition rate: {params['transition_rate']:.2e} years⁻¹")
-    transition_frequency_hz = params['omega_tr'] / 4.135667696e-6  # Convert to GHz
-    print(f"Transition frequency: {params['omega_tr']:.2e} eV ({transition_frequency_hz:.2e} GHz)")
+    transition_frequency_hz = params['omega'] / 4.135667696e-6  # Convert to GHz
+    print(f"Transition frequency: {params['omega']:.2e} eV ({transition_frequency_hz:.2e} GHz)")
 
     # Strain summary: peak and full width at half maximum.
     h_peak, t_peak, h_fwhm = calc_h_peak_and_fwhm(times, log_h)
@@ -679,6 +719,7 @@ if __name__ == "__main__":
     bh_spin = 0.65
     bh_mass_sm = 1e-6
     transition = "7g 5g"
+    distance_kpc = 1
     t_max = None
 
     # SR-rate source options:
@@ -704,7 +745,7 @@ if __name__ == "__main__":
     # )
 
     peak_data = scan_transitions_and_save(
-        output_pickle=f"peak_data_alpha_over_l_{str(alpha_over_l).replace('.','p')}.pkl",
+        output_pickle=f"tran_peak_data_alpha_over_l_{str(alpha_over_l).replace('.','p')}.pkl",
         transitions=available_transitions,
         bh_mass_sm=bh_mass_sm,
         bh_spin=bh_spin,
@@ -712,6 +753,7 @@ if __name__ == "__main__":
         t_max_years=None,
         n_points=int(1e7),
         sr_rate_source=sr_rate_source,
+        distance_kpc=distance_kpc
     )
 
     # Plot results

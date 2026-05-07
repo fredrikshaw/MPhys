@@ -697,50 +697,51 @@ def plot_reach(results, alpha, process_label,
     merger_fill = None
     merger_label = None
     if show_merger_reach:
-        merger_masses, merger_reach_spin, merger_reach_all = compute_merger_reach_curve(
-            post_merger_mass_range=xlim if xlim is not None else (1e-12, 1e4),
-            num_points=merger_num_points,
-            a_star_threshold=merger_spin_threshold,
-            spin_model=merger_spin_model,
-            mass_sigma=merger_mass_sigma,
-            fpbh=merger_fpbh,
-            t_over_t0=merger_t_over_t0,
-            rate_grid_points=merger_rate_grid_points,
-        )
+        fpbh_specs = [
+            (1.0, 'red', '-', 2.2, r'$f_{\mathrm{PBH}} = 1$'),
+            (0.1, 'orange', '-', 2.0, r'$f_{\mathrm{PBH}} = 0.1$'),
+            (0.001, 'yellow', '-', 2.0, r'$f_{\mathrm{PBH}} = 0.001$'),
+        ]
 
-        ax1.loglog(
-            merger_masses,
-            merger_reach_spin,
-            color='firebrick',
-            linewidth=2.2,
-            linestyle='-',
-            label=rf'PBH mergers, $a_* \geq {merger_spin_threshold:.2f}$',
-        )
-        ax1.loglog(
-            merger_masses,
-            merger_reach_all,
-            color='firebrick',
-            linewidth=1.8,
-            linestyle=':',
-            label='PBH mergers, no spin cut',
-        )
+        curve_data = []
+        for fpbh_value, color, linestyle, linewidth, label in fpbh_specs:
+            merger_masses, merger_reach_spin, _ = compute_merger_reach_curve(
+                post_merger_mass_range=xlim if xlim is not None else (1e-12, 1e4),
+                num_points=merger_num_points,
+                a_star_threshold=merger_spin_threshold,
+                spin_model=merger_spin_model,
+                mass_sigma=merger_mass_sigma,
+                fpbh=fpbh_value,
+                t_over_t0=merger_t_over_t0,
+                rate_grid_points=merger_rate_grid_points,
+            )
+            curve_data.append((fpbh_value, color, linestyle, linewidth, label, merger_masses, merger_reach_spin))
 
-        finite_spin = np.isfinite(merger_reach_spin) & (merger_reach_spin > 0)
-        if finite_spin.any():
-            finite_all = np.isfinite(merger_reach_all) & (merger_reach_all > 0)
-            positive_vals = []
-            if np.any(finite_spin):
-                positive_vals.append(np.nanmax(merger_reach_spin[finite_spin]))
-            if np.any(finite_all):
-                positive_vals.append(np.nanmax(merger_reach_all[finite_all]))
-            if len(positive_vals) == 0:
-                y_top = 1.0
-            else:
-                y_top = max(positive_vals) * 3.0
-
-            ax1.fill_between(
+        for fpbh_value, color, linestyle, linewidth, label, merger_masses, merger_reach_spin in curve_data:
+            ax1.loglog(
                 merger_masses,
                 merger_reach_spin,
+                color=color,
+                linewidth=linewidth,
+                linestyle=linestyle,
+                label=label,
+            )
+
+        finite_spin_vals = []
+        for _, _, _, _, _, _, merger_reach_spin in curve_data:
+            finite_spin = np.isfinite(merger_reach_spin) & (merger_reach_spin > 0)
+            if finite_spin.any():
+                finite_spin_vals.append(np.nanmax(merger_reach_spin[finite_spin]))
+
+        if len(finite_spin_vals) > 0:
+            y_top = max(finite_spin_vals) * 3.0
+            base_masses = curve_data[0][5]
+            base_reach_spin = curve_data[0][6]
+            finite_spin = np.isfinite(base_reach_spin) & (base_reach_spin > 0)
+
+            ax1.fill_between(
+                base_masses,
+                base_reach_spin,
                 y_top,
                 where=finite_spin,
                 color='firebrick',

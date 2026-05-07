@@ -176,16 +176,47 @@ def parse_alpha_from_filename(filename):
     raise ValueError(f"Could not parse alpha from filename: {filename!r}")
 
 
-def load_all_sweep_files(data_dir, process='annihilation'):
+def parse_mass_from_filename(filename):
     """
-    Load all peak-strain files of the requested process type from data_dir.
+    Extract the BH mass encoded in a save_peak_tables() filename.
+
+    The naming convention is:
+        peaks_{process}_M{mass}_{alpha_str}_{spin_str}.dat
+
+    where the mass token is formatted by save_peak_tables() as e.g. 'M1e-6'.
+
+    Examples
+    --------
+    peaks_annihilation_M1e-6_alpha0.4_a0.65.dat  → 1e-6
+    peaks_annihilation_M1e-11_alpha0.1_a0.65.dat → 1e-11
+
+    Raises
+    ------
+    ValueError if the mass token cannot be parsed.
+    """
+    m = re.search(r'_M([^_]+)_alpha', filename)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            pass
+    raise ValueError(f"Could not parse mass from filename: {filename!r}")
+
+
+def load_all_sweep_files(data_dir, process='annihilation', mass_filter=None):
+    """
+    Load all peak-strain files of the requested process type from data_dir,
+    optionally restricting to files whose encoded BH mass matches mass_filter.
 
     Parameters
     ----------
-    data_dir : str or Path
+    data_dir    : str or Path
         Directory containing the .dat files from run_alpha_sweep().
-    process  : str
+    process     : str
         'annihilation' or 'transitions' — selects which file prefix to glob.
+    mass_filter : float or None
+        If given, only files whose mass token matches this value (within 0.1 %)
+        are loaded.  Use M_BH_SOLAR from the USER PARAMETERS block.
 
     Returns
     -------
@@ -207,6 +238,11 @@ def load_all_sweep_files(data_dir, process='annihilation'):
     sweep = []
     for fp in files:
         try:
+            # ── Mass filter ───────────────────────────────────────────────────
+            if mass_filter is not None:
+                file_mass = parse_mass_from_filename(fp.name)
+                if not np.isclose(file_mass, mass_filter, rtol=1e-3):
+                    continue
             alpha  = parse_alpha_from_filename(fp.name)
             levels = load_alpha_sweep_file(fp)
             sweep.append({'alpha': alpha, 'levels': levels})
@@ -314,22 +350,27 @@ def compute_d_max_from_peak(peak_strain_1kpc, frequency_hz, fwhm_yr,
     return d_max_kpc if (np.isfinite(d_max_kpc) and d_max_kpc > 0) else np.nan
 
 
-def best_d_max_for_alpha(levels, det, rho_star=1.0):
+def best_d_max_for_alpha(levels, det, rho_star=1.0, level_label=None):
     """
-    For a single alpha point, return the largest d_max across all SR levels.
-
-    This gives the detection envelope: the strongest level drives the reach.
+    For a single alpha point, return the largest d_max across SR levels.
 
     Parameters
     ----------
-    levels   : list of dicts — output of load_alpha_sweep_file()
-    det      : MagneticWeberBar | str
-    rho_star : float
+    levels      : list of dicts — output of load_alpha_sweep_file()
+    det         : MagneticWeberBar | str
+    rho_star    : float
+    level_label : str or None
+        If given (e.g. '|211⟩'), only that level is used.
+        If None, the envelope over all levels is returned.
 
     Returns
     -------
     d_max_kpc : float or nan
     """
+    if level_label is not None:
+        levels = [lev for lev in levels if lev['label'] == level_label]
+        if not levels:
+            return np.nan
     best = np.nan
     for lev in levels:
         d = compute_d_max_from_peak(
@@ -348,7 +389,8 @@ def best_d_max_for_alpha(levels, det, rho_star=1.0):
 # Main reach sweep over all alpha points and detectors
 # ═════════════════════════════════════════════════════════════════════════════
 
-def run_alpha_reach_sweep(sweep_data, rho_star=1.0, include_ligo=True):
+def run_alpha_reach_sweep(sweep_data, rho_star=1.0, include_ligo=True,
+                          level_label=None):
     """
     Compute d_max(alpha) for every detector.
 
@@ -386,7 +428,7 @@ def run_alpha_reach_sweep(sweep_data, rho_star=1.0, include_ligo=True):
         levels = pt['levels']
         row    = f"{alpha:>10.5g}  "
         for det_name, det in detectors:
-            d = best_d_max_for_alpha(levels, det, rho_star)
+            d = best_d_max_for_alpha(levels, det, rho_star, level_label)
             reach[det_name][i] = d
             tag = f"{d:.2e}" if np.isfinite(d) else "     ---"
             row += f"{tag:>14}  "
@@ -615,7 +657,12 @@ if __name__ == '__main__':
 
     # ── Fixed physical parameters ─────────────────────────────────────────────
     M_BH_SOLAR = 1e-6           # BH mass [solar masses] — fixed across the sweep
-    PROCESS    = 'annihilation' # 'annihilation' or 'transitions'
+    PROCESS    = 'transitions' # 'annihilation' or 'transitions'
+
+    # ── Level selection ───────────────────────────────────────────────────────
+    # Set to a label string (e.g. '|211⟩') to plot a single SR level.
+    # Set to None to plot the envelope over all levels (strongest per alpha).
+    LEVEL = '|644⟩→|544⟩'
 
     # ── Data directory  (output of run_alpha_sweep in superradiance_simulation.py)
     DATA_DIR = 'Sem 2/8. Numerical Simulations/Data/alpha_sweep'
@@ -637,10 +684,11 @@ if __name__ == '__main__':
     XLIM     = None     # e.g. (0.001, 1.5); set None for auto
     YLIM     = None     # e.g. (1e-3, 1e6);  set None for auto
 
+    level_str = f' — level {LEVEL}' if LEVEL is not None else ' (all levels)'
     process_label = (
-        r'Axion cloud annihilation ($m = l$ levels)'
+        rf'Axion cloud annihilation{level_str}'
         if PROCESS == 'annihilation'
-        else r'Axion cloud transitions ($m = l$ levels)'
+        else rf'Axion cloud transitions{level_str}'
     )
 
     # ── Load data ─────────────────────────────────────────────────────────────
@@ -648,12 +696,14 @@ if __name__ == '__main__':
     print(f"Alpha reach sweep  —  {PROCESS}  —  M_BH = {M_BH_SOLAR} M_sun")
     print("=" * 65)
     print(f"\nLoading alpha-sweep data from '{DATA_DIR}'...")
-    sweep_data = load_all_sweep_files(DATA_DIR, process=PROCESS)
+    sweep_data = load_all_sweep_files(DATA_DIR, process=PROCESS,
+                                      mass_filter=M_BH_SOLAR)
 
     # ── Compute reach for all detectors ───────────────────────────────────────
     print("Computing d_max(alpha) for all detectors...\n")
     alphas, reach = run_alpha_reach_sweep(
         sweep_data, rho_star=RHO_STAR, include_ligo=True,
+        level_label=LEVEL,
     )
 
     # ── Plot ──────────────────────────────────────────────────────────────────

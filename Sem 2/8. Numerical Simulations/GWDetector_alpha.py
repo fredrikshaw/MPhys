@@ -655,6 +655,7 @@ def plot_alpha_reach(
     sweep_data=None,
     level_label=None,
     a_star=None,
+    bottom_axis='mu',
     show_merger_reach=True,
     merger_spin_threshold=0.6,
     merger_spin_model='matched',
@@ -667,19 +668,19 @@ def plot_alpha_reach(
     savepath=None,
 ):
     """
-    Plot d_max vs mu_a [eV] as a joined scatter plot (log y), with f_GW
-    on the top axis.
+    Plot d_max as a joined scatter plot (log y).
 
-    Y-limits are set automatically: y_max is 1 order of magnitude above
-    max(event_rate_line, max_detector_reach) with a small extra margin;
-    y_min is set to just below the minimum detector reach.
+    bottom_axis : 'mu' or 'alpha'
+        'mu'    — bottom axis is mu_a [eV],  top axis is f_GW [Hz]  (default)
+        'alpha' — bottom axis is alpha,      top axis is f_GW [Hz]
 
-    Legend contains detector names only. All other features (merger rate,
-    SR boundary, cosmological cut) are annotated directly on the plot.
-    Cosmological timescale text is only drawn if the boundary falls within
-    the plotted x-range.
+    Y-limits are set automatically. Legend shows detector names only.
+    All other annotations are drawn directly on the plot.
     """
     from matplotlib.transforms import blended_transform_factory
+
+    if bottom_axis not in ('mu', 'alpha'):
+        raise ValueError(f"bottom_axis must be 'mu' or 'alpha', got {bottom_axis!r}")
 
     plt.rcParams.update({
         "text.usetex"        : True,
@@ -691,10 +692,20 @@ def plot_alpha_reach(
     fig, ax = plt.subplots(figsize=(7, 5))
     fig.subplots_adjust(top=0.88)
 
-    # ── Convert alpha grid to axion mass (bottom axis units) ──────────────────
+    # ── Coordinate conversion ─────────────────────────────────────────────────
     r_g_m      = _G_SI * M_BH_solar * _M_SUN_KG / _C_SI**2   # [m]
     r_g_eV_inv = r_g_m / _HBAR_C_EV_M                         # [eV^-1]
     mu_a       = alphas / r_g_eV_inv                           # [eV]
+
+    # x_data is what goes on the bottom axis; _to_x converts mu_a → bottom units
+    if bottom_axis == 'mu':
+        x_data = mu_a
+        _to_x  = lambda mu: mu                        # mu_a → mu_a
+        _to_mu = lambda x:  x                         # mu_a ← mu_a
+    else:
+        x_data = alphas
+        _to_x  = lambda mu: mu * r_g_eV_inv           # mu_a → alpha
+        _to_mu = lambda x:  x / r_g_eV_inv            # mu_a ← alpha
 
     # ── Collect all finite d_max values for auto y-limits ─────────────────────
     all_d_finite = np.concatenate([
@@ -703,20 +714,22 @@ def plot_alpha_reach(
     max_d = float(all_d_finite.max()) if len(all_d_finite) > 0 else np.nan
     min_d = float(all_d_finite.min()) if len(all_d_finite) > 0 else np.nan
 
-    # ── Joined scatter detector reach curves (marker='.') ────────────────────
+    # ── Joined scatter detector reach curves ──────────────────────────────────
     for det_name, d_arr in reach.items():
         style = _DET_STYLE.get(det_name, {'color': 'gray', 'ls': '-'})
         mask  = np.isfinite(d_arr) & (d_arr > 0)
         if not mask.any():
             print(f"  [INFO] {det_name}: no finite d_max values to plot.")
             continue
-        ax.semilogy(mu_a[mask], d_arr[mask],
+        ax.semilogy(x_data[mask], d_arr[mask],
                     color=style['color'],
                     ls=style['ls'],
                     linewidth=1.5,
                     marker='.',
                     markersize=6,
                     label=det_name)
+
+    if bottom_axis == 'mu':
         ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
 
     # ── PBH merger reach: brown lines, shading above, direct text label ───────
@@ -743,30 +756,30 @@ def plot_alpha_reach(
                 event_rate_d = reach_all
 
     # ── Set x-limits (needed before shading) ─────────────────────────────────
-    # Pre-compute cosmological boundary so the left padding can accommodate it
+    # Pre-compute cosmological boundary (always in mu_a, converted to x_data below)
     mu_tpeak_boundary = np.nan
     if sweep_data is not None and level_label is not None:
         for pt in sweep_data:
             levels_here = [lev for lev in pt['levels']
-                           if lev['label'] == level_label]
+                        if lev['label'] == level_label]
             if not levels_here:
                 continue
-            if levels_here[0]['t_peak_yr'] <= T_PEAK_MAX_YR:
+            if levels_here[0]['t_peak_yr'] > T_PEAK_MAX_YR:
                 mu_tpeak_boundary = pt['alpha'] / r_g_eV_inv
-                break
+
+    # Convert boundary to bottom-axis units
+    x_tpeak_boundary = _to_x(mu_tpeak_boundary) if np.isfinite(mu_tpeak_boundary) else np.nan
 
     if xlim is not None:
         ax.set_xlim(*xlim)
     else:
-        all_mu = [mu_a[np.isfinite(d) & (d > 0)] for d in reach.values()]
-        all_mu = np.concatenate([m for m in all_mu if len(m) > 0])
-        if len(all_mu) > 0:
-            span     = all_mu.max() - all_mu.min()
-            # If a cosmological boundary exists, widen the left margin so the
-            # red shaded region is clearly visible (20% of span instead of 5%)
-            left_pad = 0.20 * span if np.isfinite(mu_tpeak_boundary) else 0.05 * span
-            ax.set_xlim(all_mu.min() - left_pad,
-                        all_mu.max() + 0.05 * span)
+        all_x = [x_data[np.isfinite(d) & (d > 0)] for d in reach.values()]
+        all_x = np.concatenate([m for m in all_x if len(m) > 0])
+        if len(all_x) > 0:
+            span     = all_x.max() - all_x.min()
+            left_pad = 0.20 * span if np.isfinite(x_tpeak_boundary) else 0.05 * span
+            ax.set_xlim(max(0.0, all_x.min() - left_pad),
+                        all_x.max() + 0.05 * span)
 
     # ── Set y-limits: 1 order of magnitude above reference, min from data ─────
     if ylim is not None:
@@ -792,16 +805,30 @@ def plot_alpha_reach(
                 ha='center', va='top')
 
     # ── Axis labels ───────────────────────────────────────────────────────────
-    ax.set_xlabel(r'$\mu_a\ [\mathrm{eV}]$', fontsize=13)
+    if bottom_axis == 'mu':
+        ax.set_xlabel(r'$\mu_a\ [\mathrm{eV}]$', fontsize=13)
+    else:
+        ax.set_xlabel(r'$\alpha$', fontsize=13)
     ax.set_ylabel(r'$d_{\rm max}\ [\mathrm{kpc}]$', fontsize=13)
 
-    ax_top = ax.secondary_xaxis(
-        'top',
-        functions=(
-            lambda mu: np.asarray(mu, dtype=float) * _MU_TO_FGW,
-            lambda f:  np.asarray(f,  dtype=float) / _MU_TO_FGW,
-        ),
-    )
+    # Top axis always shows f_GW; conversion depends on bottom_axis mode
+    if bottom_axis == 'mu':
+        ax_top = ax.secondary_xaxis(
+            'top',
+            functions=(
+                lambda mu: np.asarray(mu, dtype=float) * _MU_TO_FGW,
+                lambda f:  np.asarray(f,  dtype=float) / _MU_TO_FGW,
+            ),
+        )
+    else:
+        # alpha → f_GW = (alpha / r_g_eV_inv) * _MU_TO_FGW
+        ax_top = ax.secondary_xaxis(
+            'top',
+            functions=(
+                lambda a: np.asarray(a, dtype=float) / r_g_eV_inv * _MU_TO_FGW,
+                lambda f: np.asarray(f, dtype=float) / _MU_TO_FGW * r_g_eV_inv,
+            ),
+        )
     ax_top.set_xlabel(r'$f_{\rm GW}\ [\mathrm{Hz}]$', fontsize=13, labelpad=6)
 
     # Blended transform for vertical text annotations (data-x, axes-y)
@@ -818,9 +845,10 @@ def plot_alpha_reach(
         if not np.isfinite(f_max):
             continue
         mu_max = f_max / _MU_TO_FGW
-        ax.axvline(mu_max, color=style['color'],
+        x_max  = _to_x(mu_max)
+        ax.axvline(x_max, color=style['color'],
                    linewidth=1.2, linestyle=':', alpha=0.8)
-        print(f"    {det_name}: f_max = {f_max:.3e} Hz  →  mu_max = {mu_max:.3e} eV")
+        print(f"    {det_name}: f_max = {f_max:.3e} Hz  →  x_max = {x_max:.3e}")
 
     # ── Vertical line 2: superradiance boundary ───────────────────────────────
     if level_label is not None and a_star is not None:
@@ -829,34 +857,35 @@ def plot_alpha_reach(
             alpha_sr = (m * a_star
                         / (2.0 * (1.0 + np.sqrt(max(0.0, 1.0 - a_star**2)))))
             mu_sr = alpha_sr / r_g_eV_inv
-            ax.axvline(mu_sr, color='darkorange',
+            x_sr  = _to_x(mu_sr)
+            ax.axvline(x_sr, color='darkorange',
                        linewidth=1.5, linestyle='--')
-            ax.text(mu_sr*1.01, 0.50, 'Superradiant Boundary',
+            ax.text(x_sr * 1.01 if bottom_axis == 'mu' else x_sr + 0.01 * (x_hi - x_lo),
+                    0.50, 'Superradiant Boundary',
                     transform=trans,
                     fontsize=10, color='darkorange',
                     rotation=270, va='center', ha='right',
                     rotation_mode='anchor')
-            print(f"  SR boundary: alpha_SR = {alpha_sr:.4f}  →  mu_SR = {mu_sr:.3e} eV")
+            print(f"  SR boundary: alpha_SR = {alpha_sr:.4f}  →  x_SR = {x_sr:.3e}")
 
     # ── Vertical line 3: cosmological t_peak cutoff ───────────────────────────
-    if np.isfinite(mu_tpeak_boundary):
-        ax.axvspan(x_lo, mu_tpeak_boundary,
+    if np.isfinite(x_tpeak_boundary):
+        ax.axvspan(x_lo, x_tpeak_boundary,
                    color='red', alpha=0.12, zorder=0)
-        ax.axvline(mu_tpeak_boundary, color='red',
+        ax.axvline(x_tpeak_boundary, color='red',
                    linewidth=1.5, linestyle='-')
 
-        # Only draw text if the boundary is inside the plotted x-range
-        if x_lo < mu_tpeak_boundary < x_hi:
+        if x_lo < x_tpeak_boundary < x_hi:
             exp       = int(np.log10(T_PEAK_MAX_YR))
             label_txt = (rf'Cosmological Timescales '
                          rf'$t > 10^{{{exp}}}\,\mathrm{{yr}}$')
-            x_text = (x_lo + mu_tpeak_boundary) / 2.0
+            x_text = (x_lo + x_tpeak_boundary) / 2.0
             ax.text(x_text, 0.50, label_txt,
                     transform=trans,
                     fontsize=7, color='darkred',
                     rotation=90, va='center', ha='center',
                     rotation_mode='anchor')
-        print(f"  t_peak boundary: mu = {mu_tpeak_boundary:.3e} eV")
+        print(f"  t_peak boundary: x = {x_tpeak_boundary:.3e}")
 
     # ── Legend (detector names only) and grid ─────────────────────────────────
     ax.legend(fontsize=9, loc='best', frameon=False)
@@ -975,7 +1004,7 @@ if __name__ == '__main__':
     #   LEVEL_SHORTHAND = '3d'       →  annihilation  |322⟩
     #   LEVEL_SHORTHAND = '6g 5g'    →  transitions   |644⟩→|544⟩
     #   LEVEL_SHORTHAND = '4f 3d'    →  transitions   |433⟩→|322⟩
-    LEVEL_SHORTHAND = '6g 5g'
+    LEVEL_SHORTHAND = '3d'
 
     if LEVEL_SHORTHAND is not None:
         PROCESS, LEVEL = resolve_level(LEVEL_SHORTHAND)
@@ -998,10 +1027,11 @@ if __name__ == '__main__':
     MERGER_RATE_GRID_POINTS = 90
 
     # ── Plot parameters ───────────────────────────────────────────────────────
-    SAVEDIR  = 'Sem 2/8. Numerical Simulations/Plots'
-    SAVEPATH = f'{SAVEDIR}/reach_vs_alpha_{PROCESS}.pdf'
-    XLIM     = None     # e.g. (0.001, 1.5); set None for auto
-    YLIM     = None     # e.g. (1e-3, 1e6);  set None for auto
+    SAVEDIR     = 'Sem 2/8. Numerical Simulations/Plots'
+    SAVEPATH    = f'{SAVEDIR}/reach_vs_alpha_{PROCESS}.pdf'
+    XLIM        = None     # e.g. (0.001, 1.5); set None for auto
+    YLIM        = None     # e.g. (1e-3, 1e6);  set None for auto
+    BOTTOM_AXIS = 'mu'     # 'mu' for mu_a [eV] or 'alpha' for alpha
 
     level_str = f' -- level {LEVEL}' if LEVEL is not None else ' (all levels)'
     process_label = (
@@ -1032,6 +1062,7 @@ if __name__ == '__main__':
         sweep_data              = sweep_data,
         level_label             = LEVEL,
         a_star                  = sweep_data[0]['a_star'] if sweep_data else None,
+        bottom_axis             = BOTTOM_AXIS,
         show_merger_reach       = SHOW_MERGER_REACH,
         merger_spin_threshold   = MERGER_SPIN_THRESHOLD,
         merger_spin_model       = 'matched',

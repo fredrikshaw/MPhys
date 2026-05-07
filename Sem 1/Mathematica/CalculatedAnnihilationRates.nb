@@ -10,10 +10,10 @@
 NotebookFileLineBreakTest
 NotebookFileLineBreakTest
 NotebookDataPosition[       154,          7]
-NotebookDataLength[     59709,       1430]
-NotebookOptionsPosition[     59051,       1413]
-NotebookOutlinePosition[     59459,       1429]
-CellTagsIndexPosition[     59416,       1426]
+NotebookDataLength[     62068,       1486]
+NotebookOptionsPosition[     61410,       1469]
+NotebookOutlinePosition[     61818,       1485]
+CellTagsIndexPosition[     61775,       1482]
 WindowFrame->Normal*)
 
 (* Beginning of Notebook Content *)
@@ -1392,9 +1392,64 @@ Cell[BoxData[
           RowBox[{"16384", "+", 
            SuperscriptBox["\[Alpha]", "4"]}], ")"}], "32"]}], ")"}]}]}], 
     ";"}], "\[IndentingNewLine]", "\[IndentingNewLine]", 
+   RowBox[{
+    RowBox[{"dPd\[CapitalOmega]8h", "=", 
+     RowBox[{
+      FractionBox["1", 
+       RowBox[{"89401", " ", "\[Pi]", " ", 
+        SuperscriptBox["rg", "4"], " ", 
+        SuperscriptBox[
+         RowBox[{"(", 
+          RowBox[{"16384", "+", 
+           SuperscriptBox["\[Alpha]", "4"]}], ")"}], "32"]}]], 
+      "42501298345826806923264", " ", "GN", " ", 
+      SuperscriptBox["N", "2"], " ", 
+      SuperscriptBox["\[Alpha]", "32"], " ", 
+      SuperscriptBox[
+       RowBox[{"(", 
+        RowBox[{
+         RowBox[{"-", "128"}], "+", 
+         SuperscriptBox["\[Alpha]", "2"]}], ")"}], "18"], " ", 
+      SuperscriptBox[
+       RowBox[{"(", 
+        RowBox[{"1578895806042933370299856453632", "-", 
+         RowBox[{"259638731542722130421942845440", " ", 
+          SuperscriptBox["\[Alpha]", "2"]}], "+", 
+         RowBox[{"17633876637759285639604338688", " ", 
+          SuperscriptBox["\[Alpha]", "4"]}], "-", 
+         RowBox[{"654888283771164437816279040", " ", 
+          SuperscriptBox["\[Alpha]", "6"]}], "+", 
+         RowBox[{"14806425767966838787932160", " ", 
+          SuperscriptBox["\[Alpha]", "8"]}], "-", 
+         RowBox[{"214886883385929545809920", " ", 
+          SuperscriptBox["\[Alpha]", "10"]}], "+", 
+         RowBox[{"2057131609840995532800", " ", 
+          SuperscriptBox["\[Alpha]", "12"]}], "-", 
+         RowBox[{"13115654503535738880", " ", 
+          SuperscriptBox["\[Alpha]", "14"]}], "+", 
+         RowBox[{"55158234268303360", " ", 
+          SuperscriptBox["\[Alpha]", "16"]}], "-", 
+         RowBox[{"148904356085760", " ", 
+          SuperscriptBox["\[Alpha]", "18"]}], "+", 
+         RowBox[{"244719198208", " ", 
+          SuperscriptBox["\[Alpha]", "20"]}], "-", 
+         RowBox[{"219922560", " ", 
+          SuperscriptBox["\[Alpha]", "22"]}], "+", 
+         RowBox[{"81627", " ", 
+          SuperscriptBox["\[Alpha]", "24"]}]}], ")"}], "2"], " ", 
+      RowBox[{"(", 
+       RowBox[{"35", "+", 
+        RowBox[{"28", " ", 
+         RowBox[{"Cos", "[", 
+          RowBox[{"2", " ", "\[Theta]k"}], "]"}]}], "+", 
+        RowBox[{"Cos", "[", 
+         RowBox[{"4", " ", "\[Theta]k"}], "]"}]}], ")"}], " ", 
+      SuperscriptBox[
+       RowBox[{"Sin", "[", "\[Theta]k", "]"}], "16"]}]}], ";"}], 
    "\[IndentingNewLine]", "\[IndentingNewLine]", "\[IndentingNewLine]", 
    "\[IndentingNewLine]", "\[IndentingNewLine]", "\[IndentingNewLine]", 
-   "\[IndentingNewLine]", "\[IndentingNewLine]"}]}]], "Input",
+   "\[IndentingNewLine]", "\[IndentingNewLine]", "\[IndentingNewLine]", 
+   "\[IndentingNewLine]"}]}]], "Input",
  CellChangeTimes->{{3.9739350710024567`*^9, 3.9739350983500137`*^9}, {
    3.9739359340545197`*^9, 3.9739359448396072`*^9}, {3.9739371764939384`*^9, 
    3.9739371852626247`*^9}, {3.9739395099498405`*^9, 3.973939522518173*^9}, {
@@ -1408,7 +1463,8 @@ Cell[BoxData[
    3.9870729035538216`*^9, 3.987072910114977*^9}, {3.987073566498369*^9, 
    3.987073582674326*^9}, {3.9870751389087315`*^9, 3.987075146244156*^9}, {
    3.987141130603771*^9, 3.9871411437060432`*^9}, {3.987142812241543*^9, 
-   3.9871428222578793`*^9}},ExpressionUUID->"3a1cccad-5507-db4a-b740-\
+   3.9871428222578793`*^9}, {3.9871447638769245`*^9, 
+   3.9871447763895435`*^9}},ExpressionUUID->"3a1cccad-5507-db4a-b740-\
 959e4b959572"]
 },
 WindowSize->{725.25, 729.75},
@@ -1431,7 +1487,7 @@ Notebook[{
 Cell[554, 20, 3030, 83, 242, "Input",ExpressionUUID->"6d1ab985-1f33-8143-9b9f-b75378c1c4c4"],
 Cell[3587, 105, 5113, 139, 365, "Input",ExpressionUUID->"e323b979-36e8-4542-8d1a-269763eee78a"],
 Cell[8703, 246, 1392, 40, 73, "Input",ExpressionUUID->"0b70d5df-870b-884e-8e3a-292f8a20109a"],
-Cell[10098, 288, 48949, 1123, 4614, "Input",ExpressionUUID->"3a1cccad-5507-db4a-b740-959e4b959572"]
+Cell[10098, 288, 51308, 1179, 4798, "Input",ExpressionUUID->"3a1cccad-5507-db4a-b740-959e4b959572"]
 }
 ]
 *)

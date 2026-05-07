@@ -749,6 +749,86 @@ def plot_alpha_reach(
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# Level shorthand resolver
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Spectroscopic letter → azimuthal quantum number l
+_SPEC_TO_L = {
+    's': 0, 'p': 1, 'd': 2, 'f': 3, 'g': 4,
+    'h': 5, 'i': 6, 'j': 7, 'k': 8, 'l': 9,
+}
+
+
+def resolve_level(shorthand):
+    """
+    Convert a human-readable spectroscopic shorthand into the process type
+    and the full label string used in the .dat files.
+
+    All superradiant modes have m = l, so only n and the spectroscopic
+    letter are needed to fully specify a level.
+
+    Parameters
+    ----------
+    shorthand : str
+        One or two space-separated tokens of the form '<n><letter>'.
+        One token  → annihilation.   e.g. '2p'      → |211⟩
+        Two tokens → transition, excited state first.
+                     e.g. '6g 5g'   → |644⟩→|544⟩
+
+    Returns
+    -------
+    process : str   -- 'annihilation' or 'transitions'
+    label   : str   -- full label matching the .dat file column
+
+    Examples
+    --------
+    >>> resolve_level('2p')
+    ('annihilation', '|211⟩')
+
+    >>> resolve_level('3d')
+    ('annihilation', '|322⟩')
+
+    >>> resolve_level('6g 5g')
+    ('transitions', '|644⟩→|544⟩')
+
+    >>> resolve_level('4f 3d')
+    ('transitions', '|433⟩→|322⟩')
+
+    Raises
+    ------
+    ValueError for unrecognised tokens or more than two states.
+    """
+    def _parse_one(token):
+        token = token.strip().lower()
+        if len(token) < 2:
+            raise ValueError(f"Cannot parse level token {token!r}: expected e.g. '2p'")
+        n_str, letter = token[:-1], token[-1]
+        if letter not in _SPEC_TO_L:
+            raise ValueError(
+                f"Unknown spectroscopic letter {letter!r}. "
+                f"Known: {', '.join(sorted(_SPEC_TO_L))}"
+            )
+        try:
+            n = int(n_str)
+        except ValueError:
+            raise ValueError(f"Cannot parse principal quantum number from {token!r}")
+        l = _SPEC_TO_L[letter]
+        m = l          # superradiant modes always have m = l
+        return f'|{n}{l}{m}\u27e9'   # e.g. '|211⟩'
+
+    tokens = shorthand.strip().split()
+    if len(tokens) == 1:
+        return 'annihilation', _parse_one(tokens[0])
+    elif len(tokens) == 2:
+        label = _parse_one(tokens[0]) + '\u2192' + _parse_one(tokens[1])
+        return 'transitions', label
+    else:
+        raise ValueError(
+            f"resolve_level expects 1 or 2 tokens, got {len(tokens)}: {shorthand!r}"
+        )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # Main -- edit ONLY this block
 # ═════════════════════════════════════════════════════════════════════════════
 
@@ -756,13 +836,25 @@ if __name__ == '__main__':
 
     # ── Fixed physical parameters ─────────────────────────────────────────────
     M_BH_SOLAR = 1e-6           # BH mass [solar masses] -- fixed across the sweep
-    PROCESS    = 'transitions'  # 'annihilation' or 'transitions'
 
     # ── Level selection ───────────────────────────────────────────────────────
-    # Set to a label string (e.g. '|211>') to plot a single SR level.
-    # Set to None to plot the envelope over all levels (strongest per alpha).
-    LEVEL = '|644\u27e9\u2192|544\u27e9'   # |644>->|544>
-    # LEVEL = '|211\u27e9'
+    # Use spectroscopic shorthand: '<n><letter>' for annihilation,
+    # '<n><letter> <n><letter>' for a transition (excited state first).
+    # Set to None to plot the envelope over all levels of both processes.
+    #
+    # Examples:
+    #   LEVEL_SHORTHAND = '2p'       →  annihilation  |211⟩
+    #   LEVEL_SHORTHAND = '3d'       →  annihilation  |322⟩
+    #   LEVEL_SHORTHAND = '6g 5g'    →  transitions   |644⟩→|544⟩
+    #   LEVEL_SHORTHAND = '4f 3d'    →  transitions   |433⟩→|322⟩
+    LEVEL_SHORTHAND = '6g 5g'
+
+    if LEVEL_SHORTHAND is not None:
+        PROCESS, LEVEL = resolve_level(LEVEL_SHORTHAND)
+        print(f"Resolved '{LEVEL_SHORTHAND}'  →  process='{PROCESS}'  label='{LEVEL}'")
+    else:
+        PROCESS = 'annihilation'   # fallback when plotting all levels
+        LEVEL   = None
     # ── Data directory (output of run_alpha_sweep in superradiance_simulation.py)
     DATA_DIR = 'Sem 2/8. Numerical Simulations/Data/alpha_sweep'
 

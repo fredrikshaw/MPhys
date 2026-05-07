@@ -5,6 +5,7 @@ from scipy import constants
 from scipy.integrate import solve_ivp
 from pathlib import Path
 import re
+import pickle
 
 
 # Use ParamCalculator from Sem 2/0. Scripts from Sem 1
@@ -25,9 +26,11 @@ from ParamCalculator import (
     calc_rg_from_bh_mass,
     G_N
 )
+from ConvertedFunctions import diff_power_trans_dict
 from SuperradianceRateCF import sr_rate_dimensioned
 from leaver_superradiance import hydrogen_gamma
 
+available_transitions = list(diff_power_trans_dict.keys())
 SOLAR_MASS = 1.988e30  # [kg]
 
 
@@ -164,6 +167,20 @@ def _find_sr_file(n: int, l: int, m: int, bh_spin: float, sr_data_dir: Path) -> 
     matches.sort(key=lambda item: item[0])
     return matches[-1][1]
 
+
+# Extract n and l from spectroscopic notation
+def parse_level(level_str):
+    l_to_number = {
+        's': 0, 'p': 1, 'd': 2, 'f': 3, 'g': 4, 'h': 5,
+        'i': 6, 'j': 7, 'k': 8, 'l': 9, 'm': 10, 'n': 11, 'o': 12, 'q': 13
+    }
+    n = int(level_str[:-1])
+    l_letter = level_str[-1]
+    l = l_to_number.get(l_letter)
+    if l is None:
+        raise ValueError(f"Unknown orbital letter: {l_letter}")
+    return n, l
+
 # ---------------------------------------------------------------
 #  MAIN SIMULATION
 # ---------------------------------------------------------------
@@ -207,18 +224,6 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
     level_e_str = parts[0]
     level_g_str = parts[1]
     
-    # Extract n and l from spectroscopic notation
-    def parse_level(level_str):
-        l_to_number = {
-            's': 0, 'p': 1, 'd': 2, 'f': 3, 'g': 4, 'h': 5,
-            'i': 6, 'j': 7, 'k': 8, 'l': 9, 'm': 10, 'n': 11, 'o': 12, 'q': 13
-        }
-        n = int(level_str[:-1])
-        l_letter = level_str[-1]
-        l = l_to_number.get(l_letter)
-        if l is None:
-            raise ValueError(f"Unknown orbital letter: {l_letter}")
-        return n, l
     
     n_e, l_e = parse_level(level_e_str)
     n_g, l_g = parse_level(level_g_str)
@@ -420,6 +425,77 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
 
     return results
 
+def scan_transitions_and_save(
+    output_pickle="transition_peak_data.pkl",
+    transitions=[],
+    bh_mass_sm=1e-6,
+    bh_spin=0.65,
+    alpha_over_l=0.1,
+    distance_kpc=10,
+    t_max_years=None,
+    n_points=int(1e5),
+    sr_rate_source="hydrogen",
+    sr_cf_method="cf",
+):
+
+    peak_data = {}
+
+    for transition in transitions:
+        print(f"\nRunning transition: {transition}")
+        level_e_str, level_g_str = transition.strip().split()
+        n_g, l_g = parse_level(level_g_str)
+        alpha = alpha_over_l * l_g
+        print(f"Using alpha = {alpha} calculated from alpha_over_l = {alpha_over_l} and l_g = {l_g}")
+
+        try:
+            results = run_simulation(
+                bh_mass_sm=bh_mass_sm,
+                bh_spin=bh_spin,
+                alpha=alpha,
+                transition=transition,
+                distance_kpc=distance_kpc,
+                t_max_years=t_max_years,
+                n_points=n_points,
+                sr_rate_source=sr_rate_source,
+                sr_cf_method=sr_cf_method,
+            )
+
+            times = results["times"]
+            log_h = results["log_h"] * np.log10(np.e)
+
+            h_peak_log10, t_peak, t_fwhm = calc_h_peak_and_fwhm(times, log_h)
+
+            peak_data[transition] = {
+                "h_peak_log10": h_peak_log10,
+                "h_peak": 10**h_peak_log10 if np.isfinite(h_peak_log10) else np.nan,
+                "t_peak_years": t_peak,
+                "t_fwhm_years": t_fwhm,
+                "parameters": results["parameters"],
+                "status": results["status"],
+                "success": True,
+            }
+
+        except Exception as err:
+            print(f"[FAILED] {transition}: {err}")
+
+            peak_data[transition] = {
+                "h_peak_log10": np.nan,
+                "h_peak": np.nan,
+                "t_peak_years": np.nan,
+                "t_fwhm_years": np.nan,
+                "parameters": None,
+                "status": None,
+                "success": False,
+                "error": str(err),
+            }
+
+    with open(output_pickle, "wb") as f:
+        pickle.dump(peak_data, f)
+
+    print(f"\nSaved peak data to {output_pickle}")
+
+    return peak_data
+
 # ---------------------------------------------------------------
 #  PLOTTING
 # ---------------------------------------------------------------
@@ -599,6 +675,7 @@ def plot_results(results, save_filename=None):
 if __name__ == "__main__":
     # Shared simulation parameters
     alpha = 0.5
+    alpha_over_l = 0.15
     bh_spin = 0.65
     bh_mass_sm = 1e-6
     transition = "7g 5g"
@@ -614,17 +691,28 @@ if __name__ == "__main__":
     sr_cf_file_g = None  # optional explicit path for ground mode SR file
 
     # Run simulation
-    results = run_simulation(
-        alpha=alpha,
-        bh_spin=bh_spin,
+    # results = run_simulation(
+    #     alpha=alpha,
+    #     bh_spin=bh_spin,
+    #     bh_mass_sm=bh_mass_sm,
+    #     transition=transition,
+    #     t_max_years=t_max,
+    #     sr_rate_source=sr_rate_source,
+    #     sr_cf_method=sr_cf_method,
+    #     sr_cf_file_e=sr_cf_file_e,
+    #     sr_cf_file_g=sr_cf_file_g,
+    # )
+
+    peak_data = scan_transitions_and_save(
+        output_pickle=f"peak_data_alpha_over_l_{str(alpha_over_l).replace('.','p')}.pkl",
+        transitions=available_transitions,
         bh_mass_sm=bh_mass_sm,
-        transition=transition,
-        t_max_years=t_max,
+        bh_spin=bh_spin,
+        alpha_over_l=alpha_over_l,
+        t_max_years=None,
+        n_points=int(1e7),
         sr_rate_source=sr_rate_source,
-        sr_cf_method=sr_cf_method,
-        sr_cf_file_e=sr_cf_file_e,
-        sr_cf_file_g=sr_cf_file_g,
     )
 
     # Plot results
-    plot_results(results)
+    # plot_results(results)

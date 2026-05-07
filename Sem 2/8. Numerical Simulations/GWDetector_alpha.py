@@ -457,7 +457,7 @@ def compute_d_max_from_peak(peak_strain_1kpc, frequency_hz, fwhm_yr,
     if tau_val < t_ring:
         return np.nan
 
-    tau_obs = min(tau_val, ONE_YEAR_S)
+    tau_obs = min(tau_val, 1*ONE_YEAR_S)
 
     try:
         S_h = _get_noise(det, frequency_hz)
@@ -689,7 +689,7 @@ def plot_alpha_reach(
         "text.latex.preamble": r"\usepackage{amsmath}",
     })
 
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=(5, 5))
     fig.subplots_adjust(top=0.88)
 
     # ── Coordinate conversion ─────────────────────────────────────────────────

@@ -309,7 +309,10 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         try:
             r_g_ev = calc_rg_from_bh_mass(bh_mass_solar)
             mu_ev = alpha_cur / r_g_ev
-            omega_ev = calc_omega_ann(r_g=r_g_ev, alpha=alpha_cur, n=n)
+            with np.errstate(over='ignore'):
+                omega_ev = (alpha_cur**3 / (2.0 * r_g_ev)) * (1.0 / n_j**2 - 1.0 / n_i**2)
+            if not np.isfinite(omega_ev) or omega_ev <= 0.0:
+                return 0.0
             with np.errstate(over='ignore', invalid='ignore'):
                 gamma_a_ev = calc_annihilation_rate(
                     _level_string(n, l), alpha=alpha_cur,
@@ -377,8 +380,11 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         dMtil = -(alpha_0 / M0**2) * np.dot(g_sr_arr, N_arr)
 
         # BH spin (SR only)
-        dastar = (np.dot(g_sr_arr * N_arr, 2.0 * alpha * astar - _M_ARR)
-                  / (M0**2 * Mtil**2))
+        with np.errstate(over='ignore', invalid='ignore'):
+            dastar = (np.dot(g_sr_arr * N_arr, 2.0 * alpha * astar - _M_ARR)
+                    / (M0**2 * Mtil**2))
+        if not np.isfinite(dastar):
+            dastar = 0.0
 
         return list(dlnN_arr) + [dMtil, dastar]
 

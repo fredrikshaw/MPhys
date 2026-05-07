@@ -103,7 +103,10 @@ def calc_omega_ann(r_g, alpha, n):
         omega_ann = 2 * mu_a * (1 - alpha^2/(2 n^2))
         where mu_a = alpha/r_g [eV]
     """
-    return 2.0 * (alpha/r_g) * (1.0 - alpha**2 / (2.0 * n**2))
+
+    with np.errstate(over='ignore'):
+        result = 2.0 * (alpha/r_g) * (1.0 - alpha**2 / (2.0 * n**2))
+    return result if np.isfinite(result) else 0.0
 
 def calc_omega_transition(r_g, alpha, n_e, n_g):
     """

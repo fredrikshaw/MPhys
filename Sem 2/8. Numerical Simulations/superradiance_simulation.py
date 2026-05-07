@@ -776,7 +776,7 @@ def save_peak_tables(ann_char, tr_char, results: SimulationResults, output_dir="
     # Format mass: e.g. 1e-11 → "1e-11"
     mass_str = f"M{results.M_BH_solar:.0e}".replace('e-0', 'e-').replace('e+0', 'e')
     # Format alpha and spin: e.g., alpha0.60, a0.65
-    alpha_str = f"alpha{results.alpha_0:.2f}".rstrip('0').rstrip('.') if '.' in f"{results.alpha_0:.2f}" else f"alpha{results.alpha_0:.2f}"
+    alpha_str = f"alpha{results.alpha_0:.3f}".rstrip('0').rstrip('.') if '.' in f"{results.alpha_0:.2f}" else f"alpha{results.alpha_0:.2f}"
     spin_str = f"a{results.a_star_0:.2f}".rstrip('0').rstrip('.') if '.' in f"{results.a_star_0:.2f}" else f"a{results.a_star_0:.2f}"
 
     fieldnames = ['label', 'peak_strain', 'fwhm_yr', 't_peak_yr', 'frequency_hz']
@@ -1146,16 +1146,109 @@ def plot_diagnostics(results: SimulationResults, save_path=None):
 
 
 # ══════════════════════════════════════════════════════════════════════
+# Alpha sweep
+# ══════════════════════════════════════════════════════════════════════
+
+def run_alpha_sweep(M_BH_solar, a_star_0, max_n,
+                    alpha_min=0.001, alpha_max=1.5, n_alpha_points=10,
+                    output_dir=None):
+    """
+    Run the superradiance simulation over a geometric grid of alpha values
+    and save the peak-characteristic tables for each point.
+
+    Parameters
+    ----------
+    M_BH_solar : float
+        Initial BH mass in solar masses (fixed across the sweep).
+    a_star_0 : float
+        Initial dimensionless spin (fixed across the sweep).
+    max_n : int
+        Maximum principal quantum number n (fixed across the sweep).
+    alpha_min : float
+        Lower bound of the alpha grid (inclusive).  Default: 0.001.
+    alpha_max : float
+        Upper bound of the alpha grid (inclusive).  Default: 1.5.
+    n_alpha_points : int
+        Number of alpha values sampled geometrically between alpha_min
+        and alpha_max.  Default: 10.
+    output_dir : str or None
+        Directory in which to save the .dat files.  Defaults to a
+        'Data/alpha_sweep' sub-folder next to this script.
+
+    Returns
+    -------
+    list of SimulationResults (or None for failed points)
+        One entry per alpha value, in the same order as the grid.
+    """
+    if output_dir is None:
+        output_dir = os.path.join(_THIS_DIR, 'Data', 'alpha_sweep')
+    os.makedirs(output_dir, exist_ok=True)
+
+    alpha_grid = np.geomspace(alpha_min, alpha_max, n_alpha_points)
+
+    print("=" * 65)
+    print(f"Alpha sweep: {n_alpha_points} points  "
+          f"[{alpha_min:.4g}, {alpha_max:.4g}]  (geometric)")
+    print(f"M_BH = {M_BH_solar} M_sun   ã₀ = {a_star_0}   max_n = {max_n}")
+    print(f"Output dir: {output_dir}")
+    print("=" * 65)
+
+    all_results = []
+    for i, alpha in enumerate(alpha_grid):
+        print(f"\n── Sweep point {i+1}/{n_alpha_points}  α = {alpha:.6g} ──")
+        results = run_simulation(
+            M_BH_solar=M_BH_solar,
+            a_star_0=a_star_0,
+            alpha_0=alpha,
+            max_n=max_n,
+        )
+        all_results.append(results)
+
+        if results is None:
+            print(f"  Skipped (no SR-active levels at α = {alpha:.6g}).")
+            continue
+
+        ann_char, tr_char = compute_peak_characteristics(results)
+        print_peak_tables(ann_char, tr_char)
+        save_peak_tables(ann_char, tr_char, results, output_dir=output_dir)
+
+    # Summary
+    n_ok = sum(r is not None for r in all_results)
+    print("\n" + "=" * 65)
+    print(f"Alpha sweep complete: {n_ok}/{n_alpha_points} points succeeded.")
+    print("=" * 65)
+    return all_results
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Main entry point
 # ══════════════════════════════════════════════════════════════════════
 
 def main():
-    # Physical input parameters — edit these
+    # ── Physical input parameters — edit these ────────────────────────
     M_BH_SOLAR = 1e-6
     A_STAR_0   = 0.65
-    ALPHA_0    = 0.1
+    ALPHA_0    = 0.1      # used for the single-run path only
     MAX_N      = 6
 
+    # ── Alpha sweep parameters ────────────────────────────────────────
+    RUN_ALPHA_SWEEP = True   # set True to run the sweep instead of a single sim
+    N_ALPHA_POINTS  = 4      # number of geometrically-spaced alpha values
+    ALPHA_MIN       = 0.001   # lower bound of the sweep
+    ALPHA_MAX       = 1.0     # upper bound of the sweep
+
+    if RUN_ALPHA_SWEEP:
+        run_alpha_sweep(
+            M_BH_solar=M_BH_SOLAR,
+            a_star_0=A_STAR_0,
+            max_n=MAX_N,
+            alpha_min=ALPHA_MIN,
+            alpha_max=ALPHA_MAX,
+            n_alpha_points=N_ALPHA_POINTS,
+        )
+        return
+
+    # ── Single-alpha run ──────────────────────────────────────────────
     # Run simulation
     results = run_simulation(M_BH_solar=M_BH_SOLAR,
                              a_star_0=A_STAR_0,

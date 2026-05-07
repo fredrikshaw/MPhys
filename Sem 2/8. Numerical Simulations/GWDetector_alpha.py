@@ -1,16 +1,16 @@
 """
-AlphaReach.py
-=============
+GWDetector_alpha.py
+===================
 
 Computes and plots the maximum detectable distance d_max(alpha) for
 superradiance GW sources, using the peak-strain output files produced by
 run_alpha_sweep() in superradiance_simulation.py.
 
-For a fixed BH mass M_BH and spin ã₀, one .dat file is produced per alpha
-by the simulation sweep.  This script reads the entire alpha-sweep data
-directory, converts the peak GW strain at 1 kpc into a detector distance
-reach for each detector, and overlays the PBH merger-rate reach as a
-horizontal line (constant for fixed mass).
+For a fixed BH mass M_BH and spin a_star, one .dat file is produced per
+alpha by the simulation sweep.  This script reads the entire alpha-sweep
+data directory, converts the peak GW strain at 1 kpc into a detector
+distance reach for each detector, and overlays the PBH merger-rate reach
+as a horizontal line (constant for fixed mass).
 
 Detectors
 ---------
@@ -22,27 +22,31 @@ Usage
 -----
 Edit the USER PARAMETERS block at the bottom and run:
 
-    python AlphaReach.py
+    python GWDetector_alpha.py
 
 Physics
 -------
 Each simulation .dat file stores h_peak at 1 kpc and a GW frequency.
 The conversion to detector reach is:
 
-    h_unit   = h_peak_1kpc * KPC_TO_M          [strain at 1 m]
-    tau_obs  = min(fwhm_yr * YEAR_S, ONE_YEAR)  [capped at 1 yr]
-    d_max(m) = h_unit * sqrt(tau_obs / S_h) / rho_star
-    d_max(kpc) = d_max(m) / KPC_TO_M
+    h_unit     = h_peak_1kpc * KPC_TO_M            [strain at 1 m]
+    tau_obs    = min(fwhm_yr * YEAR_S, ONE_YEAR_S)  [capped at 1 yr]
+    d_max [m]  = h_unit * sqrt(tau_obs / S_h) / rho_star
+    d_max [kpc]= d_max [m] / KPC_TO_M
 
 where S_h is the detector noise PSD at the emission frequency [Hz^-1].
-The ring-up threshold is respected: if tau < t_ring, the signal is
-undetectable by that detector.
 
-The best (largest d_max) level is selected per alpha point per detector,
-so the plotted curve is the envelope over all SR levels.
+Filters applied per level before computing d_max
+-------------------------------------------------
+1. Superradiance condition:  alpha < m * a_star / (2*(1+sqrt(1-a_star^2)))
+   Levels that violate this are not SR-active and are skipped.
+2. Cosmological time cut:  t_peak_yr <= T_PEAK_MAX_YR (default 1e8 yr)
+   Signals that peak after this are excluded.
+3. Frequency gating:  _get_noise() returns NaN for frequencies outside
+   each detector's sensitive band; compute_d_max_from_peak() propagates
+   this to a NaN reach, so out-of-band signals never appear on the plot.
 """
 
-import os
 import re
 import csv
 import sys
@@ -63,7 +67,7 @@ from GWDetectors import (
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Resolve merger-rate module paths (same directory-walking as DetectorReach.py)
+# Resolve merger-rate module paths
 # ─────────────────────────────────────────────────────────────────────────────
 
 current_dir = Path(__file__).resolve().parent
@@ -95,7 +99,130 @@ from MergerRate import (
 # ─────────────────────────────────────────────────────────────────────────────
 
 ONE_YEAR_S = 365.25 * 24.0 * 3600.0    # [s]
-YEAR_S     = ONE_YEAR_S                 # same value, named for clarity in conversions
+YEAR_S     = ONE_YEAR_S
+
+# SI constants used for the axion mass top axis
+# mu [eV] = alpha / r_g [eV^-1],  r_g [eV^-1] = G M / c^2 / (hbar*c/eV)
+_G_SI        = 6.674e-11    # m^3 kg^-1 s^-2
+_C_SI        = 2.998e8      # m s^-1
+_M_SUN_KG    = 1.989e30     # kg
+_HBAR_C_EV_M = 1.973e-7     # hbar*c in eV*m
+
+# Maximum t_peak: signals peaking later than this are excluded
+T_PEAK_MAX_YR = 1e9         # [yr]
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Filename parsing
+# ═════════════════════════════════════════════════════════════════════════════
+
+def parse_alpha_from_filename(filename):
+    """
+    Extract the alpha value from a save_peak_tables() filename.
+
+    Naming convention:
+        peaks_{process}_M{mass}_alpha{alpha}_a{spin}.dat
+
+    Handles both dot and underscore as decimal separator.
+
+    Examples
+    --------
+    peaks_annihilation_M1e-6_alpha0.4_a0.65.dat   -> 0.4
+    peaks_transitions_M1e-6_alpha0.001_a0.65.dat  -> 0.001
+    peaks_annihilation_M1e-6_alpha0_4_a0_65.dat   -> 0.4
+    """
+    stem = filename
+    if stem.endswith('.dat'):
+        stem = stem[:-4]
+
+    # Find 'alpha' then take up to the next '_a' (spin token)
+    idx = stem.find('alpha')
+    if idx == -1:
+        raise ValueError(f"Could not parse alpha from filename: {filename!r}")
+
+    raw = stem[idx + 5:]            # everything after 'alpha'
+    end = raw.find('_a')
+    if end != -1:
+        raw = raw[:end]
+
+    raw = raw.replace('_', '.').strip('.')
+    raw = re.sub(r'\.{2,}', '.', raw)
+
+    try:
+        value = float(raw)
+        if value > 0:
+            return value
+    except ValueError:
+        pass
+    raise ValueError(f"Could not parse alpha from filename: {filename!r}")
+
+
+def parse_mass_from_filename(filename):
+    """
+    Extract the BH mass from a save_peak_tables() filename.
+
+    Examples
+    --------
+    peaks_annihilation_M1e-6_alpha0.4_a0.65.dat  -> 1e-6
+    peaks_annihilation_M1e-11_alpha0.1_a0.65.dat -> 1e-11
+    """
+    stem = filename
+    if stem.endswith('.dat'):
+        stem = stem[:-4]
+
+    # Find '_M' then take up to '_alpha'
+    idx = stem.find('_M')
+    if idx == -1:
+        raise ValueError(f"Could not parse mass from filename: {filename!r}")
+
+    raw = stem[idx + 2:]
+    end = raw.find('_alpha')
+    if end != -1:
+        raw = raw[:end]
+
+    raw = raw.replace('_', '.').strip('.')
+    raw = re.sub(r'\.{2,}', '.', raw)
+
+    try:
+        value = float(raw)
+        if value > 0:
+            return value
+    except ValueError:
+        pass
+    raise ValueError(f"Could not parse mass from filename: {filename!r}")
+
+
+def parse_spin_from_filename(filename):
+    """
+    Extract the initial BH spin a_star from a save_peak_tables() filename.
+
+    The spin is the last token in the stem, after the final '_a'.
+
+    Examples
+    --------
+    peaks_transitions_M1e-6_alpha0.001_a0.65.dat -> 0.65
+    peaks_annihilation_M1e-6_alpha0_4_a0_65.dat  -> 0.65
+    """
+    stem = filename
+    if stem.endswith('.dat'):
+        stem = stem[:-4]
+
+    # Take everything after the LAST '_a' in the stem
+    idx = stem.rfind('_a')
+    if idx == -1:
+        raise ValueError(f"Could not parse spin from filename: {filename!r}")
+
+    raw = stem[idx + 2:]
+    raw = raw.replace('_', '.').strip('.')
+    raw = re.sub(r'\.{2,}', '.', raw)
+
+    try:
+        value = float(raw)
+        if 0.0 < value <= 1.0:
+            return value
+    except ValueError:
+        pass
+    raise ValueError(f"Could not parse spin from filename: {filename!r}")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -106,22 +233,17 @@ def load_alpha_sweep_file(filepath):
     """
     Load a single peak-strain .dat file produced by save_peak_tables().
 
-    The file is tab-delimited with a header row and one row per SR level.
-    All available columns are imported; t_peak_yr is stored but not
-    currently used in the reach calculation.
-
-    Parameters
-    ----------
-    filepath : str or Path
+    Tab-delimited with a header row; one row per SR level.
+    All columns are imported including t_peak_yr (stored for future use).
 
     Returns
     -------
-    list of dicts, one per level, with keys:
-        label        : str   — level label, e.g. '|211⟩'
-        peak_strain  : float — peak GW strain at 1 kpc  [dimensionless]
-        fwhm_yr      : float — FWHM signal duration  [yr]
-        t_peak_yr    : float — time of peak  [yr]  (imported; not used yet)
-        frequency_hz : float — GW emission frequency  [Hz]
+    list of dicts with keys:
+        label        : str   -- level label, e.g. '|211>'
+        peak_strain  : float -- peak GW strain at 1 kpc  [dimensionless]
+        fwhm_yr      : float -- FWHM signal duration  [yr]
+        t_peak_yr    : float -- time of peak  [yr]
+        frequency_hz : float -- GW emission frequency  [Hz]
     """
     rows = []
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -137,93 +259,24 @@ def load_alpha_sweep_file(filepath):
     return rows
 
 
-def parse_alpha_from_filename(filename):
-    """
-    Extract the alpha value encoded in a save_peak_tables() filename.
-
-    The naming convention is:
-        peaks_{process}_{mass_str}_{alpha_str}_{spin_str}.dat
-
-    where alpha_str is of the form 'alpha<value>', with the decimal point
-    produced by save_peak_tables() or replaced by an underscore on some
-    operating systems.  Both forms are handled.
-
-    Examples
-    --------
-    peaks_annihilation_M1e-6_alpha0.4_a0.65.dat   → 0.4
-    peaks_annihilation_M1e-6_alpha0_4_a0_65.dat   → 0.4
-    peaks_annihilation_M1e-6_alpha0.001_a0.65.dat → 0.001
-    peaks_annihilation_M1e-6_alpha1.5_a0.65.dat   → 1.5
-
-    Raises
-    ------
-    ValueError if the alpha token cannot be parsed.
-    """
-    # Capture everything between 'alpha' and the next '_a' spin token or '.dat'
-    m = re.search(r'alpha([\d._]+?)(?=_a[\d]|\.dat)', filename)
-    if m:
-        raw = m.group(1)
-        # Normalise: replace underscores used as decimal points with dots,
-        # then collapse any runs of dots to a single dot.
-        raw = raw.replace('_', '.')
-        raw = re.sub(r'\.{2,}', '.', raw).strip('.')
-        try:
-            value = float(raw)
-            if value > 0:
-                return value
-        except ValueError:
-            pass
-    raise ValueError(f"Could not parse alpha from filename: {filename!r}")
-
-
-def parse_mass_from_filename(filename):
-    """
-    Extract the BH mass encoded in a save_peak_tables() filename.
-
-    The naming convention is:
-        peaks_{process}_M{mass}_{alpha_str}_{spin_str}.dat
-
-    where the mass token is formatted by save_peak_tables() as e.g. 'M1e-6'.
-
-    Examples
-    --------
-    peaks_annihilation_M1e-6_alpha0.4_a0.65.dat  → 1e-6
-    peaks_annihilation_M1e-11_alpha0.1_a0.65.dat → 1e-11
-
-    Raises
-    ------
-    ValueError if the mass token cannot be parsed.
-    """
-    m = re.search(r'_M([^_]+)_alpha', filename)
-    if m:
-        try:
-            return float(m.group(1))
-        except ValueError:
-            pass
-    raise ValueError(f"Could not parse mass from filename: {filename!r}")
-
-
 def load_all_sweep_files(data_dir, process='annihilation', mass_filter=None):
     """
-    Load all peak-strain files of the requested process type from data_dir,
+    Load all peak-strain files for the requested process from data_dir,
     optionally restricting to files whose encoded BH mass matches mass_filter.
 
     Parameters
     ----------
     data_dir    : str or Path
-        Directory containing the .dat files from run_alpha_sweep().
-    process     : str
-        'annihilation' or 'transitions' — selects which file prefix to glob.
-    mass_filter : float or None
-        If given, only files whose mass token matches this value (within 0.1 %)
-        are loaded.  Use M_BH_SOLAR from the USER PARAMETERS block.
+    process     : str -- 'annihilation' or 'transitions'
+    mass_filter : float or None -- if set, only files with a matching mass
+                  token (within 0.1%) are loaded
 
     Returns
     -------
-    sweep : list of dicts, each containing:
-        'alpha'  : float — the alpha value for this file
-        'levels' : list  — output of load_alpha_sweep_file()
-    Sorted by ascending alpha.
+    sweep : list of dicts (sorted by ascending alpha), each with:
+        'alpha'  : float
+        'a_star' : float
+        'levels' : list of level dicts from load_alpha_sweep_file()
     """
     data_dir = Path(data_dir)
     pattern  = f'peaks_{process}_*.dat'
@@ -237,18 +290,28 @@ def load_all_sweep_files(data_dir, process='annihilation', mass_filter=None):
 
     sweep = []
     for fp in files:
-        try:
-            # ── Mass filter ───────────────────────────────────────────────────
-            if mass_filter is not None:
+        # ── Mass filter ───────────────────────────────────────────────────────
+        if mass_filter is not None:
+            try:
                 file_mass = parse_mass_from_filename(fp.name)
-                if not np.isclose(file_mass, mass_filter, rtol=1e-3):
-                    continue
+            except ValueError as exc:
+                print(f"  [WARN] Skipping {fp.name}: {exc}")
+                continue
+            if not np.isclose(file_mass, mass_filter, rtol=1e-3):
+                continue
+
+        # ── Parse metadata ────────────────────────────────────────────────────
+        try:
             alpha  = parse_alpha_from_filename(fp.name)
+            a_star = parse_spin_from_filename(fp.name)
             levels = load_alpha_sweep_file(fp)
-            sweep.append({'alpha': alpha, 'levels': levels})
-            print(f"  Loaded α = {alpha:.5g}  ({len(levels)} levels)  [{fp.name}]")
         except Exception as exc:
             print(f"  [WARN] Skipping {fp.name}: {exc}")
+            continue
+
+        sweep.append({'alpha': alpha, 'a_star': a_star, 'levels': levels})
+        print(f"  Loaded alpha = {alpha:.5g}  a* = {a_star}  "
+              f"({len(levels)} levels)  [{fp.name}]")
 
     sweep.sort(key=lambda x: x['alpha'])
     print(f"Total: {len(sweep)} alpha points loaded.\n")
@@ -256,17 +319,56 @@ def load_all_sweep_files(data_dir, process='annihilation', mass_filter=None):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Detector noise helpers  (mirrors DetectorReach.py)
+# Superradiance condition helpers
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _parse_m_from_label(label):
+    """
+    Extract the azimuthal quantum number m from a level label string.
+
+    Takes the third digit of the first |nlm> state in the label, which is
+    the excited state for transitions and the only state for annihilation.
+
+    Examples:  '|211>' -> 1,  '|322>' -> 2,  '|644>->|544>' -> 4
+    """
+    match = re.search(r'\|(\d)(\d)(\d)', label)
+    if match:
+        return int(match.group(3))
+    return None
+
+
+def _is_superradiant(alpha, a_star, m):
+    """
+    Return True if the level satisfies the superradiance condition.
+
+    The condition omega_nlm < m * Omega_H reduces (the binding correction
+    alpha^2/n^2 cancels from both sides) to:
+
+        alpha < m * a_star / (2 * (1 + sqrt(1 - a_star^2)))
+
+    Parameters
+    ----------
+    alpha  : float -- gravitational fine-structure constant
+    a_star : float -- dimensionless BH spin
+    m      : int   -- azimuthal quantum number
+    """
+    if a_star <= 0.0 or m <= 0:
+        return False
+    Omega_H_factor = a_star / (2.0 * (1.0 + np.sqrt(max(0.0, 1.0 - a_star**2))))
+    return alpha < m * Omega_H_factor
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Detector noise helpers
 # ═════════════════════════════════════════════════════════════════════════════
 
 def _get_noise(det, f_t):
     """
-    Return S_h_noise [Hz^-1] at frequency f_t for a MWB or IFO detector.
+    Return S_h_noise [Hz^-1] at frequency f_t.
 
-    Parameters
-    ----------
-    det  : MagneticWeberBar instance  or  str IFO key (e.g. 'adv_ligo')
-    f_t  : float — frequency [Hz]
+    Returns NaN for frequencies outside the detector's sensitive band,
+    which causes compute_d_max_from_peak() to return NaN -- those signals
+    are automatically excluded from the plot.
     """
     if isinstance(det, MagneticWeberBar):
         return mwb_noise_psd(det, np.array([f_t]))[0]
@@ -297,35 +399,34 @@ def compute_d_max_from_peak(peak_strain_1kpc, frequency_hz, fwhm_yr,
 
     Parameters
     ----------
-    peak_strain_1kpc : float   Peak GW strain at 1 kpc (from simulation output).
-    frequency_hz     : float   GW emission frequency [Hz].
-    fwhm_yr          : float   Signal duration (FWHM from simulation) [yr].
-    det              : MagneticWeberBar | str  Detector instance or IFO key.
-    rho_star         : float   SNR threshold (default 1).
+    peak_strain_1kpc : float -- peak GW strain at 1 kpc
+    frequency_hz     : float -- GW emission frequency [Hz]
+    fwhm_yr          : float -- signal duration (FWHM) [yr]
+    det              : MagneticWeberBar | str
+    rho_star         : float -- SNR threshold
 
     Returns
     -------
     d_max_kpc : float or nan
-        nan if the detector cannot observe this signal (frequency out of band,
-        duration below ring-up threshold, non-finite noise PSD, etc.).
 
     Notes
     -----
-    h_unit   = peak_strain_1kpc * KPC_TO_M      [strain at 1 m, scales as 1/r]
+    h_unit   = peak_strain_1kpc * KPC_TO_M      [strain at 1 m]
     tau_obs  = min(fwhm_yr * YEAR_S, ONE_YEAR_S)
     d_max(m) = h_unit * sqrt(tau_obs / S_h) / rho_star
+
+    Out-of-band frequencies return NaN via _get_noise(); the ring-up
+    threshold is enforced before any distance is computed.
     """
-    if not (np.isfinite(peak_strain_1kpc) and peak_strain_1kpc > 0):
+    if not (np.isfinite(peak_strain_1kpc) and peak_strain_1kpc > 1e-50):
         return np.nan
     if not (np.isfinite(frequency_hz) and frequency_hz > 0):
         return np.nan
     if not (np.isfinite(fwhm_yr) and fwhm_yr > 0):
         return np.nan
 
-    # Strain at 1 m (strain ∝ 1/r, so multiply by kpc in metres)
-    h_unit = peak_strain_1kpc * KPC_TO_M
+    h_unit = peak_strain_1kpc * KPC_TO_M       # strain at 1 m
 
-    # Signal duration with 1-year cap; enforce ring-up threshold
     tau_val = fwhm_yr * YEAR_S                  # [s]
     try:
         t_ring = _get_ring_up_time(det)
@@ -334,9 +435,8 @@ def compute_d_max_from_peak(peak_strain_1kpc, frequency_hz, fwhm_yr,
     if tau_val < t_ring:
         return np.nan
 
-    tau_obs = min(tau_val, ONE_YEAR_S)          # [s]
+    tau_obs = min(tau_val, ONE_YEAR_S)
 
-    # Noise PSD at the signal frequency
     try:
         S_h = _get_noise(det, frequency_hz)
     except Exception:
@@ -350,18 +450,21 @@ def compute_d_max_from_peak(peak_strain_1kpc, frequency_hz, fwhm_yr,
     return d_max_kpc if (np.isfinite(d_max_kpc) and d_max_kpc > 0) else np.nan
 
 
-def best_d_max_for_alpha(levels, det, rho_star=1.0, level_label=None):
+def best_d_max_for_alpha(levels, det, rho_star=1.0, level_label=None,
+                          alpha=None, a_star=None,
+                          t_peak_max_yr=T_PEAK_MAX_YR):
     """
     For a single alpha point, return the largest d_max across SR levels.
 
     Parameters
     ----------
-    levels      : list of dicts — output of load_alpha_sweep_file()
-    det         : MagneticWeberBar | str
-    rho_star    : float
-    level_label : str or None
-        If given (e.g. '|211⟩'), only that level is used.
-        If None, the envelope over all levels is returned.
+    levels        : list of dicts from load_alpha_sweep_file()
+    det           : MagneticWeberBar | str
+    rho_star      : float
+    level_label   : str or None -- if set, only that level is considered
+    alpha         : float or None -- used for SR condition check
+    a_star        : float or None -- used for SR condition check
+    t_peak_max_yr : float -- signals peaking after this [yr] are excluded
 
     Returns
     -------
@@ -371,8 +474,20 @@ def best_d_max_for_alpha(levels, det, rho_star=1.0, level_label=None):
         levels = [lev for lev in levels if lev['label'] == level_label]
         if not levels:
             return np.nan
+
     best = np.nan
     for lev in levels:
+
+        # ── Superradiance condition ───────────────────────────────────────────
+        if alpha is not None and a_star is not None:
+            m = _parse_m_from_label(lev['label'])
+            if m is not None and not _is_superradiant(alpha, a_star, m):
+                continue
+
+        # ── Cosmological time cutoff ──────────────────────────────────────────
+        if lev['t_peak_yr'] > t_peak_max_yr:
+            continue
+
         d = compute_d_max_from_peak(
             lev['peak_strain'],
             lev['frequency_hz'],
@@ -396,21 +511,18 @@ def run_alpha_reach_sweep(sweep_data, rho_star=1.0, include_ligo=True,
 
     Parameters
     ----------
-    sweep_data   : list — output of load_all_sweep_files()
-    rho_star     : float — SNR threshold
-    include_ligo : bool  — include IFO detectors alongside MWB
+    sweep_data   : list -- output of load_all_sweep_files()
+    rho_star     : float -- SNR threshold
+    include_ligo : bool  -- include IFO detectors alongside MWB
+    level_label  : str or None -- restrict to a single SR level
 
     Returns
     -------
-    alphas : np.ndarray
-        Sorted array of alpha values.
-    reach : dict
-        Keys are detector display names; values are np.ndarray of d_max_kpc
-        (nan where the source is undetectable).
+    alphas : np.ndarray -- sorted alpha values
+    reach  : dict -- {detector_name: np.ndarray of d_max_kpc}
     """
     alphas = np.array([pt['alpha'] for pt in sweep_data])
 
-    # Build ordered list of (display_name, det_key_or_instance)
     detectors = []
     for det in MWB_DETECTORS:
         detectors.append((det.name, det))
@@ -420,15 +532,19 @@ def run_alpha_reach_sweep(sweep_data, rho_star=1.0, include_ligo=True,
 
     reach = {name: np.full(len(alphas), np.nan) for name, _ in detectors}
 
-    print(f"{'α':>10}  " + "  ".join(f"{name:>14}" for name, _ in detectors))
+    print(f"{'alpha':>10}  " + "  ".join(f"{name:>14}" for name, _ in detectors))
     print("-" * (12 + 16 * len(detectors)))
 
     for i, pt in enumerate(sweep_data):
         alpha  = pt['alpha']
+        a_star = pt.get('a_star', None)
         levels = pt['levels']
         row    = f"{alpha:>10.5g}  "
         for det_name, det in detectors:
-            d = best_d_max_for_alpha(levels, det, rho_star, level_label)
+            d = best_d_max_for_alpha(
+                levels, det, rho_star, level_label,
+                alpha=alpha, a_star=a_star,
+            )
             reach[det_name][i] = d
             tag = f"{d:.2e}" if np.isfinite(d) else "     ---"
             row += f"{tag:>14}  "
@@ -443,13 +559,7 @@ def run_alpha_reach_sweep(sweep_data, rho_star=1.0, include_ligo=True,
 # ═════════════════════════════════════════════════════════════════════════════
 
 def _rate_density_to_distance_kpc(rate_density_kpc):
-    """
-    Convert a uniform event-rate density [yr^-1 kpc^-3] to a
-    1-event-per-year radius [kpc].
-
-    Assumes sources are uniformly distributed in a sphere of radius d:
-        R = (4π/3) d³ × rate_density  →  d = (3 / (4π × rate_density))^(1/3)
-    """
+    """Convert rate density [yr^-1 kpc^-3] to 1-event/year radius [kpc]."""
     rate = float(rate_density_kpc)
     if rate > 0:
         return (3.0 / (4.0 * np.pi * rate)) ** (1.0 / 3.0)
@@ -468,26 +578,8 @@ def compute_merger_reach_fixed_mass(
     """
     Compute the 1-event/year PBH merger reach for a fixed post-merger mass.
 
-    Because M_BH is fixed, this returns a single distance value (not a curve),
-    which becomes a horizontal line on the alpha plot.
-
-    The component mass is taken as M_BH_solar / 2, consistent with the
-    convention in DetectorReach.py (post-merger mass ≈ sum of components).
-
-    Parameters
-    ----------
-    M_BH_solar       : float — fixed BH mass [M_sun]
-    a_star_threshold : float — spin threshold for the spin-cut version
-    spin_model       : str   — spin distribution model (see MergerRate.py)
-    mass_sigma       : float — log-normal width of the mass distribution
-    fpbh             : float — PBH dark matter fraction
-    t_over_t0        : float — time normalisation (1 = today)
-    rate_grid_points : int   — grid resolution for the rate integral
-
-    Returns
-    -------
-    reach_spin_kpc : float or nan — reach with spin-threshold applied
-    reach_all_kpc  : float or nan — reach with no spin cut
+    Returns two scalar distances (with and without a spin cut), which
+    become horizontal lines on the alpha plot.
     """
     component_mass = 0.5 * M_BH_solar
     m_min = component_mass * np.exp(-5.0 * mass_sigma)
@@ -504,7 +596,7 @@ def compute_merger_reach_fixed_mass(
             fpbh=fpbh, t_over_t0=t_over_t0, volume_unit='kpc',
         )
         reach_spin = _rate_density_to_distance_kpc(rate_spin)
-        print(f"  Merger reach (a* ≥ {a_star_threshold}):  {reach_spin:.3e} kpc")
+        print(f"  Merger reach (a* >= {a_star_threshold}):  {reach_spin:.3e} kpc")
     except Exception as exc:
         print(f"  [WARN] Merger reach (spin cut) failed: {exc}")
 
@@ -529,7 +621,6 @@ def compute_merger_reach_fixed_mass(
 # Plotting
 # ═════════════════════════════════════════════════════════════════════════════
 
-# Colour and line style per detector name
 _DET_STYLE = {
     'ADMX-EFR'   : {'color': 'steelblue', 'ls': '-'},
     'DMRadio-GUT': {'color': 'teal',       'ls': '-'},
@@ -551,22 +642,22 @@ def plot_alpha_reach(
     savepath=None,
 ):
     """
-    Plot d_max vs alpha for all detectors and (optionally) the PBH merger line.
+    Plot d_max vs alpha (linear x, log y) with axion mass on a top axis.
 
     Parameters
     ----------
-    alphas        : np.ndarray — alpha grid from run_alpha_reach_sweep()
-    reach         : dict       — {detector_name: d_max array}
-    M_BH_solar    : float      — fixed BH mass (shown in title)
-    process_label : str        — LaTeX description of the SR process
-    show_merger_reach : bool   — overlay horizontal merger rate line
-    merger_*      : various    — merger rate parameters (see compute_merger_reach_fixed_mass)
-    xlim, ylim    : tuple or None — axis limits; auto if None
-    savepath      : str or None  — file path to save; not saved if None
+    alphas        : np.ndarray
+    reach         : dict -- {detector_name: d_max array [kpc]}
+    M_BH_solar    : float -- fixed BH mass [M_sun], used to scale top axis
+    process_label : str   -- passed in but not used as a title
+    show_merger_reach     : bool
+    merger_*              : merger rate parameters
+    xlim, ylim    : tuple or None
+    savepath      : str or None
 
     Returns
     -------
-    fig, ax : matplotlib Figure and Axes
+    fig, ax
     """
     plt.rcParams.update({
         "text.usetex"        : True,
@@ -576,22 +667,22 @@ def plot_alpha_reach(
     })
 
     fig, ax = plt.subplots(figsize=(6, 4.5))
-    fig.subplots_adjust(top=0.82)
+    fig.subplots_adjust(top=0.88)
 
-    # ── Detector reach curves ─────────────────────────────────────────────────
+    # ── Detector reach curves (linear x, log y) ───────────────────────────────
     for det_name, d_arr in reach.items():
         style = _DET_STYLE.get(det_name, {'color': 'gray', 'ls': '-'})
         mask  = np.isfinite(d_arr) & (d_arr > 0)
         if not mask.any():
             print(f"  [INFO] {det_name}: no finite d_max values to plot.")
             continue
-        ax.loglog(alphas[mask], d_arr[mask],
-                  color=style['color'],
-                  ls=style['ls'],
-                  linewidth=2.0,
-                  label=det_name)
+        ax.semilogy(alphas[mask], d_arr[mask],
+                    color=style['color'],
+                    ls=style['ls'],
+                    linewidth=2.0,
+                    label=det_name)
 
-    # ── PBH merger reach — horizontal line (constant mass) ───────────────────
+    # ── PBH merger reach -- horizontal line ───────────────────────────────────
     if show_merger_reach:
         print("Computing PBH merger reach for fixed mass...")
         reach_spin, reach_all = compute_merger_reach_fixed_mass(
@@ -603,7 +694,6 @@ def plot_alpha_reach(
             t_over_t0=merger_t_over_t0,
             rate_grid_points=merger_rate_grid_points,
         )
-
         if np.isfinite(reach_spin):
             ax.axhline(
                 reach_spin,
@@ -626,15 +716,24 @@ def plot_alpha_reach(
     if ylim is not None:
         ax.set_ylim(*ylim)
 
-    ax.legend(fontsize=9, loc='best', frameon=False)
-    ax.grid(True, which='both', alpha=0.25, linestyle='--')
+    # ── Top x-axis: axion mass mu [eV] = alpha / r_g(M_BH) ───────────────────
+    # r_g is constant for fixed M_BH, so mu is a linear rescaling of alpha.
+    r_g_m      = _G_SI * M_BH_solar * _M_SUN_KG / _C_SI**2   # [m]
+    r_g_eV_inv = r_g_m / _HBAR_C_EV_M                         # [eV^-1]
 
-    mass_str = f'{M_BH_solar:.2g}'
-    ax.set_title(
-        process_label + '\n'
-        + rf'$M_{{\rm BH}} = {mass_str}\,M_\odot$',
-        fontsize=10, pad=6,
+    ax_top = ax.secondary_xaxis(
+        'top',
+        functions=(
+            lambda a: np.asarray(a, dtype=float) / r_g_eV_inv,
+            lambda mu: np.asarray(mu, dtype=float) * r_g_eV_inv,
+        ),
     )
+    ax_top.set_xlabel(r'$\mu_a\ [\mathrm{eV}]$', fontsize=13, labelpad=6)
+
+    # ── Legend and grid ───────────────────────────────────────────────────────
+    ax.legend(fontsize=9, loc='best', frameon=False)
+    ax.grid(True, which='major', alpha=0.25, linestyle='--')
+    ax.grid(True, which='minor', alpha=0.10, linestyle=':', axis='y')
 
     plt.tight_layout()
 
@@ -650,25 +749,25 @@ def plot_alpha_reach(
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# Main — edit ONLY this block
+# Main -- edit ONLY this block
 # ═════════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
 
     # ── Fixed physical parameters ─────────────────────────────────────────────
-    M_BH_SOLAR = 1e-6           # BH mass [solar masses] — fixed across the sweep
-    PROCESS    = 'transitions' # 'annihilation' or 'transitions'
+    M_BH_SOLAR = 1e-6           # BH mass [solar masses] -- fixed across the sweep
+    PROCESS    = 'transitions'  # 'annihilation' or 'transitions'
 
     # ── Level selection ───────────────────────────────────────────────────────
-    # Set to a label string (e.g. '|211⟩') to plot a single SR level.
+    # Set to a label string (e.g. '|211>') to plot a single SR level.
     # Set to None to plot the envelope over all levels (strongest per alpha).
-    LEVEL = '|644⟩→|544⟩'
-
-    # ── Data directory  (output of run_alpha_sweep in superradiance_simulation.py)
+    LEVEL = '|644\u27e9\u2192|544\u27e9'   # |644>->|544>
+    # LEVEL = '|211\u27e9'
+    # ── Data directory (output of run_alpha_sweep in superradiance_simulation.py)
     DATA_DIR = 'Sem 2/8. Numerical Simulations/Data/alpha_sweep'
 
     # ── Detection threshold ───────────────────────────────────────────────────
-    RHO_STAR = 1.0              # SNR threshold ρ*
+    RHO_STAR = 1.0              # SNR threshold rho*
 
     # ── Merger rate parameters ────────────────────────────────────────────────
     SHOW_MERGER_REACH       = True
@@ -684,7 +783,7 @@ if __name__ == '__main__':
     XLIM     = None     # e.g. (0.001, 1.5); set None for auto
     YLIM     = None     # e.g. (1e-3, 1e6);  set None for auto
 
-    level_str = f' — level {LEVEL}' if LEVEL is not None else ' (all levels)'
+    level_str = f' -- level {LEVEL}' if LEVEL is not None else ' (all levels)'
     process_label = (
         rf'Axion cloud annihilation{level_str}'
         if PROCESS == 'annihilation'
@@ -693,7 +792,7 @@ if __name__ == '__main__':
 
     # ── Load data ─────────────────────────────────────────────────────────────
     print("=" * 65)
-    print(f"Alpha reach sweep  —  {PROCESS}  —  M_BH = {M_BH_SOLAR} M_sun")
+    print(f"Alpha reach sweep  --  {PROCESS}  --  M_BH = {M_BH_SOLAR} M_sun")
     print("=" * 65)
     print(f"\nLoading alpha-sweep data from '{DATA_DIR}'...")
     sweep_data = load_all_sweep_files(DATA_DIR, process=PROCESS,

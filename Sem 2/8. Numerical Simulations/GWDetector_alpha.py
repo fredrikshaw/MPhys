@@ -107,9 +107,44 @@ _G_SI        = 6.674e-11    # m^3 kg^-1 s^-2
 _C_SI        = 2.998e8      # m s^-1
 _M_SUN_KG    = 1.989e30     # kg
 _HBAR_C_EV_M = 1.973e-7     # hbar*c in eV*m
+_EV_TO_J     = 1.602176634e-19  # J per eV
+_H_PLANCK    = 6.62607015e-34   # J s
+
+# For annihilation: f_GW = 2 * mu_a * eV / h  (~4.836e14 Hz/eV)
+# (For transitions the GW freq depends on the level splitting, so this
+#  top axis is exact for annihilation and approximate for transitions.)
+_MU_TO_FGW = 2.0 * _EV_TO_J / _H_PLANCK   # Hz per eV
 
 # Maximum t_peak: signals peaking later than this are excluded
 T_PEAK_MAX_YR = 1e9         # [yr]
+
+
+def _detector_max_freq_hz(det, f_lo=1.0, f_hi=1e18, n_pts=2000):
+    """
+    Find the maximum frequency [Hz] at which a detector has a finite,
+    positive noise PSD, by scanning a log-spaced frequency grid.
+
+    Parameters
+    ----------
+    det   : MagneticWeberBar | str
+    f_lo  : float — lower bound of scan [Hz]
+    f_hi  : float — upper bound of scan [Hz]
+    n_pts : int   — number of grid points
+
+    Returns
+    -------
+    f_max : float or nan
+    """
+    freqs = np.geomspace(f_lo, f_hi, n_pts)
+    f_max = np.nan
+    for f in freqs:
+        try:
+            s = _get_noise(det, f)
+            if np.isfinite(s) and s > 0:
+                f_max = f
+        except Exception:
+            pass
+    return f_max
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -630,6 +665,9 @@ _DET_STYLE = {
 
 def plot_alpha_reach(
     alphas, reach, M_BH_solar, process_label,
+    sweep_data=None,
+    level_label=None,
+    a_star=None,
     show_merger_reach=True,
     merger_spin_threshold=0.6,
     merger_spin_model='matched',
@@ -642,17 +680,32 @@ def plot_alpha_reach(
     savepath=None,
 ):
     """
-    Plot d_max vs alpha (linear x, log y) with axion mass on a top axis.
+    Plot d_max vs mu_a [eV] (linear x, log y) with f_GW on a top axis.
+
+    Vertical annotations
+    --------------------
+    - One vertical line per detector at its maximum sensitive frequency,
+      colour-matched to the detector curve, labelled 'f_max'.
+    - One vertical dashed line at the superradiance boundary:
+      alpha_SR = m * a_star / (2*(1+sqrt(1-a_star^2))), converted to mu_a.
+    - One vertical line at the cosmological time boundary (the lowest mu_a
+      where t_peak_yr <= T_PEAK_MAX_YR); the region to the left is shaded
+      red to indicate excluded signals.
 
     Parameters
     ----------
     alphas        : np.ndarray
     reach         : dict -- {detector_name: d_max array [kpc]}
-    M_BH_solar    : float -- fixed BH mass [M_sun], used to scale top axis
-    process_label : str   -- passed in but not used as a title
+    M_BH_solar    : float -- fixed BH mass [M_sun]
+    process_label : str
+    sweep_data    : list or None -- output of load_all_sweep_files(); needed
+                    for the t_peak boundary line
+    level_label   : str or None -- label of the selected SR level; needed
+                    for the t_peak and SR boundary lines
+    a_star        : float or None -- BH spin; needed for the SR boundary
     show_merger_reach     : bool
     merger_*              : merger rate parameters
-    xlim, ylim    : tuple or None
+    xlim, ylim    : tuple or None -- in mu_a [eV] and kpc respectively
     savepath      : str or None
 
     Returns
@@ -669,14 +722,19 @@ def plot_alpha_reach(
     fig, ax = plt.subplots(figsize=(6, 4.5))
     fig.subplots_adjust(top=0.88)
 
-    # ── Detector reach curves (linear x, log y) ───────────────────────────────
+    # ── Convert alpha grid to axion mass (bottom axis units) ──────────────────
+    r_g_m      = _G_SI * M_BH_solar * _M_SUN_KG / _C_SI**2   # [m]
+    r_g_eV_inv = r_g_m / _HBAR_C_EV_M                         # [eV^-1]
+    mu_a       = alphas / r_g_eV_inv                           # [eV]
+
+    # ── Detector reach curves (linear mu_a x-axis, log y) ────────────────────
     for det_name, d_arr in reach.items():
         style = _DET_STYLE.get(det_name, {'color': 'gray', 'ls': '-'})
         mask  = np.isfinite(d_arr) & (d_arr > 0)
         if not mask.any():
             print(f"  [INFO] {det_name}: no finite d_max values to plot.")
             continue
-        ax.semilogy(alphas[mask], d_arr[mask],
+        ax.semilogy(mu_a[mask], d_arr[mask],
                     color=style['color'],
                     ls=style['ls'],
                     linewidth=2.0,
@@ -707,31 +765,92 @@ def plot_alpha_reach(
                 label='PBH mergers, no spin cut',
             )
 
-    # ── Axis labels and limits ────────────────────────────────────────────────
-    ax.set_xlabel(r'$\alpha = G M_{\rm BH} \mu / \hbar c$', fontsize=13)
-    ax.set_ylabel(r'$d_{\rm max}\ [\mathrm{kpc}]$',         fontsize=13)
+    # ── Bottom axis: axion mass mu_a [eV] ────────────────────────────────────
+    ax.set_xlabel(r'$\mu_a\ [\mathrm{eV}]$', fontsize=13)
+    ax.set_ylabel(r'$d_{\rm max}\ [\mathrm{kpc}]$', fontsize=13)
 
     if xlim is not None:
         ax.set_xlim(*xlim)
-    if ylim is not None:
-        ax.set_ylim(*ylim)
+    else:
+        all_mu = [mu_a[np.isfinite(d) & (d > 0)] for d in reach.values()]
+        all_mu = np.concatenate([m for m in all_mu if len(m) > 0])
+        if len(all_mu) > 0:
+            span = all_mu.max() - all_mu.min()
+            ax.set_xlim(all_mu.min() - 0.05 * span, all_mu.max() + 0.05 * span)
 
-    # ── Top x-axis: axion mass mu [eV] = alpha / r_g(M_BH) ───────────────────
-    # r_g is constant for fixed M_BH, so mu is a linear rescaling of alpha.
-    r_g_m      = _G_SI * M_BH_solar * _M_SUN_KG / _C_SI**2   # [m]
-    r_g_eV_inv = r_g_m / _HBAR_C_EV_M                         # [eV^-1]
-
+    # ── Top axis: GW frequency f_GW [Hz] = 2 * mu_a * eV / h ────────────────
+    # Exact for annihilation (f_GW = 2 mu_a); approximate for transitions.
     ax_top = ax.secondary_xaxis(
         'top',
         functions=(
-            lambda a: np.asarray(a, dtype=float) / r_g_eV_inv,
-            lambda mu: np.asarray(mu, dtype=float) * r_g_eV_inv,
+            lambda mu: np.asarray(mu, dtype=float) * _MU_TO_FGW,
+            lambda f:  np.asarray(f,  dtype=float) / _MU_TO_FGW,
         ),
     )
-    ax_top.set_xlabel(r'$\mu_a\ [\mathrm{eV}]$', fontsize=13, labelpad=6)
+    ax_top.set_xlabel(r'$f_{\rm GW}\ [\mathrm{Hz}]$', fontsize=13, labelpad=6)
+
+    # ── Vertical line 1: max sensitive frequency per detector ─────────────────
+    # Each detector gets a vertical line at the mu_a corresponding to its
+    # highest in-band frequency, colour-matched to its reach curve.
+    print("  Finding detector maximum frequencies...")
+    all_detectors = [(det.name, det) for det in MWB_DETECTORS]
+    all_detectors += [(ifo.name, key) for key, ifo in IFO_DETECTORS.items()]
+    for det_name, det in all_detectors:
+        style  = _DET_STYLE.get(det_name, {'color': 'gray', 'ls': '-'})
+        f_max  = _detector_max_freq_hz(det)
+        if not np.isfinite(f_max):
+            continue
+        # Convert: mu_a [eV] = f_GW [Hz] / _MU_TO_FGW
+        mu_max = f_max / _MU_TO_FGW
+        ax.axvline(mu_max,
+                   color=style['color'], linewidth=1.2,
+                   linestyle=':', alpha=0.8,
+                   label=rf'{det_name} $f_{{\rm max}}$')
+        print(f"    {det_name}: f_max = {f_max:.3e} Hz  →  mu_max = {mu_max:.3e} eV")
+
+    # ── Vertical line 2: superradiance boundary ───────────────────────────────
+    # alpha_SR = m * a_star / (2*(1+sqrt(1-a_star^2)))
+    # mu_SR    = alpha_SR / r_g_eV_inv
+    if level_label is not None and a_star is not None:
+        m = _parse_m_from_label(level_label)
+        if m is not None and a_star > 0:
+            alpha_sr = (m * a_star
+                        / (2.0 * (1.0 + np.sqrt(max(0.0, 1.0 - a_star**2)))))
+            mu_sr = alpha_sr / r_g_eV_inv
+            ax.axvline(mu_sr,
+                       color='darkorange', linewidth=1.5, linestyle='--',
+                       label=r'SR boundary ($\alpha = m\,\Omega_H$)')
+            print(f"  SR boundary: alpha_SR = {alpha_sr:.4f}  →  mu_SR = {mu_sr:.3e} eV")
+
+    # ── Vertical line 3: cosmological time cutoff, with red shading ───────────
+    # Find the smallest mu_a where t_peak_yr <= T_PEAK_MAX_YR for the
+    # selected level.  Everything to the LEFT is excluded (too slow to peak).
+    if sweep_data is not None and level_label is not None:
+        mu_tpeak_boundary = np.nan
+        for pt in sweep_data:                   # sweep_data is sorted by alpha
+            levels_here = [lev for lev in pt['levels']
+                           if lev['label'] == level_label]
+            if not levels_here:
+                continue
+            t_pk = levels_here[0]['t_peak_yr']
+            if t_pk <= T_PEAK_MAX_YR:
+                # This is the first (lowest) alpha where the signal is fast enough
+                mu_tpeak_boundary = pt['alpha'] / r_g_eV_inv
+                break
+
+        if np.isfinite(mu_tpeak_boundary):
+            ax.axvline(mu_tpeak_boundary,
+                       color='red', linewidth=1.5, linestyle='-',
+                       label=rf'$t_{{\rm peak}} = 10^{{{int(np.log10(T_PEAK_MAX_YR))}}}$ yr')
+            # Shade the excluded region to the left
+            x_lo = ax.get_xlim()[0] if xlim is None else xlim[0]
+            ax.axvspan(x_lo, mu_tpeak_boundary,
+                       color='red', alpha=0.12, zorder=0)
+            print(f"  t_peak boundary: mu = {mu_tpeak_boundary:.3e} eV  "
+                  f"(T_PEAK_MAX_YR = {T_PEAK_MAX_YR:.1e} yr)")
 
     # ── Legend and grid ───────────────────────────────────────────────────────
-    ax.legend(fontsize=9, loc='best', frameon=False)
+    ax.legend(fontsize=8, loc='best', frameon=False)
     ax.grid(True, which='major', alpha=0.25, linestyle='--')
     ax.grid(True, which='minor', alpha=0.10, linestyle=':', axis='y')
 
@@ -847,7 +966,7 @@ if __name__ == '__main__':
     #   LEVEL_SHORTHAND = '3d'       →  annihilation  |322⟩
     #   LEVEL_SHORTHAND = '6g 5g'    →  transitions   |644⟩→|544⟩
     #   LEVEL_SHORTHAND = '4f 3d'    →  transitions   |433⟩→|322⟩
-    LEVEL_SHORTHAND = '6g 5g'
+    LEVEL_SHORTHAND = '3d'
 
     if LEVEL_SHORTHAND is not None:
         PROCESS, LEVEL = resolve_level(LEVEL_SHORTHAND)
@@ -901,6 +1020,9 @@ if __name__ == '__main__':
     print("Plotting...")
     plot_alpha_reach(
         alphas, reach, M_BH_SOLAR, process_label,
+        sweep_data              = sweep_data,
+        level_label             = LEVEL,
+        a_star                  = sweep_data[0]['a_star'] if sweep_data else None,
         show_merger_reach       = SHOW_MERGER_REACH,
         merger_spin_threshold   = MERGER_SPIN_THRESHOLD,
         merger_spin_model       = 'matched',

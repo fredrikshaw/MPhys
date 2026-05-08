@@ -350,7 +350,8 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         Mtil    = max(y[N_LEVELS],     1e-9)
         astar   = float(np.clip(y[N_LEVELS + 1], 0.0, 0.99999))
 
-        N_arr = np.exp(lnN_arr)
+        # After
+        N_arr = np.exp(np.clip(lnN_arr, None, 700.0))
         alpha = alpha_0 * Mtil
 
         # SR rates
@@ -376,8 +377,11 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         dMtil = -(alpha_0 / M0**2) * np.dot(g_sr_arr, N_arr)
 
         # BH spin (SR only)
-        dastar = (np.dot(g_sr_arr * N_arr, 2.0 * alpha * astar - _M_ARR)
-                  / (M0**2 * Mtil**2))
+        with np.errstate(over='ignore', invalid='ignore'):
+            dastar = (np.dot(g_sr_arr * N_arr, 2.0 * alpha * astar - _M_ARR)
+                    / (M0**2 * Mtil**2))
+        if not np.isfinite(dastar):
+            dastar = 0.0
 
         return list(dlnN_arr) + [dMtil, dastar]
 
@@ -1184,7 +1188,7 @@ def run_alpha_sweep(M_BH_solar, a_star_0, max_n,
         output_dir = os.path.join(_THIS_DIR, 'Data', 'alpha_sweep')
     os.makedirs(output_dir, exist_ok=True)
 
-    alpha_grid = np.geomspace(alpha_min, alpha_max, n_alpha_points)
+    alpha_grid = np.linspace(alpha_min, alpha_max, n_alpha_points)
 
     print("=" * 65)
     print(f"Alpha sweep: {n_alpha_points} points  "
@@ -1228,14 +1232,14 @@ def main():
     # ── Physical input parameters — edit these ────────────────────────
     M_BH_SOLAR = 1e-6
     A_STAR_0   = 0.65
-    ALPHA_0    = 0.1      # used for the single-run path only
-    MAX_N      = 6
+    ALPHA_0    = 0.15      # used for the single-run path only
+    MAX_N      = 8
 
     # ── Alpha sweep parameters ────────────────────────────────────────
     RUN_ALPHA_SWEEP = True   # set True to run the sweep instead of a single sim
     N_ALPHA_POINTS  = 4      # number of geometrically-spaced alpha values
-    ALPHA_MIN       = 0.001   # lower bound of the sweep
-    ALPHA_MAX       = 1.0     # upper bound of the sweep
+    ALPHA_MIN       = 0.2   # lower bound of the sweep
+    ALPHA_MAX       = 0.3     # upper bound of the sweep
 
     if RUN_ALPHA_SWEEP:
         run_alpha_sweep(

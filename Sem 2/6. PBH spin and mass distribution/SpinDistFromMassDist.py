@@ -157,10 +157,10 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 		raise ValueError("mass_xlim_quantile must be in (0, 1) or None")
 
 	if include_mass_hist:
-		fig, axes = plt.subplots(2, 1, figsize=(10, 10))
+		fig, axes = plt.subplots(2, 1, figsize=(6, 10))
 		ax_spin, ax_mass = axes
 	else:
-		fig, ax_spin = plt.subplots(figsize=(10, 6))
+		fig, ax_spin = plt.subplots(figsize=(4.5, 4.5))
 
 	# Compute all histograms first for independent normalization
 	spin_hists = []
@@ -204,19 +204,19 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 			linewidth=1.5,
 			label=rf"$\sigma={sigma}$",
 		)
-
-	ax_spin.set_xlabel(r"Matched final spin $a_{*,f}$", fontsize=12)
-	ax_spin.set_ylabel("Peak-normalized value", fontsize=12)
-	ax_spin.set_title(
+	ax_spin.set_xlim(0.6, 0.7)
+	ax_spin.set_xlabel(r" $\tilde a_{f}$", fontsize=14)
+	ax_spin.set_ylabel("Peak-normalized value", fontsize=14)
+	"""ax_spin.set_title(
 		rf"Peak-normalized histogram of matched $a_{{*,f}}$ "
 		rf"($N={n_sci}$, $M_c={M_central}$)",
 		fontsize=13,
-	)
+	)"""
 	if log_y:
 		ax_spin.set_yscale("log")
 		ax_spin.set_ylim(log_floor, 1.1)
 	ax_spin.grid(alpha=0.3)
-	ax_spin.legend(fontsize=10)
+	ax_spin.legend(fontsize=12)
 
 	# Plot normalized mass histograms
 	if include_mass_hist:
@@ -358,14 +358,14 @@ def plot_all_a_star_models(
 
 
 if __name__ == "__main__":
-	plot_all_a_star_models(save_fig=True, show=True)
+	plot_all_a_star_models(save_fig=True, show=False)
 	plot_matched_spin_histogram_from_lognormal_mergers(
 		N_mergers=2000000,
 		M_central=1e6,
-		sigma_values=[0.1, 0.5, 1.0],
-		bins=500,
-		save_fig=False,
-		include_mass_hist=True,
+		sigma_values=[0.05, 0.1, 0.2],
+		bins=2000,
+		save_fig=True,
+		include_mass_hist=False,
 		log_y=True,
-		show=False,
+		show=True,
 	)

@@ -140,6 +140,57 @@ def calc_h_peak_and_fwhm(times, log_h):
     return h_peak, t_peak, float(t_right - t_left)
 
 
+def calc_h_peak_fwhm_bounds(times, log_h):
+    """Return (h_peak, t_peak, fwhm_years, t_left, t_right) for the strain time series."""
+    t = np.asarray(times, dtype=float)
+    hs = np.asarray(log_h, dtype=float)
+
+    valid = np.isfinite(t) & np.isfinite(hs)
+    if not np.any(valid):
+        return np.nan, np.nan, np.nan, np.nan, np.nan
+
+    t = t[valid]
+    hs = hs[valid]
+    if t.size < 3:
+        return np.nan, np.nan, np.nan, np.nan, np.nan
+
+    peak_idx = int(np.argmax(hs))
+    h_peak = float(hs[peak_idx])
+    t_peak = float(t[peak_idx])
+
+    if not np.isfinite(h_peak):
+        return h_peak, t_peak, np.nan, np.nan, np.nan
+
+    log_half = h_peak + np.log10(0.5)
+
+    t_left = None
+    for i in range(peak_idx, 0, -1):
+        y0, y1 = hs[i - 1], hs[i]
+        if (y0 - log_half) * (y1 - log_half) <= 0:
+            if y1 == y0:
+                t_left = float(t[i])
+            else:
+                frac = (log_half - y0) / (y1 - y0)
+                t_left = float(t[i - 1] + frac * (t[i] - t[i - 1]))
+            break
+
+    t_right = None
+    for i in range(peak_idx, hs.size - 1):
+        y0, y1 = hs[i], hs[i + 1]
+        if (y0 - log_half) * (y1 - log_half) <= 0:
+            if y1 == y0:
+                t_right = float(t[i])
+            else:
+                frac = (log_half - y0) / (y1 - y0)
+                t_right = float(t[i] + frac * (t[i + 1] - t[i]))
+            break
+
+    if t_left is None or t_right is None:
+        return h_peak, t_peak, np.nan, (t_left if t_left is not None else np.nan), (t_right if t_right is not None else np.nan)
+
+    return h_peak, t_peak, float(t_right - t_left), float(t_left), float(t_right)
+
+
 def _find_sr_file(n: int, l: int, m: int, bh_spin: float, sr_data_dir: Path) -> Path:
     """Find the SR file for mode (n,l,m) and exact a*, preferring the newest date."""
     spin_text = f"{bh_spin:.3f}"
@@ -180,6 +231,18 @@ def parse_level(level_str):
     if l is None:
         raise ValueError(f"Unknown orbital letter: {l_letter}")
     return n, l
+
+
+def get_time_unit_config(time_unit="years"):
+    time_unit = str(time_unit).strip().lower()
+
+    if time_unit in {"year", "years", "yr", "yrs"}:
+        return 1.0, "years"
+
+    if time_unit in {"second", "seconds", "sec", "secs", "s"}:
+        return 365.25 * 24 * 3600, "seconds"
+
+    raise ValueError("time_unit must be 'years' or 'seconds'.")
 
 # ---------------------------------------------------------------
 #  MAIN SIMULATION
@@ -540,7 +603,7 @@ def scan_transitions_and_save(
 #  PLOTTING
 # ---------------------------------------------------------------
 
-def plot_results(results, save_filename=None):
+def plot_results(results, save_filename=None, time_unit="years", save_plot=False, output_filename=None, plots_subfolder="Plots"):
     
     plt.rcParams.update({
         "text.usetex": True,
@@ -565,6 +628,8 @@ def plot_results(results, save_filename=None):
     log_h = results['log_h'] * LOG10E
     params = results['parameters']
     status = results['status']
+    time_scale, time_unit_label = get_time_unit_config(time_unit)
+    plot_times = times * time_scale
 
     # Detect collapse of N_e (minimum)
     # collapse_index = np.argmin(log_num_e)
@@ -615,93 +680,168 @@ def plot_results(results, save_filename=None):
     print(f"Transition frequency: {params['omega']:.2e} eV ({transition_frequency_hz:.2e} GHz)")
 
     # Strain summary: peak and full width at half maximum.
-    h_peak, t_peak, h_fwhm = calc_h_peak_and_fwhm(times, log_h)
-    years_to_seconds = 365.25 * 24 * 3600
-    t_peak_seconds = t_peak * years_to_seconds
-    print(f"\nPeak strain h_max: {h_peak:.3e} (dimensionless) at t = {t_peak:.3e} years ({t_peak_seconds:.3e} s)")
+    h_peak, t_peak, h_fwhm, t_left, t_right = calc_h_peak_fwhm_bounds(times, log_h)
+    t_peak_display = t_peak * time_scale
+    print(f"\nPeak strain h_max: {h_peak:.3e} (dimensionless) at t = {t_peak_display:.3e} {time_unit_label}")
     if np.isfinite(h_fwhm):
-        h_fwhm_seconds = h_fwhm * years_to_seconds
-        print(f"Strain FWHM: {h_fwhm:.3e} years ({h_fwhm_seconds:.3e} s)")
+        h_fwhm_display = h_fwhm * time_scale
+        print(f"Strain FWHM: {h_fwhm_display:.3e} {time_unit_label}")
     else:
         print("Strain FWHM: not defined in sampled time window")
 
     print("="*60 + "\n")
 
-    fig, ax1 = plt.subplots()
+    fig, ax1 = plt.subplots(figsize=(6, 6))
     
     # Plot with clear labels for legend
-    ax1.plot(times, log_num_g, label=r'$\log_{10}	 N_g$', color='blue')
-    ax1.plot(times, log_num_e, label=r'$\log_{10}	 N_e$', color='orange')
+    ax1.plot(plot_times, log_num_g, label=r'$\log_{10}\, N_g$', color='blue')
+    ax1.plot(plot_times, log_num_e, label=r'$\log_{10}\, N_e$', color='orange')
     
     # Create second y-axis for strain h
     ax2 = ax1.twinx()
-    ax2.plot(times, log_h, label=r'$\log_{10}	 h$', color='black', alpha=0.7, linestyle="dashed")
+    ax2.plot(plot_times, log_h, label=r'$\log_{10}\, h$', color='black', alpha=0.7)
     
     # Set scales and labels
     # ax1.set_yscale('log')
-    ax1.set_ylabel(r'Occupation Number $\log_{10}	 N$')
-    ax1.set_xlabel("Time [years]")
+    ax1.set_ylabel(r'Occupation Number $\log_{10}\, N$')
+    ax1.set_xlabel(f"Time [{time_unit_label}]")
     # ax1.set_ylim(1e25, 1e45)
     # ax1.set_xlim(xlim)
     ax1.grid()
     
-    ax2.set_ylabel(r'Strain $\log_{10}	 h$', color='black')
+    ax2.set_ylabel(r'Strain $\log_{10}\, h$', color='black')
     ax2.tick_params(axis='y', labelcolor='black')
     # ax2.set_yscale('log')
     # ax2.set_ylim(h_ylim)
     for label in ax2.get_yticklabels()[::2]:
         label.set_visible(False)
+
+    # Draw FWHM dotted line on strain axis and crop x-limits to FWHM +/- half-FWHM
+    fwhm_proxy = None
+    if np.isfinite(t_left) and np.isfinite(t_right) and np.isfinite(h_peak):
+        time_left = t_left * time_scale
+        time_right = t_right * time_scale
+        half_max = h_peak + np.log10(0.5)
+        ax2.hlines(
+            half_max,
+            time_left,
+            time_right,
+            colors='black',
+            linestyles=':',
+            linewidth=2,
+            label='_nolegend_',
+        )
+        from matplotlib.lines import Line2D
+        fwhm_proxy = Line2D([
+        ], [], color='black', linestyle=':', linewidth=2, label=r'$\tau_{\text{FWHM}}$')
+
+    # Determine x-limits (display units) from FWHM
+    x_min = None
+    x_max = None
+    if np.isfinite(t_left) and np.isfinite(t_right) and np.isfinite(h_fwhm):
+        x_min = max(0.0, (t_left - 15.0 * h_fwhm) * time_scale)
+        x_max = (t_right + 0.5 * h_fwhm) * time_scale
+
+    # Helper: set tight y-limits from provided values
+    def set_tight_ylim(axis, values, pad_fraction=0.08, min_pad=0.25):
+        finite_values = np.asarray(values, dtype=float)
+        finite_values = finite_values[np.isfinite(finite_values)]
+        if finite_values.size == 0:
+            return
+
+        y_min = float(np.min(finite_values))
+        y_max = float(np.max(finite_values))
+        span = y_max - y_min
+        pad = max(span * pad_fraction, min_pad)
+        if span == 0:
+            pad = min_pad
+
+        axis.set_ylim(y_min - pad, y_max + pad)
+
+    # Choose data inside x-limits for y-limits; fall back to full data if mask empty
+    if x_min is not None and x_max is not None and x_max > x_min:
+        mask = (plot_times >= x_min) & (plot_times <= x_max)
+        if np.any(mask):
+            vals_ax1 = np.concatenate([log_num_g[mask], log_num_e[mask]])
+            vals_ax2 = log_h[mask]
+        else:
+            vals_ax1 = np.concatenate([log_num_g, log_num_e])
+            vals_ax2 = log_h
+    else:
+        vals_ax1 = np.concatenate([log_num_g, log_num_e])
+        vals_ax2 = log_h
+
+    set_tight_ylim(ax1, vals_ax1)
+    set_tight_ylim(ax2, vals_ax2)
+
+    # Apply x-limits if computed
+    if x_min is not None and x_max is not None and x_max > x_min:
+        ax1.set_xlim(x_min, x_max)
     
     # Combine legends from both axes
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, 
-               loc='best', frameon=False)
+    if fwhm_proxy is not None:
+        lines2 = lines2 + [fwhm_proxy]
+        labels2 = labels2 + [fwhm_proxy.get_label()]
+    # Force legend to top-right to avoid overlapping the top-left transition label
+    ax1.legend(lines1 + lines2, labels1 + labels2,
+            loc='lower left', frameon=True)
     
     # Add comparison text as annotation on plot with LaTeX formatting
-    if gamma_e is not None and gamma_g is not None:
-        if gamma_e > gamma_g:
-            comp_text = r'$\Gamma_e^{\text{sr}} > \Gamma_g^{\text{sr}}$'
-        elif gamma_e < gamma_g:
-            comp_text = r'$\Gamma_g^{\text{sr}} > \Gamma_e^{\text{sr}}$'
-        else:
-            comp_text = r'$\Gamma_e^{\text{sr}} = \Gamma_g^{\text{sr}}$'
+    # if gamma_e is not None and gamma_g is not None:
+    #     if gamma_e > gamma_g:
+    #         comp_text = r'$\Gamma_e^{\text{sr}} > \Gamma_g^{\text{sr}}$'
+    #     elif gamma_e < gamma_g:
+    #         comp_text = r'$\Gamma_g^{\text{sr}} > \Gamma_e^{\text{sr}}$'
+    #     else:
+    #         comp_text = r'$\Gamma_e^{\text{sr}} = \Gamma_g^{\text{sr}}$'
         
-        # Place text in upper left corner
-        ax1.text(0.02, 0.98, comp_text,
-                transform=ax1.transAxes,
-                fontsize=14,
-                verticalalignment='top')
+    #     # Place text in upper left corner
+    #     ax1.text(0.02, 0.98, comp_text,
+    #             transform=ax1.transAxes,
+    #             fontsize=14,
+    #             verticalalignment='top')
     
-    # Use provided filename or construct one
-    if save_filename is None:
-        # Extract parameters for the file name
-        alpha = params.get('alpha', 'unknown')
-        bh_mass = params.get('bh_mass_sm', 'unknown')
-        spin = params.get('bh_spin', 'unknown')
-        transition = params.get('transition', 'unknown').replace(' ', '_')
+    # Annotate transition in top-left corner using LaTeX
+    try:
+        trans_label = rf"Transition: ${level_e} \rightarrow {level_g}$"
+        ax1.text(
+            0.02,
+            0.98,
+            trans_label,
+            transform=ax1.transAxes,
+            fontsize=14,
+            verticalalignment='top',
+            bbox=dict(facecolor='white', edgecolor='none', alpha=0.85, pad=0.3),
+        )
+    except Exception:
+        pass
 
-        # Construct the file name dynamically
-        file_name = f"plot_{transition}_alpha={alpha}_bhmass={bh_mass}_spin={spin}.pdf"
-    else:
-        file_name = save_filename
+    # Save to a Plots subfolder next to this script if requested
+    if save_plot:
+        script_dir = Path(__file__).resolve().parent
+        output_dir = script_dir / plots_subfolder
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Replace invalid characters in the file name (e.g., '/', ':', etc.)
-    import re
-    import os
-    file_name = re.sub(r'[^\w\-.]', '_', file_name)
-    
-    # Create subdirectory if it doesn't exist
-    subdirectory = "scripts/tranistionplots"
-    os.makedirs(subdirectory, exist_ok=True)
-    
-    # Create full path for saving
-    full_path = os.path.join(subdirectory, file_name)
+        if output_filename is None and save_filename is None:
+            alpha = params.get('alpha', 'unknown')
+            bh_mass = params.get('bh_mass_sm', 'unknown')
+            spin = params.get('bh_spin', 'unknown')
+            transition_safe = params.get('transition', 'unknown').replace(' ', '_')
+            file_name = f"plot_{transition_safe}_alpha={alpha}_bhmass={bh_mass}_spin={spin}.pdf"
+        elif output_filename is not None:
+            file_name = output_filename
+        else:
+            file_name = save_filename
 
-    # Save the plot with the dynamic file name
-    plt.tight_layout()
-    plt.savefig(full_path, dpi=300)  # Save the figure with high resolution
-    print(f"Plot saved as: {full_path}")
+        # sanitize
+        file_name = re.sub(r'[^\w\-.]', '_', file_name)
+        output_path = output_dir / file_name
+
+        plt.tight_layout()
+        fig.savefig(output_path, format='pdf', bbox_inches='tight')
+        print(f"Saved plot to: {output_path}")
 
     # Show the plot
     plt.show()
@@ -714,13 +854,14 @@ def plot_results(results, save_filename=None):
 
 if __name__ == "__main__":
     # Shared simulation parameters
-    alpha = 0.5
+    alpha = 0.15
     alpha_over_l = 0.15
     bh_spin = 0.65
     bh_mass_sm = 1e-6
-    transition = "7g 5g"
+    transition = "3p 2p"
     distance_kpc = 1
     t_max = None
+    time_unit = "years"
 
     # SR-rate source options:
     #   'cf'    -> use SuperradianceRateCF data files (default)
@@ -732,29 +873,29 @@ if __name__ == "__main__":
     sr_cf_file_g = None  # optional explicit path for ground mode SR file
 
     # Run simulation
-    # results = run_simulation(
-    #     alpha=alpha,
-    #     bh_spin=bh_spin,
-    #     bh_mass_sm=bh_mass_sm,
-    #     transition=transition,
-    #     t_max_years=t_max,
-    #     sr_rate_source=sr_rate_source,
-    #     sr_cf_method=sr_cf_method,
-    #     sr_cf_file_e=sr_cf_file_e,
-    #     sr_cf_file_g=sr_cf_file_g,
-    # )
-
-    peak_data = scan_transitions_and_save(
-        output_pickle=f"tran_peak_data_alpha_over_l_{str(alpha_over_l).replace('.','p')}.pkl",
-        transitions=available_transitions,
-        bh_mass_sm=bh_mass_sm,
+    results = run_simulation(
+        alpha=alpha,
         bh_spin=bh_spin,
-        alpha_over_l=alpha_over_l,
-        t_max_years=None,
-        n_points=int(1e7),
+        bh_mass_sm=bh_mass_sm,
+        transition=transition,
+        t_max_years=t_max,
         sr_rate_source=sr_rate_source,
-        distance_kpc=distance_kpc
+        sr_cf_method=sr_cf_method,
+        sr_cf_file_e=sr_cf_file_e,
+        sr_cf_file_g=sr_cf_file_g,
     )
 
+    # peak_data = scan_transitions_and_save(
+    #     output_pickle=f"tran_peak_data_alpha_over_l_{str(alpha_over_l).replace('.','p')}.pkl",
+    #     transitions=available_transitions,
+    #     bh_mass_sm=bh_mass_sm,
+    #     bh_spin=bh_spin,
+    #     alpha_over_l=alpha_over_l,
+    #     t_max_years=None,
+    #     n_points=int(1e7),
+    #     sr_rate_source=sr_rate_source,
+    #     distance_kpc=distance_kpc
+    # )
+
     # Plot results
-    # plot_results(results)
+    plot_results(results, time_unit=time_unit, save_plot=True)

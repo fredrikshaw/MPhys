@@ -120,9 +120,9 @@ def run_annihilation_analytic(
 ):
     n, l = parse_level(annihilation)
     m = l
-    print(annihilation)
-    print(n)
-    print(l)
+    # print(annihilation)
+    # print(n)
+    # print(l)
 
     kpc_to_meters = 3.085677581e19
     meters_to_ev = 1 / 1.973269804e-7
@@ -270,19 +270,56 @@ def scan_annihilations_and_save(
                     "success": False,
                     "error": str(err),
                 }
-            print(f"h_peak: {peak_data[result_key]['h_peak_log10']}, t_fwhm_years: {peak_data[result_key]['t_fwhm_years']}, t_peak_years: {peak_data[result_key]['t_peak_years']}")
+            # print(f"h_peak: {peak_data[result_key]['h_peak_log10']}, t_fwhm_years: {peak_data[result_key]['t_fwhm_years']}, t_peak_years: {peak_data[result_key]['t_peak_years']}")
 
     with open(output_pickle, "wb") as f:
         pickle.dump(peak_data, f)
 
     print(f"\nSaved annihilation peak data to {output_pickle}")
+
+    # Print a summary table (match style of EvolutionOfLevelTransitions)
+    print("\nInput parameters:")
+    print(f"  bh_mass_sm    : {bh_mass_sm}")
+    print(f"  bh_spin       : {bh_spin}")
+    print(f"  alpha_over_ls : {alpha_over_ls}")
+    print(f"  distance_kpc  : {distance_kpc}")
+    print(f"  sr_rate_source: {sr_rate_source}")
+
+    header = f"{'Process':<20} {'h_peak':>12} {'h_peak_log10':>14} {'t_peak [yr]':>14} {'t_fwhm [yr]':>14} {'omega [eV]':>12} {'alpha':>10}"
+    print("\n" + header)
+    print("-" * len(header))
+    for annihilation in peak_data:
+        row = peak_data.get(annihilation, {})
+        params = row.get('parameters') or {}
+        h_peak = row.get('h_peak', np.nan)
+        h_peak_log10 = row.get('h_peak_log10', np.nan)
+        t_peak = row.get('t_peak_years', np.nan)
+        t_fwhm = row.get('t_fwhm_years', np.nan)
+        omega = params.get('omega', np.nan)
+        alpha = row.get('alpha', np.nan)
+
+        try:
+            print(
+                f"{annihilation:<20} "
+                f"{h_peak:>12.3e} "
+                f"{h_peak_log10:>14.3e} "
+                f"{t_peak:>14.3e} "
+                f"{t_fwhm:>14.3e} "
+                f"{omega:>12.3e} "
+                f"{alpha:>10.3e}"
+            )
+        except Exception:
+            # Fallback printing if values are non-numeric
+            print(f"{annihilation:<20} {h_peak!s:>12} {h_peak_log10!s:>14} {t_peak!s:>14} {t_fwhm!s:>14} {omega!s:>12} {alpha!s:>10}")
+
     return peak_data
 
 
 if __name__ == "__main__":
-    alpha_over_ls =  np.linspace(0.01, 0.2, 20)
+    alpha_over_ls = [0.15] # np.linspace(0.01, 0.2, 20)
     bh_spin = 0.65
     bh_mass_sm = 1e-6
+    distance_kpc = 1
 
     peak_data = scan_annihilations_and_save(
         output_pickle=f"ann_peak_data_alpha_over_l_{[str(alpha_over_ls).replace('.', 'p')[1:-1] if len(alpha_over_ls) == 1 else 'sweep'][0]}.pkl",
@@ -290,7 +327,7 @@ if __name__ == "__main__":
         bh_mass_sm=bh_mass_sm,
         bh_spin=bh_spin,
         alpha_over_ls=alpha_over_ls,
-        distance_kpc=10,
+        distance_kpc=distance_kpc,
         delta_a_star=None,
         sr_rate_source="hydrogen",
     )

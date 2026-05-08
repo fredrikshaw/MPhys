@@ -148,7 +148,7 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 		sigma_values = [0.1, 0.5, 1.0]
 
 	default_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-	colors = [default_cycle[i % len(default_cycle)] for i in range(len(sigma_values))]
+	colors = ["#2B7BB9", "#38A09C", "#6DAA65", "#D4A832", "#C85D38"]# [default_cycle[i % len(default_cycle)] for i in range(len(sigma_values))]
 	n_sci = f"{N_mergers:.2e}"
 	two_n_sci = f"{2 * N_mergers:.2e}"
 	if log_floor <= 0:
@@ -160,7 +160,7 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 		fig, axes = plt.subplots(2, 1, figsize=(6, 10))
 		ax_spin, ax_mass = axes
 	else:
-		fig, ax_spin = plt.subplots(figsize=(4.5, 4.5))
+		fig, ax_spin = plt.subplots(figsize=(6, 4.5))
 
 	# Compute all histograms first for independent normalization
 	spin_hists = []

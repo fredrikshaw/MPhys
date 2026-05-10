@@ -8,15 +8,44 @@ import re
 import pickle
 
 
-# Use ParamCalculator from Sem 2/0. Scripts from Sem 1
-current_dir = Path(__file__).resolve().parent
-sem2_dir = current_dir.parent
-param_dir = current_dir.parent / "0. Scripts from Sem 1"
-sys.path.insert(0, str(param_dir))
+# ================================================================
+#  USER CONFIG  –  set these two paths to match your project layout
+# ================================================================
 
-# Use CF SR rate utilities from Sem 2/2. Relativistic Superradiance Rate
-relativistic_dir = sem2_dir / "2. Relativistic Superradiance Rate"
-sys.path.insert(0, str(relativistic_dir))
+current_dir = Path(__file__).resolve().parent
+
+# Directory that contains ParamCalculator.py, ConvertedFunctions.py,
+# leaver_superradiance.py, etc.
+PARAM_DIR: Path = current_dir.parent / "0. Scripts from Sem 1"
+
+# Directory that contains SuperradianceRateCF.py.
+# Set this to wherever SuperradianceRateCF.py lives in your project.
+CF_MODULE_DIR: Path = current_dir.parent / "2. Relativistic Superradiance Rate"
+
+# Directory that contains the SR .dat data files consumed by
+# SuperradianceRateCF.  Files are expected to follow the naming convention:
+#   SR_n{n}l{l}m{m}_at{a*}_aMin{...}_aMax{...}_{YYYYMMDD}.dat
+SR_DATA_DIR: Path = CF_MODULE_DIR / "Mathematica" / "Data"
+
+# ================================================================
+
+# Add module directories to the search path (prepend so they take priority)
+for _p in (PARAM_DIR, CF_MODULE_DIR):
+    _p_str = str(_p)
+    if _p_str not in sys.path:
+        sys.path.insert(0, _p_str)
+
+# Validate that critical modules can be found before any work starts
+def _check_module_file(directory: Path, filename: str) -> None:
+    """Raise a clear FileNotFoundError if *filename* is not in *directory*."""
+    target = directory / filename
+    if not target.is_file():
+        raise FileNotFoundError(
+            f"Could not find '{filename}' in:\n  {directory}\n"
+            "Please update the corresponding path variable at the top of this script."
+        )
+
+_check_module_file(CF_MODULE_DIR, "SuperradianceRateCF.py")
 
 # Import the required functions from ParamCalculator
 from ParamCalculator import (
@@ -237,10 +266,10 @@ def get_time_unit_config(time_unit="years"):
     time_unit = str(time_unit).strip().lower()
 
     if time_unit in {"year", "years", "yr", "yrs"}:
-        return 1.0, "years"
+        return 1.0, "yr"
 
     if time_unit in {"second", "seconds", "sec", "secs", "s"}:
-        return 365.25 * 24 * 3600, "seconds"
+        return 365.25 * 24 * 3600, "s"
 
     raise ValueError("time_unit must be 'years' or 'seconds'.")
 
@@ -316,12 +345,11 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
     sr_file_g_used = None
 
     if sr_rate_source == 'cf':
-        sr_data_dir = sem2_dir / "2. Relativistic Superradiance Rate" / "Mathematica" / "Data"
         sr_file_e = Path(sr_cf_file_e) if sr_cf_file_e is not None else _find_sr_file(
-            n=n_e, l=l_e, m=m_e, bh_spin=bh_spin, sr_data_dir=sr_data_dir
+            n=n_e, l=l_e, m=m_e, bh_spin=bh_spin, sr_data_dir=SR_DATA_DIR
         )
         sr_file_g = Path(sr_cf_file_g) if sr_cf_file_g is not None else _find_sr_file(
-            n=n_g, l=l_g, m=m_g, bh_spin=bh_spin, sr_data_dir=sr_data_dir
+            n=n_g, l=l_g, m=m_g, bh_spin=bh_spin, sr_data_dir=SR_DATA_DIR
         )
 
         gamma_e = sr_rate_dimensioned(
@@ -440,8 +468,7 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
         t_eval=times,
         rtol=1e-6,
         atol=1e-9,
-        events=[stop_if_ng_too_large,
-                stop_if_ne_too_small],
+        events=[stop_if_ng_too_large],
     )
 
     # --- Use solver’s native arrays (prevents shape mismatch) ---
@@ -603,7 +630,7 @@ def scan_transitions_and_save(
 #  PLOTTING
 # ---------------------------------------------------------------
 
-def plot_results(results, save_filename=None, time_unit="years", save_plot=False, output_filename=None, plots_subfolder="Plots"):
+def plot_results(results, save_filename=None, time_unit="years", save_plot=False, output_filename=None, plots_subfolder="Plots", show_fwhm=False):
     
     plt.rcParams.update({
         "text.usetex": True,
@@ -699,6 +726,7 @@ def plot_results(results, save_filename=None, time_unit="years", save_plot=False
     
     # Create second y-axis for strain h
     ax2 = ax1.twinx()
+    ax2.yaxis.set_major_locator(plt.MultipleLocator(5))
     ax2.plot(plot_times, log_h, label=r'$\log_{10}\, h$', color='black', alpha=0.7)
     
     # Set scales and labels
@@ -718,7 +746,7 @@ def plot_results(results, save_filename=None, time_unit="years", save_plot=False
 
     # Draw FWHM dotted line on strain axis and crop x-limits to FWHM +/- half-FWHM
     fwhm_proxy = None
-    if np.isfinite(t_left) and np.isfinite(t_right) and np.isfinite(h_peak):
+    if show_fwhm and (np.isfinite(t_left) and np.isfinite(t_right) and np.isfinite(h_peak)):
         time_left = t_left * time_scale
         time_right = t_right * time_scale
         half_max = h_peak + np.log10(0.5)
@@ -848,54 +876,320 @@ def plot_results(results, save_filename=None, time_unit="years", save_plot=False
 
 
 # ---------------------------------------------------------------
+#  SIDE-BY-SIDE COMPARISON PLOT (two alpha values)
+# ---------------------------------------------------------------
+
+def plot_two_alpha_comparison(
+    results1, results2,
+    label1=None, label2=None,
+    time_unit="seconds",
+    save_plot=False,
+    output_filename=None,
+    plots_subfolder="Plots",
+):
+    """
+    Plot two simulation runs side by side on a single figure.
+
+    Both panels share the same x-axis range, the same left y-axis range
+    (log occupation numbers) and the same right y-axis range (log strain),
+    so the two runs are directly comparable at a glance.
+
+    Args:
+        results1: dict returned by run_simulation (first run, e.g. alpha=1.0)
+        results2: dict returned by run_simulation (second run, e.g. alpha=1.24)
+        label1:   short descriptor shown in the panel title (e.g. r'$\alpha=1.0$')
+        label2:   short descriptor shown in the panel title (e.g. r'$\alpha=1.24$')
+        time_unit: 'years' or 'seconds'
+        save_plot: whether to save the figure to disk
+        output_filename: optional explicit filename (PDF)
+        plots_subfolder: subfolder name relative to the script directory
+    """
+
+    plt.rcParams.update({
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.serif": ["Computer Modern Roman"],
+        "text.latex.preamble": r"\usepackage{amsmath}",
+        "font.size": 14,
+        "axes.titlesize": 15,
+        "axes.labelsize": 14,
+        "xtick.labelsize": 13,
+        "ytick.labelsize": 13,
+        "legend.fontsize": 12,
+        "figure.titlesize": 17,
+    })
+
+    LOG10E = np.log10(np.e)
+    time_scale, time_unit_label = get_time_unit_config(time_unit)
+
+    def _prepare(results):
+        times    = results['times']
+        lng      = results['log_num_g'] * LOG10E
+        lne      = results['log_num_e'] * LOG10E
+        lh       = results['log_h']     * LOG10E
+        params   = results['parameters']
+        pt       = times * time_scale
+        return times, lng, lne, lh, params, pt
+
+    times1, lng1, lne1, lh1, params1, pt1 = _prepare(results1)
+    times2, lng2, lne2, lh2, params2, pt2 = _prepare(results2)
+
+    # ---- compute FWHM-based x-limits for each panel -------------------
+    def _xlims(times, log_h, time_scale):
+        h_peak, t_peak, h_fwhm, t_left, t_right = calc_h_peak_fwhm_bounds(times, log_h)
+        if np.isfinite(t_peak) and np.isfinite(h_fwhm) and h_fwhm > 0:
+            # Symmetric window: peak at the centre, ±1.5 FWHM
+            half_width = 8* h_fwhm * time_scale
+            x_center   = t_peak * time_scale
+            x_min      = max(0.0, x_center - half_width)
+            x_max      = x_center + half_width
+            return x_min, x_max, t_left, t_right, h_fwhm, h_peak
+        return None, None, t_left, t_right, h_fwhm, h_peak
+
+    xmin1, xmax1, tl1, tr1, fw1, hp1 = _xlims(times1, lh1, time_scale)
+    xmin2, xmax2, tl2, tr2, fw2, hp2 = _xlims(times2, lh2, time_scale)
+
+    xmin1 = 4.2e-6
+    xmax1 = 5e-6
+    xmin2 = 3.5e-6
+    xmax2 = 6.5e-6
+
+    # ---- helper: tight y-limits restricted to each panel's own x-window ---
+    def _ylims_in_window(plot_times, xmin, xmax, *series_list):
+        """Return (ymin, ymax) for all series inside the supplied x window."""
+        if xmin is not None and xmax is not None:
+            mask = (plot_times >= xmin) & (plot_times <= xmax)
+        else:
+            mask = np.ones(len(plot_times), dtype=bool)
+
+        all_vals = []
+        for s in series_list:
+            v = np.asarray(s, dtype=float)[mask]
+            all_vals.append(v[np.isfinite(v)])
+
+        combined = np.concatenate(all_vals) if all_vals else np.array([])
+        if combined.size == 0:
+            return None, None
+        return float(np.min(combined)), float(np.max(combined))
+
+    def _padded(ymin, ymax, pad_fraction=0.08, min_pad=0.25):
+        if ymin is None:
+            return None, None
+        span = ymax - ymin
+        pad  = max(span * pad_fraction, min_pad)
+        if span == 0:
+            pad = min_pad
+        return ymin - pad, ymax + pad
+
+    # Compute shared y-limits using each panel's own x-window, then union.
+    ly_lo1, ly_hi1 = _ylims_in_window(pt1, xmin1, xmax1, lng1, lne1)
+    ly_lo2, ly_hi2 = _ylims_in_window(pt2, xmin2, xmax2, lng2, lne2)
+    valid_ly = [(lo, hi) for lo, hi in [(ly_lo1, ly_hi1), (ly_lo2, ly_hi2)] if lo is not None]
+    if valid_ly:
+        shared_ly_lo = min(v[0] for v in valid_ly)
+        shared_ly_hi = max(v[1] for v in valid_ly)
+        shared_ly_lo, shared_ly_hi = _padded(shared_ly_lo, shared_ly_hi)
+    else:
+        shared_ly_lo = shared_ly_hi = None
+
+    # Compute shared y-limits (right axis: strain)
+    ry_lo1, ry_hi1 = _ylims_in_window(pt1, xmin1, xmax1, lh1)
+    ry_lo2, ry_hi2 = _ylims_in_window(pt2, xmin2, xmax2, lh2)
+    valid_ry = [(lo, hi) for lo, hi in [(ry_lo1, ry_hi1), (ry_lo2, ry_hi2)] if lo is not None]
+    if valid_ry:
+        shared_ry_lo = min(v[0] for v in valid_ry)
+        shared_ry_hi = max(v[1] for v in valid_ry)
+        shared_ry_lo, shared_ry_hi = _padded(shared_ry_lo, shared_ry_hi)
+    else:
+        shared_ry_lo = shared_ry_hi = None
+
+    # ---- Build the figure with two side-by-side panels -----------------
+    fig, axes = plt.subplots(1, 2, figsize=(5, 5), sharey=False)
+
+    def _plot_panel(ax1, plot_times, lng, lne, lh, params,
+                    t_left, t_right, h_fwhm, h_peak, panel_label,
+                    xmin=None, xmax=None, legend=False, show_fwhm=False):
+
+        ax1.plot(plot_times, lng, label=r'$N_g$', color='blue')
+        ax1.plot(plot_times, lne, label=r'$N_e$', color='orange')
+
+        ax2 = ax1.twinx()
+        ax2.plot(plot_times, lh, label=r'$h$', color='black', alpha=0.7)
+
+        ax1.set_xlabel(f"Time [{time_unit_label}]")
+        ax1.set_ylabel(r'Occupation Number $\log_{10}\,N$')
+        ax2.set_ylabel(r'Strain $\log_{10}\,h$', color='black')
+        ax2.tick_params(axis='y', labelcolor='black')
+
+        # FWHM dotted line
+        fwhm_proxy = None
+        if show_fwhm and (np.isfinite(t_left) and np.isfinite(t_right)
+                and np.isfinite(h_peak)):
+            half_max  = h_peak + np.log10(0.5)
+            time_left  = t_left  * time_scale
+            time_right = t_right * time_scale
+            ax2.hlines(half_max, time_left, time_right,
+                       colors='black', linestyles=':', linewidth=2,
+                       label='_nolegend_')
+            from matplotlib.lines import Line2D
+            fwhm_proxy = Line2D([], [], color='black', linestyle=':',
+                                linewidth=2, label=r'$\tau_{\text{FWHM}}$')
+
+        # Apply this panel's own x-limits
+        if xmin is not None and xmax is not None and xmax > xmin:
+            ax1.set_xlim(xmin, xmax)
+        if shared_ly_lo is not None:
+            ax1.set_ylim(20, 70)
+        if shared_ry_lo is not None:
+            ax2.set_ylim(-50, -23)
+
+        # Tighten right-axis tick density to avoid overlap
+        for lbl in ax2.get_yticklabels()[::2]:
+            lbl.set_visible(False)
+
+        # Legend
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        if fwhm_proxy is not None:
+            lines2  = lines2  + [fwhm_proxy]
+            labels2 = labels2 + [fwhm_proxy.get_label()]
+        if legend:
+            ax1.legend(lines1 + lines2, labels1 + labels2,
+                    loc='lower left', frameon=False)
+
+        ax1.grid(True)
+
+        # Transition label (top-left)
+        level_e = quantum_numbers_to_spectroscopic(params['n_e'], params['l_e'])
+        level_g = quantum_numbers_to_spectroscopic(params['n_g'], params['l_g'])
+        trans_label = rf"${level_e} \rightarrow {level_g}$"
+        if panel_label:
+            trans_label = trans_label + "\n" + panel_label
+        ax1.text(0.02, 0.98, trans_label,
+                 transform=ax1.transAxes, fontsize=13,
+                 verticalalignment='top',
+                 bbox=dict(facecolor='white', edgecolor='none', alpha=0.85, pad=0.3))
+
+        return ax2
+
+    ax2_left  = _plot_panel(axes[0], pt1, lng1, lne1, lh1, params1,
+                             tl1, tr1, fw1, hp1, label1, xmin1, xmax1, legend=True)
+    ax2_right = _plot_panel(axes[1], pt2, lng2, lne2, lh2, params2,
+                             tl2, tr2, fw2, hp2, label2, xmin2, xmax2)
+
+    # --- Inner-edge cleanup: remove everything between the two panels ---\
+    # Left panel: hide its right (inner) strain axis entirely
+    ax2_left.tick_params(right=False, labelright=False)
+    ax2_left.spines['right'].set_visible(False)
+    ax2_left.set_ylabel("")
+
+    # Right panel: hide its left (inner) occupation-number axis entirely
+    axes[1].tick_params(left=False, labelleft=False)
+    axes[1].spines['left'].set_visible(False)
+    axes[1].set_ylabel("")
+
+    # Suptitle using transition info from first result
+    p = params1
+    level_e = quantum_numbers_to_spectroscopic(p['n_e'], p['l_e'])
+    level_g = quantum_numbers_to_spectroscopic(p['n_g'], p['l_g'])
+
+    plt.tight_layout()
+    fig.subplots_adjust(wspace=0.05)   # close the gap between the two panels
+
+    if save_plot:
+        script_dir = Path(__file__).resolve().parent
+        output_dir = script_dir / plots_subfolder
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        if output_filename is None:
+            a1 = params1.get('alpha', 'unknown')
+            a2 = params2.get('alpha', 'unknown')
+            spin = p.get('bh_spin', 'unknown')
+            trans = p.get('transition', 'unknown').replace(' ', '_')
+            output_filename = (
+                f"comparison_{trans}_spin{spin}_alpha{a1}_vs_alpha{a2}.pdf"
+            )
+
+        output_filename = re.sub(r'[^\w\-.]', '_', output_filename)
+        output_path = output_dir / output_filename
+        fig.savefig(output_path, format='pdf', bbox_inches='tight')
+        print(f"Saved comparison plot to: {output_path}")
+
+    plt.show()
+
+
+# ---------------------------------------------------------------
 #  MAIN EXECUTION
 # ---------------------------------------------------------------
 
 
 if __name__ == "__main__":
-    # Shared simulation parameters
-    alpha = 0.15
-    alpha_over_l = 0.15
-    bh_spin = 0.65
-    bh_mass_sm = 1e-6
-    transition = "3p 2p"
+    # ----------------------------------------------------------------
+    # 6g -> 5g transition, spin = 0.9
+    # Run twice: alpha = 1.0 and alpha = 1.24, then display side by side.
+    # ----------------------------------------------------------------
+    transition   = "6g 5g"
+    bh_spin      = 0.9
+    bh_mass_sm   = 1e-6
     distance_kpc = 1
-    t_max = None
-    time_unit = "years"
+    t_max        = 7e-6
+    time_unit    = "years"
 
     # SR-rate source options:
-    #   'cf'    -> use SuperradianceRateCF data files (default)
-    #   'param' -> use legacy ParamCalculator analytic rates
+    #   'cf'       -> use SuperradianceRateCF data files (default)
+    #   'param'    -> use legacy ParamCalculator analytic rates
     #   'hydrogen' -> use hydrogen_gamma NR approximation from leaver_superradiance
-    sr_rate_source = 'hydrogen'
-    sr_cf_method = 'cf'
-    sr_cf_file_e = None  # optional explicit path for excited mode SR file
-    sr_cf_file_g = None  # optional explicit path for ground mode SR file
+    sr_rate_source = 'cf'
+    sr_cf_method   = 'cf'
 
-    # Run simulation
-    results = run_simulation(
-        alpha=alpha,
+    # --- Run 1: alpha = 1.0 ---
+    alpha1 = 1.25
+    print(f"\n{'='*60}")
+    print(f"Running simulation 1:  alpha = {alpha1}")
+    print('='*60)
+    results_alpha1 = run_simulation(
+        alpha=alpha1,
         bh_spin=bh_spin,
         bh_mass_sm=bh_mass_sm,
         transition=transition,
         t_max_years=t_max,
+        distance_kpc=distance_kpc,
         sr_rate_source=sr_rate_source,
         sr_cf_method=sr_cf_method,
-        sr_cf_file_e=sr_cf_file_e,
-        sr_cf_file_g=sr_cf_file_g,
     )
 
-    # peak_data = scan_transitions_and_save(
-    #     output_pickle=f"tran_peak_data_alpha_over_l_{str(alpha_over_l).replace('.','p')}.pkl",
-    #     transitions=available_transitions,
-    #     bh_mass_sm=bh_mass_sm,
-    #     bh_spin=bh_spin,
-    #     alpha_over_l=alpha_over_l,
-    #     t_max_years=None,
-    #     n_points=int(1e7),
-    #     sr_rate_source=sr_rate_source,
-    #     distance_kpc=distance_kpc
-    # )
+    p1 = results_alpha1['parameters']
+    print(f"  Gamma_e (6g): {p1['gamma_e']:.4e} yr⁻¹")
+    print(f"  Gamma_g (5g): {p1['gamma_g']:.4e} yr⁻¹")
+    print(f"  Transition rate: {p1['transition_rate']:.4e} yr⁻¹")
 
-    # Plot results
-    plot_results(results, time_unit=time_unit, save_plot=True)
+    # --- Run 2: alpha = 1.24 ---
+    alpha2 = 1.275
+    print(f"\n{'='*60}")
+    print(f"Running simulation 2:  alpha = {alpha2}")
+    print('='*60)
+    results_alpha2 = run_simulation(
+        alpha=alpha2,
+        bh_spin=bh_spin,
+        bh_mass_sm=bh_mass_sm,
+        transition=transition,
+        t_max_years=t_max,
+        distance_kpc=distance_kpc,
+        sr_rate_source=sr_rate_source,
+        sr_cf_method=sr_cf_method,
+    )
+
+    p2 = results_alpha2['parameters']
+    print(f"  Gamma_e (6g): {p2['gamma_e']:.4e} yr⁻¹")
+    print(f"  Gamma_g (5g): {p2['gamma_g']:.4e} yr⁻¹")
+    print(f"  Transition rate: {p2['transition_rate']:.4e} yr⁻¹")
+
+    # --- Side-by-side comparison plot ---
+    plot_two_alpha_comparison(
+        results1=results_alpha1,
+        results2=results_alpha2,
+        label1=rf'$\alpha = {alpha1}$',
+        label2=rf'$\alpha = {alpha2}$',
+        time_unit=time_unit,
+        save_plot=True,
+    )

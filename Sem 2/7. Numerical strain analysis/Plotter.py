@@ -15,9 +15,9 @@ EV_TO_HZ = 1 / 4.135667696e-15  # eV → Hz
 # Points to completely remove from the plot.
 # Use the raw pickle keys, e.g. "7g 5g" for transitions or "5g" for annihilations.
 EXCLUDE_POINTS = {
-    "8g 7g"
-    # "7g 5g",
-    # "8h 6h",
+    "13k 8k",
+    "7p 6p",
+     "8g 7g",
 }
 
 # Manual label offsets in points.
@@ -25,7 +25,7 @@ EXCLUDE_POINTS = {
 # Positive dy = up, negative dy = down.
 LABEL_OFFSETS = {
     "8g 6g": (0, -10),
-    "9k 8k": (0, -10),
+    "9k 8k": (0, 10),
     # "7g 6g": (5, 0),
     "7h 6h": (-2.5, 2.5),
     "7d 5d": (0, -10),
@@ -35,6 +35,7 @@ LABEL_OFFSETS = {
     "7p 2p": (0, -10),
     "5d 4d": (0, -10),
     "7f 5f": (0, -10),
+    "6f 4f": (-10, 3),
     "8f": (10, -12.5),
     "7f": (10, -10),
     "6f": (10, -7.5),
@@ -57,7 +58,7 @@ HIDE_LABELS = {
     # "5g",
 }
 
-DEFAULT_LABEL_OFFSET = (10, 0)
+DEFAULT_LABEL_OFFSET = (10, 3)
 
 # Colour points by l quantum number instead of FWHM.
 # Set to True to use discrete l-based colours with no colourbar or legend.
@@ -108,8 +109,8 @@ def improve_log_x_ticks(ax):
     major_ticks = major_ticks[(major_ticks >= xmin) & (major_ticks <= xmax)]
 
     if len(major_ticks) == 0:
-        ax.xaxis.set_major_formatter(ticker.LogFormatterSciNotation())
-        ax.xaxis.set_minor_formatter(ticker.NullFormatter())
+        exponent = int(np.floor(np.log10((xmin + xmax) / 2)))
+        major_ticks = np.array([10.0 ** exponent])
         return
 
     if len(major_ticks) <= 1:

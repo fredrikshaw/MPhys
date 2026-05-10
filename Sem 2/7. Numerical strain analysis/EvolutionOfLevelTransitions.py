@@ -1185,11 +1185,25 @@ if __name__ == "__main__":
     print(f"  Transition rate: {p2['transition_rate']:.4e} yr⁻¹")
 
     # --- Side-by-side comparison plot ---
-    plot_two_alpha_comparison(
+    """plot_two_alpha_comparison(
         results1=results_alpha1,
         results2=results_alpha2,
         label1=rf'$\alpha = {alpha1}$',
         label2=rf'$\alpha = {alpha2}$',
         time_unit=time_unit,
         save_plot=True,
+    )"""
+
+    scan_transitions_and_save(
+        output_pickle="transition_peak_data.pkl",
+        transitions=["6g 5g", "7h 6h", "7g 5g", "7g 6g", "8i 7i", "3p 2p", "9k 8k", "13k 8k", "8g 7g", "8h 7h", "5f 4f", "6f 4f", "6f 5f", "8p 2p", "4d 3d", "7p 6p"],
+        bh_mass_sm=1e-6,
+        bh_spin=0.69,
+        alpha_over_l=0.15,
+        distance_kpc=1,
+        t_max_years=None,
+        n_points=int(1e5),
+        sr_rate_source="hydrogen",
+        sr_cf_method="cf",
+        verbose=True,
     )

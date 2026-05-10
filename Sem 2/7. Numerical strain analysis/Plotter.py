@@ -50,14 +50,18 @@ LABEL_OFFSETS = {
 # Points to keep in the scatter plot but hide their labels.
 # Use the raw pickle keys, e.g. "7g 5g" for transitions or "5g" for annihilations.
 HIDE_LABELS = {
-    "7h 6h",
-    "7p 3p",
-    "6d 5d",
-    "9k 8k",
+    #"7h 6h",
+    #"7p 3p",
+    #"6d 5d",
+    #"9k 8k",
     # "5g",
 }
 
 DEFAULT_LABEL_OFFSET = (10, 0)
+
+# Colour points by l quantum number instead of FWHM.
+# Set to True to use discrete l-based colours with no colourbar or legend.
+COLOR_BY_L = True
 
 # Save options
 SAVE_PLOT = True
@@ -102,6 +106,11 @@ def improve_log_x_ticks(ax):
 
     major_ticks = major_locator.tick_values(xmin, xmax)
     major_ticks = major_ticks[(major_ticks >= xmin) & (major_ticks <= xmax)]
+
+    if len(major_ticks) == 0:
+        ax.xaxis.set_major_formatter(ticker.LogFormatterSciNotation())
+        ax.xaxis.set_minor_formatter(ticker.NullFormatter())
+        return
 
     if len(major_ticks) <= 1:
         exponent = int(np.floor(np.log10(major_ticks[0])))
@@ -154,6 +163,7 @@ def make_scatter_plot(
     save_plot=False,
     output_filename=None,
     plots_subfolder=PLOTS_SUBFOLDER,
+    color_by_l=False,
 ):
     if exclude_points is None:
         exclude_points = set()
@@ -181,6 +191,7 @@ def make_scatter_plot(
     omega_arr = []
     h_peak_log10 = []
     fwhm = []
+    l_quantum = []
     labels = []
     keys = []
 
@@ -212,33 +223,50 @@ def make_scatter_plot(
         omega_arr.append(omega * EV_TO_HZ)
         h_peak_log10.append(h_log)
         fwhm.append(t_fwhm)
+        l_quantum.append(int(params.get('l_g', params.get('l_e', 0))))
         labels.append(make_label(level_key, is_annihilation=is_annihilation))
 
     omega_arr = np.array(omega_arr)
     h_peak_log10 = np.array(h_peak_log10)
     fwhm = np.array(fwhm)
+    l_quantum = np.array(l_quantum)
 
     if len(omega_arr) == 0:
         raise RuntimeError("No valid data points to plot.")
 
     plot_type = "Annihilation" if is_annihilation else "Transition"
 
-    fig, ax = plt.subplots(figsize=(9, 7))
+    fig, ax = plt.subplots(figsize=(5, 4))
 
-    sc = ax.scatter(
-        omega_arr,
-        h_peak_log10,
-        c=np.log10(fwhm),
-        cmap="viridis",
-        s=40,
-    )
+    if color_by_l:
+        unique_ls = sorted(set(l_quantum))
+        l_to_letter = {
+            0: 's', 1: 'p', 2: 'd', 3: 'f', 4: 'g', 5: 'h',
+            6: 'i', 7: 'k', 8: 'l', 9: 'm', 10: 'n', 11: 'o', 12: 'q'
+        }
+        cmap_discrete = plt.cm.get_cmap('tab10', len(unique_ls))
+        l_to_idx = {l: i for i, l in enumerate(unique_ls)}
+        point_colors = [cmap_discrete(l_to_idx[l]) for l in l_quantum]
+        sc = ax.scatter(
+            omega_arr,
+            h_peak_log10,
+            c=point_colors,
+            s=40,
+        )
+    else:
+        sc = ax.scatter(
+            omega_arr,
+            h_peak_log10,
+            c=np.log10(fwhm),
+            cmap="viridis",
+            s=40,
+        )
+        cbar = fig.colorbar(sc, ax=ax)
+        cbar.set_label(r"$\log_{10}(\mathrm{FWHM\ [years]})$")
 
     ax.set_xscale("log")
     ax.set_xlabel(r"Frequency $\omega$ [Hz]")
     ax.set_ylabel(r"$\log_{10}(h_{\mathrm{peak}})$")
-
-    cbar = fig.colorbar(sc, ax=ax)
-    cbar.set_label(r"$\log_{10}(\mathrm{FWHM\ [years]})$")
 
     # Add some breathing room so labels do not leave the axes.
     ax.margins(x=0.15, y=0.15)
@@ -291,7 +319,7 @@ def make_scatter_plot(
 
 
 if __name__ == "__main__":
-    pickle_file = "ann_peak_data_alpha_over_l_0p15.pkl"
+    pickle_file = "transition_peak_data.pkl"
 
     is_annihilation = pickle_file.startswith("ann_")
 
@@ -305,4 +333,5 @@ if __name__ == "__main__":
         label_offsets=LABEL_OFFSETS,
         save_plot=SAVE_PLOT,
         output_filename=make_output_filename(pickle_file, is_annihilation=is_annihilation),
+        color_by_l=COLOR_BY_L,
     )

@@ -773,7 +773,7 @@ def plot_alpha_reach(
         "text.latex.preamble": r"\usepackage{amsmath}",
     })
 
-    fig, ax = plt.subplots(figsize=(5, 4))
+    fig, ax = plt.subplots(figsize=(4, 3.5))
     fig.subplots_adjust(top=0.88)
 
     # ── Coordinate conversion ─────────────────────────────────────────────────
@@ -853,12 +853,11 @@ def plot_alpha_reach(
                     label=det_name)
 
     if bottom_axis == 'mu':
-        if is_transition:
-            ax.xaxis.set_major_formatter(
-                plt.FuncFormatter(lambda val, _: f'{val * 1e6:g}')
-            )
-        else:
-            ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+        ax.xaxis.set_major_formatter(
+            plt.FuncFormatter(lambda val, _: f'{val * 1e6:g}')
+        )
+        
+        
 
     # ── PBH merger reach: brown lines, shading above, direct text label ───────
     event_rate_d = np.nan
@@ -890,7 +889,7 @@ def plot_alpha_reach(
         ]
         for _d_ref, _lbl in _scale_lines:
             ax.axhline(_d_ref, color='dimgray', linewidth=0.8, linestyle=':', alpha=0.7)
-            ax.text(0.5, _d_ref, _lbl,
+            ax.text(0.8, _d_ref, _lbl,
                     transform=blended_transform_factory(ax.transAxes, ax.transData),
                     fontsize=10, color='dimgray',
                     ha='center', va='bottom')
@@ -936,15 +935,66 @@ def plot_alpha_reach(
                    color='burlywood', alpha=0.25, zorder=0)
         trans_xd = blended_transform_factory(ax.transData, ax.transAxes)
         x_mid    = (ax.get_xlim()[0] + ax.get_xlim()[1]) / 2.0
-        ax.text(x_mid, 0.96,
+        ax.text(x_mid, 0.98,
                 r'Event Rate $> 1\,\mathrm{yr}^{-1}$',
                 transform=trans_xd,
                 fontsize=8, color='saddlebrown',
                 ha='center', va='top')
 
+    # ── Right-hand axis: events per year ──────────────────────────────────────
+    # The merger rate density R [yr^-1 kpc^-3] is related to the 1-event/yr
+    # horizon d_ref by  R = 3 / (4 pi d_ref^3).
+    # The number of events per year within distance d is then:
+    #     N_yr(d) = R * (4/3) pi d^3 = (d / d_ref)^3
+    # We use this purely geometric scaling as the secondary-axis transform so
+    # the right-hand ticks are always consistent with the left-hand distances.
+    if np.isfinite(event_rate_d) and event_rate_d > 0:
+        _d_ref = event_rate_d          # d at which N_yr = 1
+
+        def _d_to_Nyr(d):
+            """kpc -> events yr^-1"""
+            d = np.asarray(d, dtype=float)
+            with np.errstate(invalid='ignore', divide='ignore'):
+                return (d / _d_ref) ** 3
+
+        def _Nyr_to_d(N):
+            """events yr^-1 -> kpc"""
+            N = np.asarray(N, dtype=float)
+            with np.errstate(invalid='ignore', divide='ignore'):
+                return _d_ref * np.cbrt(N)
+
+        ax_right = ax.secondary_yaxis('right', functions=(_d_to_Nyr, _Nyr_to_d))
+        ax_right.set_ylabel(r'Events per year $[\mathrm{yr}^{-1}]$', fontsize=13)
+
+        # Place explicit log-spaced ticks that cover the visible y-range.
+        y_lo, y_hi = ax.get_ylim()
+        N_lo = _d_to_Nyr(y_lo)
+        N_hi = _d_to_Nyr(y_hi)
+        if np.isfinite(N_lo) and np.isfinite(N_hi) and N_lo > 0 and N_hi > 0:
+            exp_lo = int(np.floor(np.log10(N_lo)))
+            exp_hi = int(np.ceil (np.log10(N_hi)))
+            cands  = []
+            for e in range(exp_lo, exp_hi + 1, 4):
+                for m in [1]:
+                    v = m * 10.0**e
+                    if N_lo <= v <= N_hi:
+                        cands.append(v)
+            if len(cands) >= 2:
+                ax_right.set_yticks(cands)
+
+                def _fmt_N(v):
+                    exp = int(np.floor(np.log10(max(v, 1e-300))))
+                    man = v / 10.0**exp
+                    if np.isclose(man, 1.0):
+                        return rf'$10^{{{exp}}}$'
+                    return rf'${man:g}{{\times}}10^{{{exp}}}$'
+
+                ax_right.set_yticklabels([_fmt_N(v) for v in cands])
+        ax_right.yaxis.set_tick_params(labelsize=9)
+
     # ── Axis labels ───────────────────────────────────────────────────────────
     if bottom_axis == 'mu':
-        _mu_unit_label = r'\mathrm{\mu eV}' if is_transition else r'\mathrm{eV}'
+        _mu_unit_label = r'\mathrm{\mu eV}'# if is_transition else r'\mathrm{eV}'
         ax.set_xlabel(rf'$\mu_a\ [{_mu_unit_label}]$', fontsize=13)
     else:
         ax.set_xlabel(r'$\alpha$', fontsize=13)
@@ -1004,8 +1054,8 @@ def plot_alpha_reach(
             x_sr  = _to_x(mu_sr)
             ax.axvline(x_sr, color='darkorange',
                        linewidth=1.5, linestyle='--')
-            ax.text(x_sr * 1.01 if bottom_axis == 'mu' else x_sr + 0.01 * (x_hi - x_lo),
-                    0.40, 'Superradiant Boundary',
+            ax.text(x_sr * 1.03 if bottom_axis == 'mu' else x_sr + 0.01 * (x_hi - x_lo),
+                    0.20, 'Superradiant Boundary',
                     transform=trans,
                     fontsize=10, color='darkorange',
                     rotation=270, va='center', ha='right',
@@ -1021,18 +1071,18 @@ def plot_alpha_reach(
 
         if x_lo < x_tpeak_boundary < x_hi:
             exp       = int(np.log10(T_PEAK_MAX_YR))
-            label_txt = (rf'Cosmological Timescales '
+            label_txt = (rf'Cosmological Cutoff '
                          rf'$t > 10^{{{exp}}}\,\mathrm{{yr}}$')
             x_text = (x_lo + x_tpeak_boundary) / 2.0
-            ax.text(x_text, 0.50, label_txt,
+            ax.text(x_text+0.1e-5, 0.50, label_txt,
                     transform=trans,
-                    fontsize=7, color='darkred',
-                    rotation=90, va='center', ha='center',
+                    fontsize=10, color='darkred',
+                    rotation=270, va='center', ha='center',
                     rotation_mode='anchor')
         print(f"  t_peak boundary: x = {x_tpeak_boundary:.3e}")
 
     # ── Legend (detector names only) and grid ─────────────────────────────────
-    ax.legend(fontsize=9, loc='best', frameon=False)
+    ax.legend(fontsize=9, loc=(0.2, 0.6), frameon=False)
     ax.grid(True, which='major', alpha=0.25, linestyle='--')
     ax.grid(True, which='minor', alpha=0.10, linestyle=':', axis='y')
 
@@ -1148,7 +1198,7 @@ if __name__ == '__main__':
     #   LEVEL_SHORTHAND = '3d'       →  annihilation  |322⟩
     #   LEVEL_SHORTHAND = '6g 5g'    →  transitions   |644⟩→|544⟩
     #   LEVEL_SHORTHAND = '4f 3d'    →  transitions   |433⟩→|322⟩
-    LEVEL_SHORTHAND = '3d'
+    LEVEL_SHORTHAND = '6g 5g'
 
     if LEVEL_SHORTHAND is not None:
         PROCESS, LEVEL = resolve_level(LEVEL_SHORTHAND)
@@ -1157,7 +1207,7 @@ if __name__ == '__main__':
         PROCESS = 'annihilation'   # fallback when plotting all levels
         LEVEL   = None
     # ── Data directory (output of run_alpha_sweep in superradiance_simulation.py)
-    DATA_DIR = 'Sem 2/8. Numerical Simulations/Data/'
+    DATA_DIR = 'Sem 2/8. Numerical Simulations/Data/alpha_sweep'
 
     # ── Detection threshold ───────────────────────────────────────────────────
     RHO_STAR = 1.0              # SNR threshold rho*
@@ -1173,8 +1223,8 @@ if __name__ == '__main__':
     # ── Plot parameters ───────────────────────────────────────────────────────
     SAVEDIR     = 'Sem 2/8. Numerical Simulations/Plots'
     SAVEPATH    = f'{SAVEDIR}/reach_vs_alpha_{PROCESS}.pdf'
-    XLIM        = None     # e.g. (0.001, 1.5); set None for auto
-    YLIM        = None     # e.g. (1e-3, 1e6);  set None for auto
+    XLIM        = (25e-6, 115e-6)     # e.g. (0.001, 1.5); set None for auto
+    YLIM        = (1e-15, 1e0)     # e.g. (1e-3, 1e6);  set None for auto
     BOTTOM_AXIS = 'mu'     # 'mu' for mu_a [eV] or 'alpha' for alpha
 
     level_str = f' -- level {LEVEL}' if LEVEL is not None else ' (all levels)'

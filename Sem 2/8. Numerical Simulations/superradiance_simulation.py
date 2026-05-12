@@ -189,6 +189,10 @@ class SimulationResults:
     Mtil: np.ndarray            # (n_time,)
     astar: np.ndarray           # (n_time,)
 
+    # Dimensionless normalisation and occupation
+    NORM: float                 # = M0^2  (Planck, G_N=1)
+    eps_all: np.ndarray         # (N_LEVELS, n_time)  eps_i = N_i / M0^2
+
     # Derived quantities (computed after integration)
     t_yr: np.ndarray
     N_all: np.ndarray           # (N_LEVELS, n_time)
@@ -208,13 +212,15 @@ class SimulationResults:
     g_ann_all: np.ndarray       # (N_LEVELS, n_time)
 
     # GW strain from annihilation
-    h_all: np.ndarray           # (N_LEVELS, n_time)
+    h_all: np.ndarray           # (N_LEVELS, n_time)   physical h at 1 kpc
+    h_dimless_all: np.ndarray   # (N_LEVELS, n_time)   h * r_1kpc / M0  (mass-independent)
     f_gw_hz: np.ndarray         # (N_LEVELS,)
     P_GW_total: np.ndarray      # (n_time,)
 
     # GW strain from transitions
     g_tr_matrix: np.ndarray     # (n_tr_pairs, n_time)
-    h_tr_matrix: np.ndarray     # (n_tr_pairs, n_time)
+    h_tr_matrix: np.ndarray     # (n_tr_pairs, n_time)  physical h at 1 kpc
+    h_dimless_tr: np.ndarray    # (n_tr_pairs, n_time)  h_tr * r_1kpc / M0
     f_tr_hz: np.ndarray         # (n_tr_pairs,)
 
     # Summary statistics
@@ -346,13 +352,37 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
 
     # ── ODE system ───────────────────────────────────────────────────
     def odes(tau, y):
-        lnN_arr = y[:N_LEVELS]
-        Mtil    = max(y[N_LEVELS],     1e-9)
-        astar   = float(np.clip(y[N_LEVELS + 1], 0.0, 0.99999))
+        """
+        State: y = [ln_eps_0, ..., ln_eps_{K-1}, Mtil, astar]
+        where  eps_i = N_i / NORM = N_i / M0^2  (dimensionless occupation).
 
-        # After
-        N_arr = np.exp(np.clip(lnN_arr, None, 700.0))
-        alpha = alpha_0 * Mtil
+        The BH equations simplify because NORM cancels:
+            dMtil/dtau  = -alpha_0 * dot(g_sr, eps)
+            dastar/dtau = dot(g_sr * eps, 2*alpha*astar - m_i) / Mtil^2
+        """
+        ln_eps_arr = y[:N_LEVELS]
+        Mtil       = max(y[N_LEVELS],     1e-9)
+        astar      = float(np.clip(y[N_LEVELS + 1], 0.0, 0.99999))
+
+        # Prevent overflow when converting ln(eps) -> eps and forming N = NORM * eps.
+        # Compute a safe cap for ln(eps) so that N = exp(log(NORM) + ln_eps) stays finite.
+        float_max_log = np.log(np.finfo(float).max)
+        # safety margin to avoid hitting the absolute max during arithmetic
+        safety_margin = 5.0
+        try:
+            log_NORM = float(np.log(NORM))
+        except Exception:
+            log_NORM = float_max_log - 100.0
+        ln_eps_cap = min(700.0, float_max_log - log_NORM - safety_margin)
+
+        ln_eps_clipped = np.clip(ln_eps_arr, None, ln_eps_cap)
+        # compute ln(N) directly and clip before exponentiating to avoid overflow
+        ln_N = log_NORM + ln_eps_clipped
+        ln_N_cap = float_max_log - safety_margin
+        ln_N_clipped = np.minimum(ln_N, ln_N_cap)
+        eps_arr = np.exp(ln_eps_clipped)
+        N_arr = np.exp(ln_N_clipped)
+        alpha   = alpha_0 * Mtil
 
         # SR rates
         g_sr_arr = np.array([gamma_tilde_sr(alpha, astar, n, l, m)
@@ -362,79 +392,101 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         g_ann_arr = np.array([gamma_tilde_ann(n, l, Mtil)
                               for (n, l, m) in LEVELS])
 
-        # Transition contributions
-        dlnN_tr = np.zeros(N_LEVELS)
+        # Transition contributions (NORM cancels: g_tr*N_j = g_tr*NORM*eps_j)
+        dlneps_tr = np.zeros(N_LEVELS)
         for idx_i, idx_j, n_i, l_i, n_j, l_j in TR_PAIRS_IDX:
             g_tr = gamma_tilde_tr(n_i, l_i, n_j, l_j, Mtil)
             if g_tr > 0.0:
-                dlnN_tr[idx_i] -= g_tr * N_arr[idx_j]
-                dlnN_tr[idx_j] += g_tr * N_arr[idx_i]
+                # Use clipped N_arr values; ln_N_clipped ensures these are finite.
+                dlneps_tr[idx_i] -= g_tr * N_arr[idx_j]   # = g_tr * NORM * eps_j
+                dlneps_tr[idx_j] += g_tr * N_arr[idx_i]   # = g_tr * NORM * eps_i
 
-        # d(lnN_i)/dτ
-        dlnN_arr = g_sr_arr - g_ann_arr * N_arr + dlnN_tr
-
-        # BH mass (SR only)
-        dMtil = -(alpha_0 / M0**2) * np.dot(g_sr_arr, N_arr)
-
-        # BH spin (SR only)
+        # d(ln_eps_i)/dtau  [identical form to d(lnN_i)/dtau]
+        # Compute derivative in a numerically safe way; clip extremely large rates
         with np.errstate(over='ignore', invalid='ignore'):
-            dastar = (np.dot(g_sr_arr * N_arr, 2.0 * alpha * astar - _M_ARR)
-                    / (M0**2 * Mtil**2))
+            dlneps_arr = g_sr_arr - g_ann_arr * N_arr + dlneps_tr
+
+        # Replace NaNs/Infs with safe values and cap derivative magnitude
+        dlneps_arr = np.nan_to_num(dlneps_arr, nan=0.0, posinf=np.finfo(float).max, neginf=-np.finfo(float).max)
+        rate_cap = 1e200
+        dlneps_arr = np.clip(dlneps_arr, -rate_cap, rate_cap)
+
+        # BH mass: -(alpha_0/NORM)*dot(g_sr, NORM*eps) = -alpha_0*dot(g_sr, eps)
+        dMtil = -alpha_0 * np.dot(g_sr_arr, eps_arr)
+
+        # BH spin: dot(g_sr*NORM*eps,...)/NORM/Mtil^2 = dot(g_sr*eps,...)/Mtil^2
+        with np.errstate(over='ignore', invalid='ignore'):
+            dastar = (np.dot(g_sr_arr * eps_arr, 2.0 * alpha * astar - _M_ARR)
+                      / Mtil**2)
         if not np.isfinite(dastar):
             dastar = 0.0
+        # Ensure dMtil is finite
+        if not np.isfinite(dMtil):
+            dMtil = 0.0
+        return list(dlneps_arr) + [dMtil, dastar]
 
-        return list(dlnN_arr) + [dMtil, dastar]
-
-    # ── Terminal events ──────────────────────────────────────────────
-    def event_sr_off(tau, y):
-        Mtil  = max(y[N_LEVELS],     1e-9)
-        astar = float(np.clip(y[N_LEVELS + 1], 0.0, 0.99999))
-        m_max = int(_M_ARR.max())
-        return sr_margin(alpha_0 * Mtil, astar, m=m_max)
-    event_sr_off.terminal  = True
-    event_sr_off.direction = -1
-
-    def event_occupation_decay(tau, y):
-        lnN = y[0]   # stop if the first level's N drops too low
-        N = np.exp(lnN)
-        return N - 1e10
-    event_occupation_decay.terminal = True
-    event_occupation_decay.direction = -1
-
-    # ── Initial SR analysis and integration time ──────────────────────
-    g0_all = {(n, l, m): gamma_tilde_sr(alpha_0, a_star_0, n, l, m)
-              for (n, l, m) in LEVELS}
+    # ── Initial SR analysis ───────────────────────────────────────────
+    g0_all    = {(n, l, m): gamma_tilde_sr(alpha_0, a_star_0, n, l, m)
+                 for (n, l, m) in LEVELS}
     active_t0 = [(n, l, m) for (n, l, m) in LEVELS if g0_all[(n, l, m)] > 0]
 
     if not active_t0:
         print("\n  ✗  No levels are superradiant at the initial parameters.")
-        print("     SR margins at t=0:")
         for n, l, m in LEVELS[:7]:
-            margin = sr_margin(alpha_0, a_star_0, m)
-            print(f"       |{n}{l}{m}⟩  m·Ω_H − α = {margin:.4f}")
+            print(f"       |{n}{l}{m}⟩  m·Ω_H − α = {sr_margin(alpha_0, a_star_0, m):.4f}")
         print("\n  Increase ã₀ or decrease α₀ to enter the SR regime.")
         return None
 
-    # Fastest SR-active level at t=0
-    dom_level = max(active_t0, key=lambda nlm: g0_all[nlm])
+    dom_level       = max(active_t0, key=lambda nlm: g0_all[nlm])
     dom_n, dom_l, dom_m = dom_level
-    g0_dom = g0_all[dom_level]
+    g0_dom          = g0_all[dom_level]
 
-    # ── Time span estimation ──────────────────────────────────────────
-    RATE_RATIO = 1e40
-    N_sat = M0**2 * a_star_0
+    # ── Time span ─────────────────────────────────────────────────────
+    # We do NOT use terminal events.  The reason is fundamental: scipy's
+    # adaptive-step RK45 evaluates event functions at intermediate
+    # *rejected* trial steps.  Any event that uses mutable state (a
+    # running-peak tracker) gets corrupted by these rejected evaluations,
+    # causing the event to fire far too early — before the second level
+    # has even started growing.
+    #
+    # Instead we pre-compute a tau_end that is large enough to cover:
+    #   Phase 1 — fastest level (dom) grows from seed to saturation
+    #              AND decays DECAY_DECADES below its peak
+    #   Phase 2 — all higher-m levels that are still SR-active at the
+    #              post-spindown spin (astar_f) grow and decay similarly
+    #
+    # This is the same two-phase structure as before, but:
+    #   * decay_efolds are added to BOTH phases
+    #   * Phase 2 uses the rate evaluated at astar_f (the actual spin
+    #     when those levels start growing) not the initial spin
+
+    NORM         = M0**2
+    RATE_RATIO   = 1e40           # include phase-2 levels within 10^40 of fastest
+
+    N_sat        = M0**2 * a_star_0
+    n_efolds     = np.log(max(N_sat, 2.0))
+
+    DECAY_DECADES = 10
+    decay_efolds  = DECAY_DECADES * np.log(10.0)   # ≈ 23 e-folds
+
     astar_f = min(2.0 * alpha_0 * rhat_plus(a_star_0) / dom_m, a_star_0)
-    tau_phase1 = 3.0 * np.log(max(N_sat, 2.0)) / g0_dom
 
-    g_floor = g0_dom / RATE_RATIO
+    # Phase 1: fastest level growth + decay
+    tau_phase1 = (n_efolds + decay_efolds) / g0_dom
+
+    # Phase 2: higher-m levels at the reduced spin
+    g_floor    = g0_dom / RATE_RATIO
     tau_phase2 = 0.0
+    phase2_levels = []
     for n, l, m in LEVELS:
         if m <= dom_m:
             continue
-        g_at_af = gamma_tilde_sr(alpha_0, astar_f, n, l, m)
-        if g_at_af >= g_floor:
-            tau_i = np.log(max(N_sat, 2.0)) / g_at_af
-            tau_phase2 = max(tau_phase2, tau_i)
+        g_af = gamma_tilde_sr(alpha_0, astar_f, n, l, m)
+        if g_af >= g_floor:
+            tau_i = (n_efolds + decay_efolds) / g_af
+            if tau_i > tau_phase2:
+                tau_phase2 = tau_i
+            phase2_levels.append((n, l, m, g_af, tau_i))
 
     tau_end = tau_phase1 + tau_phase2
     if tau_end_factor is not None:
@@ -449,7 +501,7 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
     print(f"  α₀   = {alpha_0}   →  μ = {MU:.3e} M_Pl")
     print("\n  Levels tracked:")
     for n, l, m in LEVELS:
-        g0_i = g0_all[(n, l, m)]
+        g0_i   = g0_all[(n, l, m)]
         margin = sr_margin(alpha_0, a_star_0, m)
         if g0_i > 0:
             print(f"    |{n}{l}{m}⟩   Γ̃₀ = {g0_i:.3e}   τ_SR = {1/g0_i:.2e}   margin = {margin:.4f}")
@@ -465,27 +517,30 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
                 print(f"    |{n}{l}{m}⟩   Γ̃_a = 0")
         else:
             print(f"    |{n}{l}{m}⟩   Γ̃_a = not computed")
-    active_phase2 = [(n,l,m) for (n,l,m) in LEVELS
-                     if m>dom_m and gamma_tilde_sr(alpha_0, astar_f, n, l, m) >= g_floor]
     print(f"\n  Initially SR-active levels: {len(active_t0)}/{N_LEVELS}")
-    print(f"  Fastest level: |{dom_n}{dom_l}{dom_m}⟩  Γ̃₀ = {g0_dom:.4e}")
-    print(f"  e-folding τ_SR = {1/g0_dom:.3e}  =  {1/g0_dom * TAU_TO_YR:.3e} yr")
-    print(f"  Estimated ã after dominant switch-off: ã_f ≈ {astar_f:.4f}")
-    if active_phase2:
-        print(f"  Phase-2 levels: " + ", ".join(f"|{n}{l}{m}⟩" for n,l,m in active_phase2))
+    print(f"  Dominant level: |{dom_n}{dom_l}{dom_m}⟩  Γ̃₀ = {g0_dom:.4e}")
+    print(f"  e-folding τ_SR  = {1/g0_dom:.3e}  =  {1/g0_dom * TAU_TO_YR:.3e} yr")
+    print(f"  ã_f ≈ {astar_f:.4f}  (spin after dominant level switches off)")
+    if phase2_levels:
+        print(f"  Phase-2 levels at ã_f (rate > {g_floor:.1e}):")
+        for n, l, m, g_af, tau_i in sorted(phase2_levels, key=lambda x: -x[3]):
+            print(f"    |{n}{l}{m}⟩   Γ̃(ã_f) = {g_af:.3e}"
+                  f"   window = {tau_i:.2e} τ = {tau_i*TAU_TO_YR:.2e} yr")
     else:
         print(f"  No phase-2 levels above rate floor {g_floor:.1e}")
     print(f"  τ_end = {tau_end:.3e}  =  {tau_end * TAU_TO_YR:.3e} yr")
+    print(f"  (no terminal events — simulation runs to τ_end)")
 
     # ── Initial conditions and integration ───────────────────────────
-    y0 = [np.log(N0)] * N_LEVELS + [1.0, a_star_0]
+    ln_eps0 = np.log(N0) - 2.0 * np.log(M0)
+    y0 = [ln_eps0] * N_LEVELS + [1.0, a_star_0]
     print("\nIntegrating ... ", end="", flush=True)
     sol = solve_ivp(
         odes,
         t_span       = (0.0, tau_end),
         y0           = y0,
         method       = "RK45",
-        events       = [event_occupation_decay],
+        events       = [],           # no terminal events — see comment above
         rtol         = 1e-9,
         atol         = 1e-12,
         dense_output = False,
@@ -493,12 +548,16 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
     print("done.")
 
     tau   = sol.t
-    lnN_all = sol.y[:N_LEVELS]
-    Mtil    = sol.y[N_LEVELS]
-    astar   = sol.y[N_LEVELS + 1]
+    Mtil  = sol.y[N_LEVELS]
+    astar = sol.y[N_LEVELS + 1]
 
     # ── Derived quantities ────────────────────────────────────────────
-    N_all   = np.exp(lnN_all)
+    # The solver evolved ln_eps; recover eps and N.
+    ln_eps_raw = sol.y[:N_LEVELS]
+    eps_all    = np.exp(np.clip(ln_eps_raw, -500.0, 700.0))   # (N_LEVELS, n_time)
+    N_all      = NORM * eps_all                                # physical occupation
+    lnN_all    = np.log(np.maximum(N_all, 1e-300))            # for downstream compatibility
+
     alpha   = alpha_0 * Mtil
     M_BH    = Mtil * M0
 
@@ -536,6 +595,10 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
             np.maximum(8.0 * Gamma_a_phys / (KPC_PLANCK**2 * omega_ann_all), 0.0)
         )
     h_all = np.nan_to_num(h_all, nan=0.0, posinf=0.0)
+
+    # Dimensionless strain amplitude:  h_dimless = h * r_1kpc / M0
+    # Physical strain at any mass M and distance r:  h = h_dimless * M_Pl / r_Pl
+    h_dimless_all = h_all * KPC_PLANCK / M0   # (N_LEVELS, n_time)
     f_gw_hz = np.array([
         2.0 * MU * (1.0 - alpha_0**2 / (2.0 * n**2)) * OMEGA_PL_TO_HZ
         for (n, l, m) in LEVELS
@@ -560,6 +623,8 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         h_tr_matrix[p] = np.nan_to_num(h_pair, nan=0.0, posinf=0.0)
         omega_tr_0 = MU * (alpha_0**2 / 2.0) * (1.0 / n_j**2 - 1.0 / n_i**2)
         f_tr_hz[p] = omega_tr_0 * OMEGA_PL_TO_HZ
+
+    h_dimless_tr = h_tr_matrix * KPC_PLANCK / M0   # (n_tr_pairs, n_time)
 
     # ── Summary prints ───────────────────────────────────────────────
     n_ann_active = sum(1 for (n,l) in ann_available if ann_available[(n,l)])
@@ -602,8 +667,10 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         N_LEVELS=N_LEVELS,
         ann_available=ann_available,
         tr_pairs_idx=TR_PAIRS_IDX,
+        NORM=NORM,
         tau=tau,
         lnN_all=lnN_all,
+        eps_all=eps_all,
         Mtil=Mtil,
         astar=astar,
         t_yr=t_yr,
@@ -621,10 +688,12 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         g_sr_all=g_sr_all,
         g_ann_all=g_ann_all,
         h_all=h_all,
+        h_dimless_all=h_dimless_all,
         f_gw_hz=f_gw_hz,
         P_GW_total=P_GW_total,
         g_tr_matrix=g_tr_matrix,
         h_tr_matrix=h_tr_matrix,
+        h_dimless_tr=h_dimless_tr,
         f_tr_hz=f_tr_hz,
         astar_f=astar_f,
         t_final_yr=t_yr[-1],
@@ -632,6 +701,140 @@ def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
         dominant_level=dom_level,
     )
     return res
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Dimensionless file I/O and mass rescaling
+# ══════════════════════════════════════════════════════════════════════
+
+def save_dimensionless(results: SimulationResults, filepath: str = None):
+    """
+    Save the universal dimensionless solution to a compressed NPZ file.
+
+    The arrays eps_all, h_dimless_all, h_dimless_tr are functions of
+    (alpha_0, a_star_0) only — they do not change with BH mass.
+    Use rescale_to_mass() to recover physical quantities at any mass M.
+
+    Rescaling rules
+    ---------------
+    M_Pl = M_solar * 9.137e37               [M_Planck]
+    t    = tau * (M_solar * 4.927e-6) / (alpha_0 * 3.156e7)    [yr]
+    N_i  = M_Pl^2 * eps_i
+    h(r) = h_dimless * M_Pl / r_Pl          (r_Pl = r_kpc * 1.910e54)
+    f(M) = f_gw_hz * (M0_solar / M_solar)   [Hz, at fixed alpha_0]
+    """
+    if results is None:
+        print("No results to save.")
+        return
+
+    if filepath is None:
+        data_dir = os.path.join(_THIS_DIR, 'Data')
+        os.makedirs(data_dir, exist_ok=True)
+        filepath = os.path.join(data_dir,
+            f"dimless_alpha{results.alpha_0:.3f}_a{results.a_star_0:.2f}.npz")
+
+    os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+
+    level_labels = np.array([f"{n}{l}{m}" for (n, l, m) in results.LEVELS])
+    tr_labels = np.array(
+        [f"{n_i}{l_i}{l_i}->{n_j}{l_j}{l_j}"
+         for (_, _, n_i, l_i, n_j, l_j) in results.tr_pairs_idx]
+        if results.tr_pairs_idx else []
+    )
+
+    np.savez_compressed(
+        filepath,
+        alpha_0      = results.alpha_0,
+        a_star_0     = results.a_star_0,
+        M0_solar     = results.M_BH_solar,
+        M0_planck    = results.M0,
+        NORM         = results.NORM,
+        tau          = results.tau,
+        eps_all      = results.eps_all,
+        Mtil         = results.Mtil,
+        astar        = results.astar,
+        alpha        = results.alpha,
+        g_sr_all     = results.g_sr_all,
+        g_ann_all    = results.g_ann_all,
+        g_tr_matrix  = results.g_tr_matrix,
+        h_dimless_all = results.h_dimless_all,
+        h_dimless_tr = results.h_dimless_tr,
+        f_gw_hz      = results.f_gw_hz,
+        f_tr_hz      = results.f_tr_hz,
+        level_labels = level_labels,
+        tr_labels    = tr_labels,
+    )
+    print(f"Dimensionless results saved to {filepath}")
+
+    guide = filepath.replace('.npz', '_rescaling.txt')
+    with open(guide, 'w', encoding='utf-8') as f:
+        f.write("Superradiance simulation — dimensionless output\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"alpha_0  = {results.alpha_0}\n")
+        f.write(f"a_star_0 = {results.a_star_0}\n")
+        f.write(f"M0_solar = {results.M_BH_solar} M_sun\n")
+        f.write(f"M0_Pl    = {results.M0:.6e} M_Pl\n\n")
+        f.write("Arrays tau, eps_all, Mtil, astar, h_dimless_all, h_dimless_tr\n")
+        f.write("are universal at fixed (alpha_0, a_star_0).\n\n")
+        f.write("Rescaling to mass M [solar masses]\n")
+        f.write("-" * 40 + "\n")
+        f.write(f"  M_Pl = M_solar * {M_SUN_PLANCK:.6e}\n")
+        f.write(f"  t [yr] = tau * M_solar * {GM_SUN_OVER_C3:.6e} / (alpha_0 * {YEAR_S:.6e})\n")
+        f.write(f"  N_i    = M_Pl^2 * eps_i\n")
+        f.write(f"  h(r)   = h_dimless * M_Pl / (r_kpc * {KPC_PLANCK:.6e})\n")
+        f.write(f"  f(M)   = f_gw_hz * ({results.M_BH_solar} / M_solar)  [Hz]\n")
+        f.write(f"\n  h ∝ M  at fixed alpha_0 and fixed distance\n")
+        f.write(f"  t ∝ M  at fixed alpha_0\n")
+        f.write(f"  f ∝ 1/M at fixed alpha_0\n")
+    print(f"Rescaling guide saved to {guide}")
+
+
+def rescale_to_mass(filepath: str, M_new_solar: float, r_kpc: float = 1.0):
+    """
+    Load a dimensionless NPZ file and return physical quantities at a new mass.
+
+    Parameters
+    ----------
+    filepath     : path to .npz written by save_dimensionless()
+    M_new_solar  : target BH mass [solar masses]
+    r_kpc        : source distance [kpc]
+
+    Returns
+    -------
+    dict with physical quantities rescaled to M_new_solar at r_kpc.
+    """
+    data         = np.load(filepath, allow_pickle=True)
+    alpha_0      = float(data['alpha_0'])
+    M0_solar     = float(data['M0_solar'])
+    M_new_planck = M_new_solar * M_SUN_PLANCK
+    r_planck     = r_kpc * KPC_PLANCK
+    TAU_TO_YR_new = (M_new_solar * GM_SUN_OVER_C3) / (alpha_0 * YEAR_S)
+
+    return {
+        # Dimensionless (unchanged by rescaling)
+        'tau':        data['tau'],
+        'eps_all':    data['eps_all'],
+        'Mtil':       data['Mtil'],
+        'astar':      data['astar'],
+        'alpha':      data['alpha'],
+        # Physical time axis
+        't_yr':       data['tau'] * TAU_TO_YR_new,
+        # Physical occupation
+        'N_all':      M_new_planck**2 * data['eps_all'],
+        # Physical GW strain at r_kpc
+        'h_ann':      data['h_dimless_all'] * M_new_planck / r_planck,
+        'h_tr':       data['h_dimless_tr']  * M_new_planck / r_planck,
+        # GW frequencies rescaled to new mass (f ∝ 1/M at fixed alpha_0)
+        'f_gw_hz':    data['f_gw_hz'] * (M0_solar / M_new_solar),
+        'f_tr_hz':    data['f_tr_hz'] * (M0_solar / M_new_solar),
+        # Metadata
+        'M_planck':   M_new_planck,
+        'alpha_0':    alpha_0,
+        'a_star_0':   float(data['a_star_0']),
+        'r_kpc':      r_kpc,
+        'level_labels': data['level_labels'],
+        'tr_labels':    data['tr_labels'],
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -850,12 +1053,36 @@ def plot_occupations_and_spin(results: SimulationResults, save_path=None):
     astar     = results.astar
     log10N_all = results.lnN_all / np.log(10)
     LEVELS    = results.LEVELS
+<<<<<<< HEAD
+=======
 
     # ── Colour palettes ───────────────────────────────────────────────
     _N2_BLUES = ["#1565C0", "#42A5F5", "#0288D1", "#29B6F6"]   # darkest first
     _N3_REDS  = ["#8B0000", "#C62828", "#D32F2F", "#E57373"]   # darkest first
     _LS_CYCLE = ["-", "--", "-.", ":"]
 
+    # Pre-compute (colour, linestyle, linewidth) for every level in order
+    _n2_idx, _n3_idx = 0, 0
+    level_style_map = {}
+    for (n, l, m) in LEVELS:
+        if n == 2:
+            col = _N2_BLUES[_n2_idx % len(_N2_BLUES)]
+            _n2_idx += 1
+        elif n == 3:
+            col = _N3_REDS[_n3_idx % len(_N3_REDS)]
+            _n3_idx += 1
+        else:
+            col, _, _ = level_style(n, l)        # fallback for n > 3
+        ls = _LS_CYCLE[(l - 1) % len(_LS_CYCLE)]
+        level_style_map[(n, l, m)] = (col, ls, 1.8)
+>>>>>>> 3b9e21da0657b2c765a7a216e3ca9d6366e9592c
+
+    # ── Colour palettes ───────────────────────────────────────────────
+    _N2_BLUES = ["#1565C0", "#42A5F5", "#0288D1", "#29B6F6"]   # darkest first
+    _N3_REDS  = ["#8B0000", "#C62828", "#D32F2F", "#E57373"]   # darkest first
+    _LS_CYCLE = ["-", "--", "-.", ":"]
+
+<<<<<<< HEAD
     # Pre-compute (colour, linestyle, linewidth) for every level in order
     _n2_idx, _n3_idx = 0, 0
     level_style_map = {}
@@ -881,6 +1108,16 @@ def plot_occupations_and_spin(results: SimulationResults, save_path=None):
     })
 
     fig_main = plt.figure(figsize=(5, 4))
+=======
+    plt.rcParams.update({
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.serif": ["Computer Modern Roman"],
+        "text.latex.preamble": r"\usepackage{amsmath}"
+    })
+
+    fig_main = plt.figure(figsize=(8, 6))
+>>>>>>> 3b9e21da0657b2c765a7a216e3ca9d6366e9592c
     gs_main  = GridSpec(2, 1, figure=fig_main,
                         height_ratios=[0.5, 3.5], hspace=0.1)
     ax_spin  = fig_main.add_subplot(gs_main[0])
@@ -964,67 +1201,6 @@ def plot_occupations_and_spin(results: SimulationResults, save_path=None):
         fig_main.savefig(save_path, dpi=150, bbox_inches="tight")
         print(f"Main figure saved to {save_path}")
     return fig_main
-
-
-def plot_gw_annihilation(results: SimulationResults, save_path=None):
-    """GW strain from annihilation: spin + h(t) per level."""
-    if results is None:
-        return
-    t_yr = results.t_yr
-    astar = results.astar
-    h_all = results.h_all
-    f_gw_hz = results.f_gw_hz
-    LEVELS = results.LEVELS
-    if not np.any(h_all > 0):
-        print("No annihilation GW strain to plot.")
-        return
-
-    color_spin = "firebrick"
-    fig_gw = plt.figure(figsize=(8, 6))
-    gs_gw = GridSpec(2, 1, figure=fig_gw, height_ratios=[0.5, 3.5], hspace=0.1)
-    ax_gw_spin = fig_gw.add_subplot(gs_gw[0])
-    ax_gw_h = fig_gw.add_subplot(gs_gw[1], sharex=ax_gw_spin)
-
-    ax_gw_spin.plot(t_yr, astar, color='k', lw=1.2)
-    ax_gw_spin.set_ylabel(r"$\tilde{a}$", fontsize=11)
-    ax_gw_spin.tick_params(axis="y", labelsize=9)
-    ax_gw_spin.tick_params(axis="x", labelbottom=False)
-    ax_gw_spin.set_ylim(-0.05, 1.10)
-    ax_gw_spin.set_yticks([0.0, 0.5, 1.0])
-    ax_gw_spin.grid(True, alpha=0.25, linestyle="--")
-    ax_gw_spin.axhline(astar[-1], ls=":", color=color_spin, lw=0.8, alpha=0.55)
-    ax_gw_spin.set_xscale('log')
-
-    for k, (n, l, m) in enumerate(LEVELS):
-        if h_all[k].max() <= 0:
-            continue
-        col, ls, lw = level_style(n, l)
-        f_hz = f_gw_hz[k]
-        if f_hz >= 1e9: f_str = fr"$f={f_hz/1e9:.1f}$\,GHz"
-        elif f_hz >= 1e6: f_str = fr"$f={f_hz/1e6:.1f}$\,MHz"
-        elif f_hz >= 1e3: f_str = fr"$f={f_hz/1e3:.1f}$\,kHz"
-        else: f_str = fr"$f={f_hz:.1f}$\,Hz"
-        label = rf"$|{n}{l}{m}\rangle$\;({f_str})"
-        ax_gw_h.semilogy(t_yr, np.maximum(h_all[k], 1e-100),
-                         color=col, ls=ls, lw=lw, label=label)
-    ax_gw_h.set_xlabel(r"$t$  [yr]", fontsize=12)
-    ax_gw_h.set_ylabel(r"$h$ (at 1\,kpc)", fontsize=12)
-    ax_gw_h.grid(True, alpha=0.25, which="both", linestyle="--")
-    ax_gw_h.legend(fontsize=8, loc="upper left", ncol=1)
-    ax_gw_h.set_xscale('log')
-    t_min_pos = t_yr[t_yr > 0][0] if np.any(t_yr > 0) else t_yr[1]
-    ax_gw_h.set_xlim(t_min_pos, t_yr[-1])
-
-    fig_gw.suptitle(
-        fr"GW strain from axion annihilation — $m=l$ levels ($n\leq{results.max_n}$), "
-        fr"$M_{{\rm BH}} = {results.M_BH_solar}\,M_\odot$, "
-        fr"$\alpha_0 = {results.alpha_0}$, distance $= 1\,\rm kpc$",
-        fontsize=9, y=1.01)
-    if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        fig_gw.savefig(save_path, dpi=150, bbox_inches="tight")
-        print(f"GW annihilation strain figure saved to {save_path}")
-    return fig_gw
 
 
 def plot_gw_transitions(results: SimulationResults, save_path=None):
@@ -1306,6 +1482,7 @@ def run_alpha_sweep(M_BH_solar, a_star_0, max_n,
 def main():
     # ── Physical input parameters — edit these ────────────────────────
     M_BH_SOLAR = 1e-6
+<<<<<<< HEAD
     A_STAR_0   = 0.99
     ALPHA_0    = 0.42      # used for the single-run path only
     MAX_N      = 6
@@ -1315,6 +1492,17 @@ def main():
     N_ALPHA_POINTS  = 40      # number of geometrically-spaced alpha values
     ALPHA_MIN       = 0.01   # lower bound of the sweep
     ALPHA_MAX       = 0.8     # upper bound of the sweep
+=======
+    A_STAR_0   = 0.65
+    ALPHA_0    = 0.15      # used for the single-run path only
+    MAX_N      = 3
+
+    # ── Alpha sweep parameters ────────────────────────────────────────
+    RUN_ALPHA_SWEEP = False   # set True to run the sweep instead of a single sim
+    N_ALPHA_POINTS  = 4      # number of geometrically-spaced alpha values
+    ALPHA_MIN       = 0.2   # lower bound of the sweep
+    ALPHA_MAX       = 0.3     # upper bound of the sweep
+>>>>>>> 3b9e21da0657b2c765a7a216e3ca9d6366e9592c
 
     if RUN_ALPHA_SWEEP:
         run_alpha_sweep(
@@ -1332,7 +1520,8 @@ def main():
     results = run_simulation(M_BH_solar=M_BH_SOLAR,
                              a_star_0=A_STAR_0,
                              alpha_0=ALPHA_0,
-                             max_n=MAX_N)
+                             max_n=MAX_N,
+                             tau_end_factor=1e10)
     if results is None:
         return
 
@@ -1344,6 +1533,10 @@ def main():
     data_dir = os.path.join(_THIS_DIR, 'Data')
     save_peak_tables(ann_char, tr_char, results, output_dir=data_dir)
 
+    # Save dimensionless (mass-independent) results
+    save_dimensionless(results, filepath=os.path.join(data_dir,
+        f"dimless_alpha{results.alpha_0:.3f}_a{results.a_star_0:.2f}.npz"))
+
     # Create output directory for plots
     plot_dir = os.path.join(_THIS_DIR, 'Plots')
     os.makedirs(plot_dir, exist_ok=True)
@@ -1353,7 +1546,11 @@ def main():
     plot_occupations_and_spin(results, save_path=main_path)
 
     """gw_ann_path = os.path.join(plot_dir, 'superradiance_gw_strain.pdf')
+<<<<<<< HEAD
     plot_gw_annihilation(results, save_path=gw_ann_path)
+=======
+    plot_gw_annihilation(results, save_path=gw_ann_path)"""
+>>>>>>> 3b9e21da0657b2c765a7a216e3ca9d6366e9592c
 
     gw_tr_path = os.path.join(plot_dir, 'superradiance_gw_transitions.pdf')
     plot_gw_transitions(results, save_path=gw_tr_path)

@@ -167,7 +167,7 @@ ADMX_EFR = MagneticWeberBar(
     f_mech   = 1.4e3,
     Q_mech   = 1.0e6,
     R_p      = 0.4,
-    name     = 'ADMX-EFR',
+    name     = 'MWB-EFR',
 )
 
 DMRADIO_GUT = MagneticWeberBar(
@@ -180,7 +180,7 @@ DMRADIO_GUT = MagneticWeberBar(
     f_mech   = 1.0e3,
     Q_mech   = 1.0e7,
     R_p      = 3.0,
-    name     = 'DMRadio-GUT',
+    name     = 'MWB-DMR',
 )
 
 # Ordered list for sweep loops (det1, det2 convention used downstream)
@@ -430,10 +430,10 @@ def plot_all_noise_psds(
     })
 
     freqs = np.logspace(np.log10(f_min), np.log10(f_max), n_pts)
-    fig, ax = plt.subplots(figsize=(5, 4))
+    fig, ax = plt.subplots(figsize=(4, 3.5))
 
     # ── MWB detectors ─────────────────────────────────────────────────────────
-    mwb_colors = {'ADMX-EFR': 'steelblue', 'DMRadio-GUT': 'teal'}
+    mwb_colors = {'MWB-EFR': 'steelblue', 'MWB-DMR': 'teal'}
 
     for det in MWB_DETECTORS:
         col  = mwb_colors.get(det.name, 'gray')
@@ -446,7 +446,7 @@ def plot_all_noise_psds(
             mask   = ~np.isnan(S_h_LC)
             ax.loglog(freqs[mask], np.sqrt(S_h_LC[mask]),
                       color=col, linewidth=1.5, linestyle='--',
-                      label=fr'{det.name} (LC)')
+                      label=fr'{det.name} (LC)', zorder=1)
 
     # ── IFO detectors ─────────────────────────────────────────────────────────
     for key, ifo in IFO_DETECTORS.items():
@@ -461,7 +461,7 @@ def plot_all_noise_psds(
                 color=ifo.color,
                 linewidth=1.8,
                 linestyle=ifo.linestyle,
-                label=ifo.name)
+                label=ifo.name, zorder=2)
 
         # Optional: only draw FSR line for analytic model
         if key == 'adv_ligo':
@@ -485,7 +485,7 @@ def plot_all_noise_psds(
         r'$\left(S_h^\mathrm{noise}\right)^{1/2}\ [\mathrm{Hz}^{-1/2}]$',
         fontsize=13,
     )
-    ax.set_xlim(10, f_max)
+    ax.set_xlim(10, 1e10)
     ax.set_ylim(1e-26, 1e-14)
     ax.xaxis.set_major_formatter(FuncFormatter(_format_log_decade_tick))
     ax.legend(fontsize=9, loc='upper right', frameon=False)

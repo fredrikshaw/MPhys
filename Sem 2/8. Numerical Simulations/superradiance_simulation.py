@@ -833,23 +833,60 @@ def level_style(n, l):
 
 
 def plot_occupations_and_spin(results: SimulationResults, save_path=None):
-    """Main plot: spin panel (top) + log10 N(t) for all levels (bottom)."""
+    """Main plot: spin panel (top) + log10 N(t) for all levels (bottom).
+
+    Changes vs. original:
+      - ã_f annotation moved to the right edge of the spin panel.
+      - No legend: inline coloured text labels stacked vertically at the
+        centre-height / left of the occupation panel.
+      - Colour scheme: n=2 levels → shades of blue,
+                       n=3 levels → dark shades of red.
+    """
     if results is None:
         print("No simulation results to plot.")
         return
-    t_yr = results.t_yr
-    astar = results.astar
+
+    t_yr      = results.t_yr
+    astar     = results.astar
     log10N_all = results.lnN_all / np.log(10)
-    LEVELS = results.LEVELS
+    LEVELS    = results.LEVELS
 
-    color_spin = "firebrick"
+    # ── Colour palettes ───────────────────────────────────────────────
+    _N2_BLUES = ["#1565C0", "#42A5F5", "#0288D1", "#29B6F6"]   # darkest first
+    _N3_REDS  = ["#8B0000", "#C62828", "#D32F2F", "#E57373"]   # darkest first
+    _LS_CYCLE = ["-", "--", "-.", ":"]
 
-    fig_main = plt.figure(figsize=(8, 6))
-    gs_main = GridSpec(2, 1, figure=fig_main, height_ratios=[0.5, 3.5], hspace=0.1)
-    ax_spin = fig_main.add_subplot(gs_main[0])
-    ax_main = fig_main.add_subplot(gs_main[1], sharex=ax_spin)
+    # Pre-compute (colour, linestyle, linewidth) for every level in order
+    _n2_idx, _n3_idx = 0, 0
+    level_style_map = {}
+    for (n, l, m) in LEVELS:
+        if n == 2:
+            col = _N2_BLUES[_n2_idx % len(_N2_BLUES)]
+            _n2_idx += 1
+        elif n == 3:
+            col = _N3_REDS[_n3_idx % len(_N3_REDS)]
+            _n3_idx += 1
+        else:
+            col, _, _ = level_style(n, l)        # fallback for n > 3
+        ls = _LS_CYCLE[(l - 1) % len(_LS_CYCLE)]
+        level_style_map[(n, l, m)] = (col, ls, 1.8)
 
-    # Spin panel
+    color_spin = "k"
+
+    plt.rcParams.update({
+        "text.usetex": True,
+        "font.family": "serif",
+        "font.serif": ["Computer Modern Roman"],
+        "text.latex.preamble": r"\usepackage{amsmath}"
+    })
+
+    fig_main = plt.figure(figsize=(5, 4))
+    gs_main  = GridSpec(2, 1, figure=fig_main,
+                        height_ratios=[0.5, 3.5], hspace=0.1)
+    ax_spin  = fig_main.add_subplot(gs_main[0])
+    ax_main  = fig_main.add_subplot(gs_main[1], sharex=ax_spin)
+
+    # ── Spin panel ────────────────────────────────────────────────────
     ax_spin.plot(t_yr, astar, color='k', lw=1.2)
     ax_spin.set_ylabel(r"$\tilde{a}$", fontsize=11)
     ax_spin.tick_params(axis="y", labelsize=9)
@@ -858,31 +895,69 @@ def plot_occupations_and_spin(results: SimulationResults, save_path=None):
     ax_spin.set_yticks([0.0, 0.5, 1.0])
     ax_spin.grid(True, alpha=0.25, linestyle="--")
     ax_spin.axhline(astar[-1], ls=":", color=color_spin, lw=0.8, alpha=0.55)
-    ax_spin.annotate(fr"$\tilde{{a}}_f = {astar[-1]:.3f}$",
-                     xy=(t_yr[len(t_yr)//2], astar[-1]),
-                     xytext=(0, 5), textcoords="offset points",
-                     fontsize=8, color=color_spin)
-    ax_spin.annotate(fr"$\tilde{{a}}_0 = {results.a_star_0}$",
-                     xy=(t_yr[0], results.a_star_0),
-                     xytext=(6, -10), textcoords="offset points",
-                     fontsize=8, color=color_spin)
-    ax_spin.set_xscale('log')
 
-    # Occupation panel
+    # ã_f label pinned to the RIGHT edge of the axes at the final spin value
+    ax_spin.annotate(
+        fr"$\tilde{{a}}_f = {astar[-1]:.3f}$",
+        xy=(1.0, astar[-1]),
+        xycoords=("axes fraction", "data"),
+        xytext=(-6, 5), textcoords="offset points",
+        fontsize=8, color=color_spin,
+        ha="right", va="bottom",
+    )
+    # ã_0 label at the left / top of the spin curve
+    ax_spin.annotate(
+        fr"$\tilde{{a}}_0 = {results.a_star_0}$",
+        xy=(t_yr[t_yr > 0][0] if np.any(t_yr > 0) else t_yr[1], results.a_star_0),
+        xytext=(6, -10), textcoords="offset points",
+        fontsize=8, color=color_spin,
+    )
+    ax_spin.set_xscale("log")
+
+    # ── Occupation panel ──────────────────────────────────────────────
+    active_labels = []   # (latex_str, colour, peak_log10N) for inline labels
+
     for k, (n, l, m) in enumerate(LEVELS):
-        col, ls, lw = level_style(n, l)
-        label = rf"$|{n}{l}{m}\rangle$"
-        show_label = log10N_all[k].max() > 0.5
-        ax_main.plot(t_yr, log10N_all[k], color=col, ls=ls, lw=lw,
-                     label=label if show_label else "_nolegend_")
+        col, ls, lw = level_style_map[(n, l, m)]
+        is_active = log10N_all[k].max() > 0.5
+        ax_main.plot(
+            t_yr, log10N_all[k],
+            color=col, ls=ls, lw=lw,
+            alpha=1.0 if is_active else 0.25,
+        )
+        if is_active:
+            active_labels.append(
+                (rf"$|{n}{l}{m}\rangle$", col, float(log10N_all[k].max()))
+            )
+
     ax_main.set_xlabel(r"$t$  [yr]", fontsize=12)
     ax_main.set_ylabel(r"$\log_{10}\, N$", fontsize=12)
     ax_main.grid(True, alpha=0.25, linestyle="--")
-    ax_main.legend(fontsize=9, loc="upper left", ncol=2)
     ax_main.set_ylim(0, log10N_all.max() * 1.1)
     t_min_pos = t_yr[t_yr > 0][0] if np.any(t_yr > 0) else t_yr[1]
     ax_main.set_xlim(t_min_pos, t_yr[-1])
-    ax_main.set_xscale('log')
+    ax_main.set_xscale("log")
+
+    # ── Inline coloured text labels ───────────────────────────────────
+    # Sort by descending peak so the tallest curve appears at the top
+    active_labels.sort(key=lambda x: x[2], reverse=True)
+    n_active = len(active_labels)
+
+    if n_active > 0:
+        x_axes  = 0.05          # left side in axes-fraction coords
+        y_gap   = 0.08          # vertical spacing between labels (axes fraction)
+        total_h = y_gap * (n_active - 1)
+        y_top   = 0.50 + total_h / 2.0   # centre the block around y=0.5
+
+        for i, (lbl, col, _) in enumerate(active_labels):
+            ax_main.text(
+                x_axes,
+                y_top - i * y_gap,
+                lbl,
+                transform=ax_main.transAxes,
+                fontsize=11, color=col,
+                ha="left", va="center",
+            )
 
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -1231,15 +1306,15 @@ def run_alpha_sweep(M_BH_solar, a_star_0, max_n,
 def main():
     # ── Physical input parameters — edit these ────────────────────────
     M_BH_SOLAR = 1e-6
-    A_STAR_0   = 0.65
-    ALPHA_0    = 0.15      # used for the single-run path only
-    MAX_N      = 8
+    A_STAR_0   = 0.99
+    ALPHA_0    = 0.42      # used for the single-run path only
+    MAX_N      = 6
 
     # ── Alpha sweep parameters ────────────────────────────────────────
-    RUN_ALPHA_SWEEP = True   # set True to run the sweep instead of a single sim
-    N_ALPHA_POINTS  = 4      # number of geometrically-spaced alpha values
-    ALPHA_MIN       = 0.2   # lower bound of the sweep
-    ALPHA_MAX       = 0.3     # upper bound of the sweep
+    RUN_ALPHA_SWEEP = False   # set True to run the sweep instead of a single sim
+    N_ALPHA_POINTS  = 40      # number of geometrically-spaced alpha values
+    ALPHA_MIN       = 0.01   # lower bound of the sweep
+    ALPHA_MAX       = 0.8     # upper bound of the sweep
 
     if RUN_ALPHA_SWEEP:
         run_alpha_sweep(
@@ -1277,7 +1352,7 @@ def main():
     main_path = os.path.join(plot_dir, 'superradiance_main.pdf')
     plot_occupations_and_spin(results, save_path=main_path)
 
-    gw_ann_path = os.path.join(plot_dir, 'superradiance_gw_strain.pdf')
+    """gw_ann_path = os.path.join(plot_dir, 'superradiance_gw_strain.pdf')
     plot_gw_annihilation(results, save_path=gw_ann_path)
 
     gw_tr_path = os.path.join(plot_dir, 'superradiance_gw_transitions.pdf')
@@ -1287,7 +1362,7 @@ def main():
     #plot_annihilation_rates(results, save_path=ann_rates_path)
 
     diag_path = os.path.join(plot_dir, 'superradiance_diagnostics.pdf')
-    plot_diagnostics(results, save_path=diag_path)
+    plot_diagnostics(results, save_path=diag_path)"""
 
     plt.show()
     plt.close("all")

@@ -644,10 +644,85 @@ def compute_merger_reach_fixed_mass(
 # ═════════════════════════════════════════════════════════════════════════════
 
 _DET_STYLE = {
-    'ADMX-EFR'   : {'color': 'steelblue', 'ls': '-'},
-    'DMRadio-GUT': {'color': 'teal',       'ls': '-'},
-    'LIGO HF'    : {'color': 'black',      'ls': '--'},
+    'MWB-EFR'   : {'color': 'steelblue', 'ls': '-'},
+    'MWB-DMR': {'color': 'teal',       'ls': '-'},
+    'LIGO HF'    : {'color': 'black',      'ls': '-'},
 }
+
+
+def _parse_transition_ns(level_label):
+    """
+    Extract (n_upper, n_lower) from a transition label like '|644⟩→|544⟩'.
+
+    Returns (n_upper, n_lower) as ints, or (None, None) if the label is not
+    a transition (i.e. does not contain '→').
+    """
+    if level_label is None or '\u2192' not in level_label:
+        return None, None
+    parts = level_label.split('\u2192')          # split on '→'
+    match_u = re.search(r'\|(\d)', parts[0])
+    match_l = re.search(r'\|(\d)', parts[1])
+    if match_u and match_l:
+        return int(match_u.group(1)), int(match_l.group(1))
+    return None, None
+
+
+def _parse_transition_ns(level_label):
+    """
+    Extract (n_upper, n_lower) from a transition label like '|644⟩→|544⟩'.
+
+    Returns (n_upper, n_lower) as ints, or (None, None) if the label is not
+    a transition (i.e. does not contain '→').
+    """
+    if level_label is None or '\u2192' not in level_label:
+        return None, None
+    parts = level_label.split('\u2192')          # split on '→'
+    match_u = re.search(r'\|(\d)', parts[0])
+    match_l = re.search(r'\|(\d)', parts[1])
+    if match_u and match_l:
+        return int(match_u.group(1)), int(match_l.group(1))
+    return None, None
+
+
+def _nice_top_ticks(f_lo, f_hi, max_ticks=6):
+    """
+    Return an array of 'nice' tick values that span [f_lo, f_hi] evenly.
+
+    For ranges spanning more than one decade (typical of the cubic
+    transition f_GW ∝ μ³ mapping) logarithmic ticks at 1/2/5 × 10^n are
+    used; they distribute evenly over a nonlinear secondary axis.
+
+    For sub-decade ranges plain linear ticks are used instead.
+    """
+    if not (np.isfinite(f_lo) and np.isfinite(f_hi) and f_lo < f_hi):
+        return np.array([])
+
+    log_range = np.log10(f_hi) - np.log10(max(f_lo, 1e-30))
+
+    if log_range > 1.0:
+        # Logarithmic: 1/2/5 × 10^n multiples inside [f_lo, f_hi]
+        d_lo = int(np.floor(np.log10(max(f_lo, 1e-30))))
+        d_hi = int(np.ceil(np.log10(f_hi)))
+        cands = []
+        for d in range(d_lo, d_hi + 1):
+            for mult in [1, 2, 5]:
+                v = mult * 10.0**d
+                if f_lo <= v <= f_hi:
+                    cands.append(v)
+        return np.array(cands)
+    else:
+        # Linear: round step covering [f_lo, f_hi] in <= max_ticks steps
+        span     = f_hi - f_lo
+        step_raw = span / (max_ticks - 1)
+        mag      = 10.0 ** np.floor(np.log10(step_raw))
+        step     = mag  # will be overwritten below
+        for nice in [1, 2, 2.5, 5, 10]:
+            step = nice * mag
+            if span / step <= max_ticks:
+                break
+        start = np.ceil(f_lo / step) * step
+        ticks = np.arange(start, f_hi + 0.5 * step, step)
+        return ticks[ticks <= f_hi * 1.001]
 
 
 def plot_alpha_reach(
@@ -674,6 +749,15 @@ def plot_alpha_reach(
         'mu'    — bottom axis is mu_a [eV],  top axis is f_GW [Hz]  (default)
         'alpha' — bottom axis is alpha,      top axis is f_GW [Hz]
 
+    Top-axis conversion is process-aware:
+        Annihilation  → f_GW = 2 mu_a eV / h               (linear in mu_a)
+        Transition    → f_GW = mu_a^3 r_g^2 C_nl eV / h    (cubic  in mu_a)
+    where C_nl = 1/2 * (1/n_lower^2 - 1/n_upper^2).
+
+    Ticks on the top axis are set explicitly via _nice_top_ticks() so that
+    they cover the full visible frequency range regardless of the nonlinearity
+    of the conversion.
+
     Y-limits are set automatically. Legend shows detector names only.
     All other annotations are drawn directly on the plot.
     """
@@ -689,7 +773,7 @@ def plot_alpha_reach(
         "text.latex.preamble": r"\usepackage{amsmath}",
     })
 
-    fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(5, 4))
     fig.subplots_adjust(top=0.88)
 
     # ── Coordinate conversion ─────────────────────────────────────────────────
@@ -697,15 +781,54 @@ def plot_alpha_reach(
     r_g_eV_inv = r_g_m / _HBAR_C_EV_M                         # [eV^-1]
     mu_a       = alphas / r_g_eV_inv                           # [eV]
 
-    # x_data is what goes on the bottom axis; _to_x converts mu_a → bottom units
     if bottom_axis == 'mu':
         x_data = mu_a
-        _to_x  = lambda mu: mu                        # mu_a → mu_a
-        _to_mu = lambda x:  x                         # mu_a ← mu_a
+        _to_x  = lambda mu: mu               # mu_a -> mu_a (identity)
+        _to_mu = lambda x:  x                # mu_a <- mu_a (identity)
     else:
         x_data = alphas
-        _to_x  = lambda mu: mu * r_g_eV_inv           # mu_a → alpha
-        _to_mu = lambda x:  x / r_g_eV_inv            # mu_a ← alpha
+        _to_x  = lambda mu: mu * r_g_eV_inv  # mu_a -> alpha
+        _to_mu = lambda x:  x / r_g_eV_inv  # mu_a <- alpha
+
+    # ── Process-aware f_GW <-> axis-coordinate functions ─────────────────────
+    # Detect whether this is a transition from the level label.
+    n_upper, n_lower = _parse_transition_ns(level_label)
+    is_transition = (n_upper is not None and n_lower is not None)
+
+    if is_transition:
+        # C_nl = 1/2 * (1/n_lower^2 - 1/n_upper^2)
+        _C_nl = 0.5 * (1.0 / n_lower**2 - 1.0 / n_upper**2)
+        print(f"  Transition {n_upper} -> {n_lower}: C_nl = {_C_nl:.6f}")
+
+        # f_GW(mu_a) = mu_a^3 * r_g_eV_inv^2 * C_nl * EV/h    (cubic in mu_a)
+        # f_GW(alpha) = alpha^3 * C_nl * EV / (h * r_g_eV_inv) (cubic in alpha)
+        if bottom_axis == 'mu':
+            _k_fwd = _C_nl * r_g_eV_inv**2 * _EV_TO_J / _H_PLANCK
+            _k_inv = _H_PLANCK / (_EV_TO_J * _C_nl * r_g_eV_inv**2)
+            _fgw_from_x = lambda x: np.asarray(x, dtype=float)**3 * _k_fwd
+            _x_from_fgw = lambda f: (_k_inv * np.asarray(f, dtype=float))**(1.0 / 3.0)
+        else:
+            _k_fwd = _C_nl * _EV_TO_J / (_H_PLANCK * r_g_eV_inv)
+            _k_inv = _H_PLANCK * r_g_eV_inv / (_EV_TO_J * _C_nl)
+            _fgw_from_x = lambda x: np.asarray(x, dtype=float)**3 * _k_fwd
+            _x_from_fgw = lambda f: (_k_inv * np.asarray(f, dtype=float))**(1.0 / 3.0)
+
+        # Inverse used for detector-line positioning: f_max -> mu_a
+        _mu_from_fgw = lambda f: (
+            _H_PLANCK * np.asarray(f, dtype=float)
+            / (_EV_TO_J * _C_nl * r_g_eV_inv**2)
+        ) ** (1.0 / 3.0)
+
+    else:
+        # Annihilation: f_GW = 2 mu_a eV / h  (linear)
+        if bottom_axis == 'mu':
+            _fgw_from_x = lambda x: np.asarray(x, dtype=float) * _MU_TO_FGW
+            _x_from_fgw = lambda f: np.asarray(f, dtype=float) / _MU_TO_FGW
+        else:
+            _fgw_from_x = lambda x: np.asarray(x, dtype=float) / r_g_eV_inv * _MU_TO_FGW
+            _x_from_fgw = lambda f: np.asarray(f, dtype=float) / _MU_TO_FGW * r_g_eV_inv
+
+        _mu_from_fgw = lambda f: np.asarray(f, dtype=float) / _MU_TO_FGW
 
     # ── Collect all finite d_max values for auto y-limits ─────────────────────
     all_d_finite = np.concatenate([
@@ -730,7 +853,12 @@ def plot_alpha_reach(
                     label=det_name)
 
     if bottom_axis == 'mu':
-        ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
+        if is_transition:
+            ax.xaxis.set_major_formatter(
+                plt.FuncFormatter(lambda val, _: f'{val * 1e6:g}')
+            )
+        else:
+            ax.ticklabel_format(axis='x', style='sci', scilimits=(0, 0))
 
     # ── PBH merger reach: brown lines, shading above, direct text label ───────
     event_rate_d = np.nan
@@ -755,19 +883,29 @@ def plot_alpha_reach(
             if not np.isfinite(event_rate_d):
                 event_rate_d = reach_all
 
-    # ── Set x-limits (needed before shading) ─────────────────────────────────
-    # Pre-compute cosmological boundary (always in mu_a, converted to x_data below)
+        # ── Physical scale reference lines ───────────────────────────────────────────
+        _scale_lines = [
+            (1e-7, r'$\sim\!20\,\mathrm{AU}$'),
+            (1e-3, r'$1\,\mathrm{pc}$'),
+        ]
+        for _d_ref, _lbl in _scale_lines:
+            ax.axhline(_d_ref, color='dimgray', linewidth=0.8, linestyle=':', alpha=0.7)
+            ax.text(0.5, _d_ref, _lbl,
+                    transform=blended_transform_factory(ax.transAxes, ax.transData),
+                    fontsize=10, color='dimgray',
+                    ha='center', va='bottom')
+
+    # ── Set x-limits (needed before shading and tick computation) ─────────────
     mu_tpeak_boundary = np.nan
     if sweep_data is not None and level_label is not None:
         for pt in sweep_data:
             levels_here = [lev for lev in pt['levels']
-                        if lev['label'] == level_label]
+                           if lev['label'] == level_label]
             if not levels_here:
                 continue
             if levels_here[0]['t_peak_yr'] > T_PEAK_MAX_YR:
                 mu_tpeak_boundary = pt['alpha'] / r_g_eV_inv
 
-    # Convert boundary to bottom-axis units
     x_tpeak_boundary = _to_x(mu_tpeak_boundary) if np.isfinite(mu_tpeak_boundary) else np.nan
 
     if xlim is not None:
@@ -779,16 +917,16 @@ def plot_alpha_reach(
             span     = all_x.max() - all_x.min()
             left_pad = 0.20 * span if np.isfinite(x_tpeak_boundary) else 0.05 * span
             ax.set_xlim(max(0.0, all_x.min() - left_pad),
-                        all_x.max() + 0.05 * span)
+                        all_x.max() + 0.1 * span)
 
-    # ── Set y-limits: 1 order of magnitude above reference, min from data ─────
+    # ── Set y-limits ──────────────────────────────────────────────────────────
     if ylim is not None:
         ax.set_ylim(*ylim)
     else:
         candidates = [v for v in [max_d, event_rate_d] if np.isfinite(v)]
         if candidates:
             y_top_ref = max(candidates)
-            y_max     = 10.0 * y_top_ref * 2.0   # 1 decade up + factor-2 margin
+            y_max     = 10.0 * y_top_ref * 2.0
             y_min     = min_d / 5.0 if np.isfinite(min_d) else y_max / 1e6
             ax.set_ylim(y_min, y_max)
 
@@ -806,49 +944,55 @@ def plot_alpha_reach(
 
     # ── Axis labels ───────────────────────────────────────────────────────────
     if bottom_axis == 'mu':
-        ax.set_xlabel(r'$\mu_a\ [\mathrm{eV}]$', fontsize=13)
+        _mu_unit_label = r'\mathrm{\mu eV}' if is_transition else r'\mathrm{eV}'
+        ax.set_xlabel(rf'$\mu_a\ [{_mu_unit_label}]$', fontsize=13)
     else:
         ax.set_xlabel(r'$\alpha$', fontsize=13)
     ax.set_ylabel(r'$d_{\rm max}\ [\mathrm{kpc}]$', fontsize=13)
 
-    # Top axis always shows f_GW; conversion depends on bottom_axis mode
-    if bottom_axis == 'mu':
-        ax_top = ax.secondary_xaxis(
-            'top',
-            functions=(
-                lambda mu: np.asarray(mu, dtype=float) * _MU_TO_FGW,
-                lambda f:  np.asarray(f,  dtype=float) / _MU_TO_FGW,
-            ),
-        )
-    else:
-        # alpha → f_GW = (alpha / r_g_eV_inv) * _MU_TO_FGW
-        ax_top = ax.secondary_xaxis(
-            'top',
-            functions=(
-                lambda a: np.asarray(a, dtype=float) / r_g_eV_inv * _MU_TO_FGW,
-                lambda f: np.asarray(f, dtype=float) / _MU_TO_FGW * r_g_eV_inv,
-            ),
-        )
-    ax_top.set_xlabel(r'$f_{\rm GW}\ [\mathrm{Hz}]$', fontsize=13, labelpad=6)
+    # ── Top axis: f_GW with explicit, evenly-distributed ticks ───────────────
+    # Create secondary axis with the process-aware (forward, inverse) pair.
+    ax_top = ax.secondary_xaxis('top', functions=(_fgw_from_x, _x_from_fgw))
+    _f_unit_label = r'\mathrm{MHz}' if is_transition else r'\mathrm{GHz}'
+    ax_top.set_xlabel(rf'$f_{{\rm GW}}\ [{_f_unit_label}]$', fontsize=13, labelpad=6)
+
+    # Compute the f_GW range corresponding to the current x-limits, then
+    # place ticks explicitly.  This is essential for the cubic transition
+    # mapping: auto-ticking is linear in Hz and so crowds all ticks into the
+    # right half of the plot (high frequencies), leaving the lower-frequency
+    # left side completely unlabelled.  _nice_top_ticks() uses log-spacing
+    # when the range exceeds one decade so ticks land evenly across the plot.
+    x_lo_ax, x_hi_ax = ax.get_xlim()
+    _x_pos = x_data[np.isfinite(x_data) & (x_data > 0)]
+    _x_tick_lo = float(_x_pos.min()) if len(_x_pos) > 0 else x_lo_ax
+    _x_tick_hi = float(_x_pos.max()) if len(_x_pos) > 0 else x_hi_ax
+    f_lo_top = float(np.atleast_1d(_fgw_from_x(np.array([_x_tick_lo])))[0])
+    f_hi_top = float(np.atleast_1d(_fgw_from_x(np.array([_x_tick_hi])))[0])
+    top_ticks = _nice_top_ticks(f_lo_top, f_hi_top, max_ticks=6)
+    if len(top_ticks) >= 2:
+        _f_scale = 1e6 if is_transition else 1e9
+        ax_top.set_xticks(top_ticks)
+        ax_top.set_xticklabels([f'{v / _f_scale:g}' for v in top_ticks])
 
     # Blended transform for vertical text annotations (data-x, axes-y)
     trans = blended_transform_factory(ax.transData, ax.transAxes)
     x_lo, x_hi = ax.get_xlim()
 
     # ── Vertical line 1: max sensitive frequency per detector ─────────────────
+    # Use the process-aware inverse to convert f_max -> mu_a -> x_bottom.
     all_detectors = [(det.name, det) for det in MWB_DETECTORS]
     all_detectors += [(ifo.name, key) for key, ifo in IFO_DETECTORS.items()]
     print("  Finding detector maximum frequencies...")
     for det_name, det in all_detectors:
-        style  = _DET_STYLE.get(det_name, {'color': 'gray', 'ls': '-'})
-        f_max  = _detector_max_freq_hz(det)
+        style = _DET_STYLE.get(det_name, {'color': 'gray', 'ls': '-'})
+        f_max = _detector_max_freq_hz(det)
         if not np.isfinite(f_max):
             continue
-        mu_max = f_max / _MU_TO_FGW
+        mu_max = float(_mu_from_fgw(f_max))
         x_max  = _to_x(mu_max)
         ax.axvline(x_max, color=style['color'],
                    linewidth=1.2, linestyle=':', alpha=0.8)
-        print(f"    {det_name}: f_max = {f_max:.3e} Hz  →  x_max = {x_max:.3e}")
+        print(f"    {det_name}: f_max = {f_max:.3e} Hz  ->  x_max = {x_max:.3e}")
 
     # ── Vertical line 2: superradiance boundary ───────────────────────────────
     if level_label is not None and a_star is not None:
@@ -861,12 +1005,12 @@ def plot_alpha_reach(
             ax.axvline(x_sr, color='darkorange',
                        linewidth=1.5, linestyle='--')
             ax.text(x_sr * 1.01 if bottom_axis == 'mu' else x_sr + 0.01 * (x_hi - x_lo),
-                    0.50, 'Superradiant Boundary',
+                    0.40, 'Superradiant Boundary',
                     transform=trans,
                     fontsize=10, color='darkorange',
                     rotation=270, va='center', ha='right',
                     rotation_mode='anchor')
-            print(f"  SR boundary: alpha_SR = {alpha_sr:.4f}  →  x_SR = {x_sr:.3e}")
+            print(f"  SR boundary: alpha_SR = {alpha_sr:.4f}  ->  x_SR = {x_sr:.3e}")
 
     # ── Vertical line 3: cosmological t_peak cutoff ───────────────────────────
     if np.isfinite(x_tpeak_boundary):
@@ -1013,7 +1157,7 @@ if __name__ == '__main__':
         PROCESS = 'annihilation'   # fallback when plotting all levels
         LEVEL   = None
     # ── Data directory (output of run_alpha_sweep in superradiance_simulation.py)
-    DATA_DIR = 'Sem 2/8. Numerical Simulations/Data/alpha_sweep'
+    DATA_DIR = 'Sem 2/8. Numerical Simulations/Data/'
 
     # ── Detection threshold ───────────────────────────────────────────────────
     RHO_STAR = 1.0              # SNR threshold rho*

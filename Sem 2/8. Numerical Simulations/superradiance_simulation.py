@@ -1053,36 +1053,12 @@ def plot_occupations_and_spin(results: SimulationResults, save_path=None):
     astar     = results.astar
     log10N_all = results.lnN_all / np.log(10)
     LEVELS    = results.LEVELS
-<<<<<<< HEAD
-=======
 
     # ── Colour palettes ───────────────────────────────────────────────
     _N2_BLUES = ["#1565C0", "#42A5F5", "#0288D1", "#29B6F6"]   # darkest first
     _N3_REDS  = ["#8B0000", "#C62828", "#D32F2F", "#E57373"]   # darkest first
     _LS_CYCLE = ["-", "--", "-.", ":"]
 
-    # Pre-compute (colour, linestyle, linewidth) for every level in order
-    _n2_idx, _n3_idx = 0, 0
-    level_style_map = {}
-    for (n, l, m) in LEVELS:
-        if n == 2:
-            col = _N2_BLUES[_n2_idx % len(_N2_BLUES)]
-            _n2_idx += 1
-        elif n == 3:
-            col = _N3_REDS[_n3_idx % len(_N3_REDS)]
-            _n3_idx += 1
-        else:
-            col, _, _ = level_style(n, l)        # fallback for n > 3
-        ls = _LS_CYCLE[(l - 1) % len(_LS_CYCLE)]
-        level_style_map[(n, l, m)] = (col, ls, 1.8)
->>>>>>> 3b9e21da0657b2c765a7a216e3ca9d6366e9592c
-
-    # ── Colour palettes ───────────────────────────────────────────────
-    _N2_BLUES = ["#1565C0", "#42A5F5", "#0288D1", "#29B6F6"]   # darkest first
-    _N3_REDS  = ["#8B0000", "#C62828", "#D32F2F", "#E57373"]   # darkest first
-    _LS_CYCLE = ["-", "--", "-.", ":"]
-
-<<<<<<< HEAD
     # Pre-compute (colour, linestyle, linewidth) for every level in order
     _n2_idx, _n3_idx = 0, 0
     level_style_map = {}
@@ -1108,16 +1084,6 @@ def plot_occupations_and_spin(results: SimulationResults, save_path=None):
     })
 
     fig_main = plt.figure(figsize=(5, 4))
-=======
-    plt.rcParams.update({
-        "text.usetex": True,
-        "font.family": "serif",
-        "font.serif": ["Computer Modern Roman"],
-        "text.latex.preamble": r"\usepackage{amsmath}"
-    })
-
-    fig_main = plt.figure(figsize=(8, 6))
->>>>>>> 3b9e21da0657b2c765a7a216e3ca9d6366e9592c
     gs_main  = GridSpec(2, 1, figure=fig_main,
                         height_ratios=[0.5, 3.5], hspace=0.1)
     ax_spin  = fig_main.add_subplot(gs_main[0])
@@ -1482,7 +1448,6 @@ def run_alpha_sweep(M_BH_solar, a_star_0, max_n,
 def main():
     # ── Physical input parameters — edit these ────────────────────────
     M_BH_SOLAR = 1e-6
-<<<<<<< HEAD
     A_STAR_0   = 0.99
     ALPHA_0    = 0.42      # used for the single-run path only
     MAX_N      = 6
@@ -1492,17 +1457,6 @@ def main():
     N_ALPHA_POINTS  = 40      # number of geometrically-spaced alpha values
     ALPHA_MIN       = 0.01   # lower bound of the sweep
     ALPHA_MAX       = 0.8     # upper bound of the sweep
-=======
-    A_STAR_0   = 0.65
-    ALPHA_0    = 0.15      # used for the single-run path only
-    MAX_N      = 3
-
-    # ── Alpha sweep parameters ────────────────────────────────────────
-    RUN_ALPHA_SWEEP = False   # set True to run the sweep instead of a single sim
-    N_ALPHA_POINTS  = 4      # number of geometrically-spaced alpha values
-    ALPHA_MIN       = 0.2   # lower bound of the sweep
-    ALPHA_MAX       = 0.3     # upper bound of the sweep
->>>>>>> 3b9e21da0657b2c765a7a216e3ca9d6366e9592c
 
     if RUN_ALPHA_SWEEP:
         run_alpha_sweep(
@@ -1546,11 +1500,7 @@ def main():
     plot_occupations_and_spin(results, save_path=main_path)
 
     """gw_ann_path = os.path.join(plot_dir, 'superradiance_gw_strain.pdf')
-<<<<<<< HEAD
     plot_gw_annihilation(results, save_path=gw_ann_path)
-=======
-    plot_gw_annihilation(results, save_path=gw_ann_path)"""
->>>>>>> 3b9e21da0657b2c765a7a216e3ca9d6366e9592c
 
     gw_tr_path = os.path.join(plot_dir, 'superradiance_gw_transitions.pdf')
     plot_gw_transitions(results, save_path=gw_tr_path)

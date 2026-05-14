@@ -741,8 +741,6 @@ def plot_results(results, save_filename=None, time_unit="years", save_plot=False
     ax2.tick_params(axis='y', labelcolor='black')
     # ax2.set_yscale('log')
     # ax2.set_ylim(h_ylim)
-    for label in ax2.get_yticklabels()[::2]:
-        label.set_visible(False)
 
     # Draw FWHM dotted line on strain axis and crop x-limits to FWHM +/- half-FWHM
     fwhm_proxy = None
@@ -949,10 +947,10 @@ def plot_two_alpha_comparison(
     xmin1, xmax1, tl1, tr1, fw1, hp1 = _xlims(times1, lh1, time_scale)
     xmin2, xmax2, tl2, tr2, fw2, hp2 = _xlims(times2, lh2, time_scale)
 
-    xmin1 = 4.2e-6
-    xmax1 = 5e-6
-    xmin2 = 3.5e-6
-    xmax2 = 6.5e-6
+    xmin1 = 140
+    xmax1 = 152
+    xmin2 = 150
+    xmax2 = 200
 
     # ---- helper: tight y-limits restricted to each panel's own x-window ---
     def _ylims_in_window(plot_times, xmin, xmax, *series_list):
@@ -1014,6 +1012,7 @@ def plot_two_alpha_comparison(
         ax1.plot(plot_times, lne, label=r'$N_e$', color='orange')
 
         ax2 = ax1.twinx()
+        ax2.yaxis.set_major_locator(plt.MultipleLocator(5))
         ax2.plot(plot_times, lh, label=r'$h$', color='black', alpha=0.7)
 
         ax1.set_xlabel(f"Time [{time_unit_label}]")
@@ -1043,10 +1042,6 @@ def plot_two_alpha_comparison(
         if shared_ry_lo is not None:
             ax2.set_ylim(-50, -23)
 
-        # Tighten right-axis tick density to avoid overlap
-        for lbl in ax2.get_yticklabels()[::2]:
-            lbl.set_visible(False)
-
         # Legend
         lines1, labels1 = ax1.get_legend_handles_labels()
         lines2, labels2 = ax2.get_legend_handles_labels()
@@ -1057,12 +1052,12 @@ def plot_two_alpha_comparison(
             ax1.legend(lines1 + lines2, labels1 + labels2,
                     loc='lower left', frameon=False)
 
-        ax1.grid(True)
+        ax1.grid(False)
 
         # Transition label (top-left)
         level_e = quantum_numbers_to_spectroscopic(params['n_e'], params['l_e'])
         level_g = quantum_numbers_to_spectroscopic(params['n_g'], params['l_g'])
-        trans_label = rf"${level_e} \rightarrow {level_g}$"
+        trans_label = rf"$|644\rangle \rightarrow |544\rangle$"
         if panel_label:
             trans_label = trans_label + "\n" + panel_label
         ax1.text(0.02, 0.98, trans_label,
@@ -1133,7 +1128,7 @@ if __name__ == "__main__":
     bh_mass_sm   = 1e-6
     distance_kpc = 1
     t_max        = 7e-6
-    time_unit    = "years"
+    time_unit    = "seconds"
 
     # SR-rate source options:
     #   'cf'       -> use SuperradianceRateCF data files (default)

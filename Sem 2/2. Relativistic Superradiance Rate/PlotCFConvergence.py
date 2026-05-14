@@ -86,7 +86,7 @@ for i, alpha in enumerate(alpha_values):
         linewidth=1.5,
         marker="o",
         markersize=3.5,
-        label=rf"{alpha:.2f}",
+        label=rf"$\alpha = {alpha:.2f}$",
         zorder=1
     )
 
@@ -96,10 +96,10 @@ for i, alpha in enumerate(alpha_values):
 ax.set_xscale("log")
 ax.set_yscale("log")
 
-ax.set_xlabel(r"$N$", fontsize=13)
+ax.set_xlabel(r"$\mathcal N$", fontsize=13)
 ax.set_ylabel(r"$|\Im(\tilde\omega_N)/\Im(\tilde\omega_{\rm fin}) - 1|$", fontsize=13)
 
-ax.grid(True, which="both", linestyle="--", alpha=0.4)
+ax.grid(True, which="both", linestyle="--", alpha=0.2)
 
 
 # ── Convergence threshold ────────────────────────────────────────────────
@@ -110,7 +110,8 @@ ax.axhline(
     ERROR_LEVEL,
     color="black",
     linestyle="--",
-    linewidth=1
+    linewidth=1,
+    zorder=0
 )
 ax.text(
     ax.get_xlim()[0]*1.1,
@@ -121,7 +122,7 @@ ax.text(
     zorder=2
 )
 
-ax.legend(fontsize=9, frameon=False, loc="lower left", title=r"$\alpha$")
+ax.legend(fontsize=9, frameon=False, loc="lower left")
 
 plt.tight_layout()
 

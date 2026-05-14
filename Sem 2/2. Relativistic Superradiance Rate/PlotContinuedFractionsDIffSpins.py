@@ -87,6 +87,7 @@ plt.rcParams.update({
 })
 
 fig, ax = plt.subplots(figsize=(4, 3))
+y_log_values = []
 
 for filepath, colour in zip(FILES, COLOURS):
     label, quantum_numbers, a_t, spin_label = parse_quantum_numbers_and_spin(filepath)
@@ -99,17 +100,29 @@ for filepath, colour in zip(FILES, COLOURS):
         # Filter out rows with invalid or non-positive CF_Gamma values
         df_cf = df[df["CF_Gamma"] > 0].dropna(subset=["CF_Gamma"])
         if not df_cf.empty:
-            ax.plot(df_cf["alpha"], df_cf["CF_Gamma"], color=colour, linestyle="solid", linewidth=1.5, label=spin_label)
+            gamma_rg_log10 = np.log10(df_cf["CF_Gamma"] * r_g)
+            y_log_values.extend(gamma_rg_log10.to_numpy())
+            ax.plot(df_cf["alpha"], gamma_rg_log10, color=colour, linestyle="solid", linewidth=1.5, label=spin_label)
 
 # ── Legend ────────────────────────────────────────────────────────────────────
 ax.legend(fontsize=10, frameon=False)
 
-ax.set_yscale("log")
+# Plot log10(Gamma^sr * r_g) directly and keep major ticks every 2 orders of magnitude.
+if y_log_values:
+    y_min = float(np.floor(np.min(y_log_values)))
+    y_max = float(np.ceil(np.max(y_log_values)))
+    tick_start = int(2 * np.floor(y_min / 2))
+    tick_end = int(2 * np.ceil(y_max / 2))
+    if tick_start == tick_end:
+        tick_end = tick_start + 2
+    ax.set_yticks(np.arange(tick_start, tick_end + 1, 2))
+    ax.set_ylim(tick_start, tick_end)
+
 ax.set_xlabel(r"$\alpha$", fontsize=13)
-ax.set_ylabel(r"$\Gamma^{\mathrm{sr}} r_g$", fontsize=13)
-ax.grid(True, which="both", linestyle="--", alpha=0.4)
-ax.set_ylim(1e-16, 1e-6)
+ax.set_ylabel(r"$\log_{10}(\Gamma^{\mathrm{sr}} r_g)$", fontsize=13)
+#ax.grid(False, which="both", linestyle="--", alpha=0.4)
 ax.set_xlim(0, 0.52)
+ax.set_ylim(-16, -6)
 
 plt.tight_layout()
 

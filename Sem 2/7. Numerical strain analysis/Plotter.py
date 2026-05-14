@@ -6,6 +6,7 @@ import matplotlib.ticker as ticker
 
 
 EV_TO_HZ = 1 / 4.135667696e-15  # eV → Hz
+HZ_TO_MHZ = 1e-6
 
 
 # -------------------------------------------------------------------
@@ -108,49 +109,20 @@ def improve_log_x_ticks(ax):
     major_ticks = major_locator.tick_values(xmin, xmax)
     major_ticks = major_ticks[(major_ticks >= xmin) & (major_ticks <= xmax)]
 
-    if len(major_ticks) == 0:
-        exponent = int(np.floor(np.log10((xmin + xmax) / 2)))
-        major_ticks = np.array([10.0 ** exponent])
-        return
+    plain_number_formatter = ticker.FuncFormatter(
+        lambda x, pos: f"{x:g}" if x > 0 else ""
+    )
 
     if len(major_ticks) <= 1:
-        exponent = int(np.floor(np.log10(major_ticks[0])))
+        # In narrow x-ranges, major log ticks may be absent or too sparse.
+        # Show minor tick labels as plain numbers (no scientific notation).
+        ax.xaxis.set_major_formatter(plain_number_formatter)
+        ax.xaxis.set_minor_formatter(plain_number_formatter)
+        ax.tick_params(axis="x", which="minor", labelbottom=True, labelsize=11)
+        return
 
-        # Major tick becomes "1"
-        ax.xaxis.set_major_formatter(
-            ticker.FuncFormatter(
-                lambda x, pos: rf"${x / 10**exponent:g}$" if x > 0 else ""
-            )
-        )
-
-        def mantissa_formatter(x, pos):
-            if x <= 0:
-                return ""
-
-            val = x / 10**exponent
-
-            if 0.1 <= val < 10:
-                return rf"${val:g}$"
-
-            return ""
-
-        ax.xaxis.set_minor_formatter(
-            ticker.FuncFormatter(mantissa_formatter)
-        )
-
-        ax.text(
-            1.01,
-            -0.06,
-            rf"$\times 10^{{{exponent}}}$",
-            transform=ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize=14,
-        )
-
-    else:
-        ax.xaxis.set_minor_formatter(ticker.NullFormatter())
-
+    ax.xaxis.set_major_formatter(plain_number_formatter)
+    ax.xaxis.set_minor_formatter(ticker.NullFormatter())
     ax.tick_params(axis="x", which="minor", labelsize=11)
 
 
@@ -221,7 +193,7 @@ def make_scatter_plot(
             continue
 
         keys.append(level_key)
-        omega_arr.append(omega * EV_TO_HZ)
+        omega_arr.append(omega * EV_TO_HZ * HZ_TO_MHZ)
         h_peak_log10.append(h_log)
         fwhm.append(t_fwhm)
         l_quantum.append(int(params.get('l_g', params.get('l_e', 0))))
@@ -266,7 +238,7 @@ def make_scatter_plot(
         cbar.set_label(r"$\log_{10}(\mathrm{FWHM\ [years]})$")
 
     ax.set_xscale("log")
-    ax.set_xlabel(r"Frequency $\omega$ [Hz]")
+    ax.set_xlabel(r"Frequency $\omega$ [MHz]")
     ax.set_ylabel(r"$\log_{10}(h_{\mathrm{peak}})$")
 
     # Add some breathing room so labels do not leave the axes.
@@ -300,7 +272,7 @@ def make_scatter_plot(
         )
 
     # ax.set_title(f"Peak strain vs frequency ({plot_type}, colour = FWHM)")
-    ax.grid(True, which="both", alpha=0.3)
+    #ax.grid(True, which="both", alpha=0.3)
 
     fig.tight_layout()
 

@@ -1447,7 +1447,7 @@ def run_alpha_sweep(M_BH_solar, a_star_0, max_n,
 
 def main():
     # ── Physical input parameters — edit these ────────────────────────
-    M_BH_SOLAR = 1e-6
+    M_BH_SOLAR = 1e-11
     A_STAR_0   = 0.99
     ALPHA_0    = 0.42      # used for the single-run path only
     MAX_N      = 6

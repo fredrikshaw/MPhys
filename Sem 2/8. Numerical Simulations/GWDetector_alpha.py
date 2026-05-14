@@ -1186,7 +1186,7 @@ def resolve_level(shorthand):
 if __name__ == '__main__':
 
     # ── Fixed physical parameters ─────────────────────────────────────────────
-    M_BH_SOLAR = 1e-6           # BH mass [solar masses] -- fixed across the sweep
+    M_BH_SOLAR = 1e-11           # BH mass [solar masses] -- fixed across the sweep
 
     # ── Level selection ───────────────────────────────────────────────────────
     # Use spectroscopic shorthand: '<n><letter>' for annihilation,
@@ -1198,7 +1198,7 @@ if __name__ == '__main__':
     #   LEVEL_SHORTHAND = '3d'       →  annihilation  |322⟩
     #   LEVEL_SHORTHAND = '6g 5g'    →  transitions   |644⟩→|544⟩
     #   LEVEL_SHORTHAND = '4f 3d'    →  transitions   |433⟩→|322⟩
-    LEVEL_SHORTHAND = '6g 5g'
+    LEVEL_SHORTHAND = '3d'
 
     if LEVEL_SHORTHAND is not None:
         PROCESS, LEVEL = resolve_level(LEVEL_SHORTHAND)
@@ -1223,8 +1223,8 @@ if __name__ == '__main__':
     # ── Plot parameters ───────────────────────────────────────────────────────
     SAVEDIR     = 'Sem 2/8. Numerical Simulations/Plots'
     SAVEPATH    = f'{SAVEDIR}/reach_vs_alpha_{PROCESS}.pdf'
-    XLIM        = (25e-6, 115e-6)     # e.g. (0.001, 1.5); set None for auto
-    YLIM        = (1e-15, 1e0)     # e.g. (1e-3, 1e6);  set None for auto
+    XLIM        = None# (25e-6, 115e-6)     # e.g. (0.001, 1.5); set None for auto
+    YLIM        = None# (1e-15, 1e0)     # e.g. (1e-3, 1e6);  set None for auto
     BOTTOM_AXIS = 'mu'     # 'mu' for mu_a [eV] or 'alpha' for alpha
 
     level_str = f' -- level {LEVEL}' if LEVEL is not None else ' (all levels)'

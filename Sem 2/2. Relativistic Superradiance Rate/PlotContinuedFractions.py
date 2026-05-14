@@ -163,7 +163,7 @@ ax.yaxis.set_minor_locator(mticker.FixedLocator(minor_ticks))
 ax.tick_params(axis="y", which="minor", length=3)
 
 # Keep grid lines only on major ticks.
-ax.grid(True, which="major", linestyle="--", alpha=0.4)
+#ax.grid(True, which="major", linestyle="--", alpha=0.4)
 ax.set_xlim(0, 2.25)
 
 plt.tight_layout()

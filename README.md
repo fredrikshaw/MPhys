@@ -1,2 +1,2 @@
-# MPhys
+# MPhys at the University of Manchester
 Repo containing all shared code and docs for MPhys project: Computing the Event Rate &amp; Detector Distance Reach for Primordial Black Hole Superradiance. Supervised by Dr. Jamie McDonald

@@ -97,25 +97,24 @@ def quantum_numbers_to_spectroscopic(n, l):
 
 MAX_EXP = 50
 def rhs_log(t, y, gamma_g, gamma_e, transition_rate):
-    """Improved logarithmic RHS function that actually uses log space sensibly"""
-    x, y_ = y
+    """Two-level equations for log(N_g), log(N_e).
 
-    # diff = y_ - x
-    # if diff < -MAX_EXP or diff > MAX_EXP:
-    #     print(f"[CLIP] Clipper used in rhs_log t={t}, y-x={diff}")
-    # # else:
-    # #     print(f"[NOT CLIPPED] Clipper not used in rhs_log t={t}, y-x={diff}")
+    Radau rejects non-finite trial derivatives and retries with a smaller
+    step. An overflowing trial population must not emit a warning or be
+    replaced by a zero rate; accepted states are checked after integration.
+    """
+    log_g, log_e = y
+    with np.errstate(over="ignore"):
+        return [gamma_g + transition_rate*np.exp(log_e),
+                gamma_e - transition_rate*np.exp(log_g)]
 
-    # diff = np.clip(diff, -MAX_EXP, MAX_EXP)
 
-    # exp_y_minus_x = np.exp(diff)
-    # exp_x_minus_y = np.exp(-diff)
-
-    dx = gamma_g + transition_rate * np.exp(y_)
-    dy = gamma_e - transition_rate * np.exp(x)
-    # print(f"x: {x}, y: {y_}")
-
-    return [dx, dy]
+def jac_log(t, y, gamma_g, gamma_e, transition_rate):
+    """Exact Jacobian for the two-level logarithmic occupation equations."""
+    log_g, log_e = y
+    with np.errstate(over="ignore"):
+        return np.array([[0.0, transition_rate*np.exp(log_e)],
+                         [-transition_rate*np.exp(log_g), 0.0]])
 
 
 def calc_h_peak_and_fwhm(times, log_h):
@@ -417,7 +416,7 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
     calculated_t_max = False
     if t_max_years == None:
         t_max_years = 5 * 1/gamma_g * (np.log(gamma_e) - np.log(transition_rate))
-        calculate_t_max = True
+        calculated_t_max = True
     times = np.linspace(0, t_max_years, n_points)
     t_span = (0, times[-1])
 
@@ -465,11 +464,21 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
         y0_log,
         args=(gamma_g, gamma_e, transition_rate),
         method='Radau',
+        jac=jac_log,
+        # Limit the first trial to a fraction of a growth e-fold.
+        # Automatic first-step estimation can otherwise sample enormous
+        # occupations when rates are very large in inverse years.
+        first_step=min(t_max_years, 0.1/max(gamma_g, gamma_e, transition_rate)),
         t_eval=times,
         rtol=1e-6,
         atol=1e-9,
         events=[stop_if_ng_too_large],
     )
+
+    if not sol.success:
+        raise RuntimeError(f"Two-level integration failed: {sol.message}")
+    if not np.all(np.isfinite(sol.y)):
+        raise RuntimeError("Two-level integration returned non-finite occupations")
 
     # --- Use solver’s native arrays (prevents shape mismatch) ---
     times = sol.t
@@ -480,7 +489,7 @@ def run_simulation(bh_mass_sm=1e-11, bh_spin=0.687, alpha=0.1,
     if sol.t_events[0].size > 0:
         t_stop = sol.t_events[0][0]
         if verbose:
-            print(f"\n[WARNING] Integer Overflow: solve_ivp stopped early, N_g too high or N_e less than one at t ≈ {t_stop:.2f} years.\n")
+            print(f"\nIntegration reached the configured ground-state occupation limit at t = {t_stop:.6e} years.\n")
     else:
         t_stop = times[-1]
 
@@ -1191,7 +1200,7 @@ if __name__ == "__main__":
 
     scan_transitions_and_save(
         output_pickle="transition_peak_data.pkl",
-        transitions=["6g 5g", "7h 6h", "7g 5g", "7g 6g", "8i 7i", "3p 2p", "9k 8k", "13k 8k", "8g 7g", "8h 7h", "5f 4f", "6f 4f", "6f 5f", "8p 2p", "4d 3d", "7p 6p"],
+        transitions=["6g 5g", "7h 6h", "7g 5g", "7f 6f", "7g 6g", "8i 7i", "3p 2p", "9k 8k", "13k 8k", "8g 7g", "8h 7h", "5f 4f", "6f 4f", "6f 5f", "8p 2p", "4d 3d", "7p 6p"],
         bh_mass_sm=1e-6,
         bh_spin=0.69,
         alpha_over_l=0.15,

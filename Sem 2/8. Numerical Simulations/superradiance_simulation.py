@@ -6,9 +6,10 @@ Simulates the coupled growth of all superradiant axion cloud levels
 with m = l (the dominant SR family) up to n = 8, and the resulting
 Kerr BH spin-down with shared backreaction across all levels.
 
-Physical inputs are set in solar masses and dimensionless quantities.
-All internal computation is in natural units (G = c = ħ = 1, Planck).
-Physical units (years, solar masses) are applied only at the plotting stage.
+The ODE evolves epsilon=N/(G*M_initial**2), q=M/M_initial and spin in
+tau=mu*t, using a fixed dimensionless seed. No physical PBH mass is
+required. Save coupling-grid solutions, then use to_physical() or
+rescale_to_mass() to obtain occupations, strains and times at any mass.
 
 Refactored: simulation run, result storage, plotting, peak analysis,
 and data export are separated into dedicated functions.
@@ -16,6 +17,8 @@ and data export are separated into dedicated functions.
 
 import os, sys
 import csv
+import time
+from functools import lru_cache
 import numpy as np
 from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
@@ -51,8 +54,6 @@ if not script_dir.exists():
 sys.path.append(str(script_dir.resolve()))
 
 from ParamCalculator import (
-    G_N,
-    calc_rg_from_bh_mass,
     calc_transition_rate,
     calc_annihilation_rate,
     calc_omega_ann
@@ -74,6 +75,7 @@ T_PL_S         = 5.391e-44   # Planck time   [s]
 KPC_M          = 3.086e19    # 1 kpc [m]
 KPC_PLANCK     = KPC_M / L_PL_M        # 1 kpc in Planck lengths ≈ 1.910e54
 # GW frequency conversion:  f_GW [Hz] = omega [M_Pl] / (2π × T_PL_S)
+HBAR_EV_S      = 6.582119569e-16  # hbar [eV s]
 OMEGA_PL_TO_HZ = 1.0 / (2.0 * np.pi * T_PL_S)
 
 # Spectroscopic notation for level labels
@@ -161,6 +163,49 @@ def _check_tr_available(n_i, l_i, n_j, l_j):
 # ══════════════════════════════════════════════════════════════════════
 
 @dataclass
+class DimensionlessResults:
+    """Universal solution at fixed (alpha_0, a_star_0, max_n, epsilon_seed).
+
+    tau = mu*t, Mtil = M/M_initial, eps = N/(G*M_initial**2).
+    ann_coeff_all and tr_coeff_matrix are G*M_initial**2 * Gamma/mu,
+    whereas g_sr_all is Gamma_sr/mu. No physical BH mass is stored.
+    h_dimless = h*d/(G*M_initial); strain conventions match the original code.
+    """
+    a_star_0: float
+    alpha_0: float
+    max_n: int
+    epsilon_seed: float
+    LEVELS: List[Tuple[int, int, int]]
+    ann_available: Dict[Tuple[int, int], bool]
+    tr_pairs_idx: List[Tuple[int, int, int, int, int, int]]
+    tau: np.ndarray
+    ln_eps_all: np.ndarray
+    eps_all: np.ndarray
+    Mtil: np.ndarray
+    astar: np.ndarray
+    g_sr_all: np.ndarray
+    ann_coeff_all: np.ndarray
+    tr_coeff_matrix: np.ndarray
+    h_dimless_all: np.ndarray
+    h_dimless_tr: np.ndarray
+    omega_ann_over_mu: np.ndarray
+    omega_tr_over_mu: np.ndarray
+    omega_ann_initial_over_mu: np.ndarray
+    omega_tr_initial_over_mu: np.ndarray
+    astar_f: float
+    active_levels_t0: int
+    dominant_level: Tuple[int, int, int]
+
+    @property
+    def alpha(self):
+        return self.alpha_0 * self.Mtil
+
+    @property
+    def N_LEVELS(self):
+        return len(self.LEVELS)
+
+
+@dataclass
 class SimulationResults:
     # Input parameters
     M_BH_solar: float
@@ -212,639 +257,570 @@ class SimulationResults:
     g_ann_all: np.ndarray       # (N_LEVELS, n_time)
 
     # GW strain from annihilation
-    h_all: np.ndarray           # (N_LEVELS, n_time)   physical h at 1 kpc
-    h_dimless_all: np.ndarray   # (N_LEVELS, n_time)   h * r_1kpc / M0  (mass-independent)
+    h_all: np.ndarray           # (N_LEVELS, n_time)   physical h at r_kpc
+    h_dimless_all: np.ndarray   # (N_LEVELS, n_time)   h * r / M0  (mass-independent)
     f_gw_hz: np.ndarray         # (N_LEVELS,)
     P_GW_total: np.ndarray      # (n_time,)
 
     # GW strain from transitions
     g_tr_matrix: np.ndarray     # (n_tr_pairs, n_time)
-    h_tr_matrix: np.ndarray     # (n_tr_pairs, n_time)  physical h at 1 kpc
-    h_dimless_tr: np.ndarray    # (n_tr_pairs, n_time)  h_tr * r_1kpc / M0
+    h_tr_matrix: np.ndarray     # (n_tr_pairs, n_time)  physical h at r_kpc
+    h_dimless_tr: np.ndarray    # (n_tr_pairs, n_time)  h_tr * r / M0
     f_tr_hz: np.ndarray         # (n_tr_pairs,)
 
     # Summary statistics
     astar_f: float
     t_final_yr: float
+    epsilon_seed: float = 1e-60
+    r_kpc: float = 1.0
+    dimensionless: Optional[DimensionlessResults] = field(default=None, repr=False)
     active_levels_t0: int = 0
     dominant_level: Tuple[int, int, int] = field(default_factory=lambda: (2,1,1))
 
 
-# ══════════════════════════════════════════════════════════════════════
-# Main simulation function
-# ══════════════════════════════════════════════════════════════════════
+    @property
+    def mu_eV(self):
+        """Axion rest energy corresponding to alpha_0 and the chosen mass."""
+        return self.MU * HBAR_EV_S / T_PL_S
 
-def run_simulation(M_BH_solar=1e-11, a_star_0=0.65, alpha_0=0.6,
-                   max_n=6, tau_end_factor=None):
+
+
+def _positive_finite(name, value):
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be finite and positive")
+
+
+def dimensionless_annihilation_rate(n, l, alpha_0, Mtil):
+    """A = G*M_initial**2*Gamma_a/mu, evaluated without a physical mass.
+
+    Evaluate the homogeneous rate formula at G=1, r_g=q, mu=alpha_0.
+    Its numerical value is then A after dividing by alpha_0.
     """
-    Run the multi-level superradiance simulation.
+    alpha = alpha_0 * Mtil
+    omega = calc_omega_ann(r_g=Mtil, alpha=alpha, n=n)
+    rate = calc_annihilation_rate(
+        _level_string(n, l), alpha=alpha, omega=omega, G_N=1.0, r_g=Mtil)
+    rate = float(rate) / alpha_0
+    if not np.isfinite(rate) or rate < 0:
+        raise ValueError(f"Invalid annihilation coefficient for {(n, l)}")
+    return rate
 
-    Parameters
-    ----------
-    M_BH_solar : float
-        Initial BH mass in solar masses.
-    a_star_0 : float
-        Initial dimensionless spin.
-    alpha_0 : float
-        Initial gravitational coupling α₀ = M₀·μ.
-    max_n : int
-        Maximum principal quantum number n (2 … max_n).
-    tau_end_factor : float or None
-        Override factor for the integration time. If None, uses heuristic.
 
-    Returns
-    -------
-    SimulationResults or None
-        Object containing all simulation data and metadata.
-        Returns None if no level is SR-active at initial parameters.
+def dimensionless_transition_rate(n_i, l_i, n_j, l_j, alpha_0, Mtil):
+    """T = G*M_initial**2*Gamma_t/mu, with no physical mass conversion."""
+    alpha = alpha_0 * Mtil
+    omega = alpha_0 * alpha**2 / 2.0 * (1.0/n_j**2 - 1.0/n_i**2)
+    key = f"{n_i}{_L_TO_SPEC[l_i]} {n_j}{_L_TO_SPEC[l_j]}"
+    rate = calc_transition_rate(key, alpha, omega, G_N=1.0, r_g=Mtil)
+    rate = float(rate) / alpha_0
+    if not np.isfinite(rate) or rate < 0:
+        raise ValueError(f"Invalid transition coefficient for {key}")
+    return rate
+
+
+def run_dimensionless(a_star_0=0.69, alpha_0=0.1, max_n=8,
+                      epsilon_seed=1e-60, tau_end_factor=None, tau_end=None,
+                      decay_decades=3.0):
+    """Integrate once without specifying a PBH mass.
+
+    epsilon_seed is the same initial normalized occupation in every level;
+    it is NOT a one-particle seed at every physical mass. Growth delays and
+    level competition depend on this choice. tau_end optionally supplies an
+    explicit end time in tau=mu*t, which disables automatic continuation.
+    Otherwise a growth window is followed by annihilation-tail integration
+    until significant levels with annihilation channels (peak >= 1e-6 of
+    the largest peak and >= 100 times the seed) fall decay_decades below
+    their observed peaks. This does not bound growth of still-negligible
+    modes at arbitrarily late times. Up to four tail
+    extensions are used, with a warning if the target is not reached.
+    Set decay_decades=0 to use only the growth window. tau_end_factor
+    multiplies the initial window; explicit tau_end is also multiplied.
+    The stiff system is solved with Radau and a supplied population Jacobian.
+    Physical masses, years and strains are added later by to_physical().
     """
-    # ── Internal derived quantities ──────────────────────────────────
-    M0  = M_BH_solar * M_SUN_PLANCK    # Initial BH mass [M_Pl]
-    MU  = alpha_0 / M0                 # Axion mass [M_Pl]
-    N0  = 1.0                          # Vacuum seed
+    automatic_end = tau_end is None
+    if not np.isfinite(decay_decades) or decay_decades < 0:
+        raise ValueError('decay_decades must be finite and nonnegative')
+    _positive_finite('alpha_0', alpha_0)
+    if not np.isfinite(a_star_0) or not 0 < a_star_0 < 1:
+        raise ValueError("a_star_0 must lie strictly between 0 and 1")
+    if not isinstance(max_n, (int, np.integer)) or not 2 <= max_n <= 8:
+        raise ValueError("max_n must be an integer between 2 and 8")
+    if not np.isfinite(epsilon_seed) or not 0 < epsilon_seed < 1:
+        raise ValueError("epsilon_seed must lie strictly between 0 and 1")
+    if tau_end_factor is not None:
+        _positive_finite('tau_end_factor', tau_end_factor)
+    if tau_end is not None:
+        _positive_finite('tau_end', tau_end)
 
-    # Physical time conversion: t [yr] = τ × TAU_TO_YR
-    TAU_TO_YR = M_BH_solar * GM_SUN_OVER_C3 / (alpha_0 * YEAR_S)
-
-    # ── Level list (m = l, 2 ≤ n ≤ max_n) ────────────────────────────
-    LEVELS = [(n, l, l) for l in range(1, max_n) for n in range(l+1, max_n+1)]
-    N_LEVELS = len(LEVELS)
-    _L_ARR = np.array([l for (n, l, m) in LEVELS])
-    _M_ARR = np.array([m for (n, l, m) in LEVELS])
-
-    # ── Build availability dictionaries ──────────────────────────────
-    # Annihilation
-    ann_available = {}
-    for (n, l, m) in LEVELS:
-        ann_available[(n, l)] = _check_ann_available(n, l)
-    ann_have = [(n, l) for (n, l), v in ann_available.items() if v]
-    ann_missing = [(n, l) for (n, l), v in ann_available.items() if not v]
-    print(f"[annihilation] rates available for {len(ann_have)}/{len(ann_available)} levels")
-    if ann_missing:
-        print("[annihilation] NOT yet computed: " +
-              ", ".join(f"|{n}{_L_TO_SPEC.get(l,'?')}⟩" for n, l in ann_missing))
-
-    # Transition
-    tr_available = {}
-    for n_i, l_i, m_i in LEVELS:
-        for n_j, l_j, m_j in LEVELS:
-            if n_i > n_j:
-                tr_available[(n_i, l_i, n_j, l_j)] = _check_tr_available(n_i, l_i, n_j, l_j)
-    tr_have = [k for k, v in tr_available.items() if v]
-    print(f"[transition]   rates available for {len(tr_have)}/{len(tr_available)} pairs")
-    if tr_have:
-        print("[transition]   active pairs: " +
-              ", ".join(f"|{ni}{li}{li}⟩→|{nj}{lj}{lj}⟩" for ni, li, nj, lj in tr_have))
-
-    # Precomputed index lookup for ODE efficiency
-    _LEVEL_IDX = {(n, l, m): k for k, (n, l, m) in enumerate(LEVELS)}
-    TR_PAIRS_IDX = [
-        (_LEVEL_IDX[(n_i, l_i, l_i)], _LEVEL_IDX[(n_j, l_j, l_j)],
-         n_i, l_i, n_j, l_j)
-        for (n_i, l_i, n_j, l_j), avail in tr_available.items()
-        if avail and (n_i, l_i, l_i) in _LEVEL_IDX and (n_j, l_j, l_j) in _LEVEL_IDX
+    levels = [(n, l, l) for l in range(1, max_n)
+              for n in range(l+1, max_n+1)]
+    count = len(levels)
+    m_arr = np.array([m for n, l, m in levels])
+    ann_available = {(n, l): _check_ann_available(n, l) for n, l, m in levels}
+    lookup = {level: k for k, level in enumerate(levels)}
+    pairs = [
+        (lookup[(ni, li, mi)], lookup[(nj, lj, mj)], ni, li, nj, lj)
+        for ni, li, mi in levels for nj, lj, mj in levels
+        if ni > nj and _check_tr_available(ni, li, nj, lj)
     ]
 
-    # ── Local rate functions (capture alpha_0, M_BH_solar) ───────────
-    def gamma_tilde_ann(n, l, Mtil):
-        """Dimensionless annihilation rate."""
-        if not ann_available.get((n, l), False):
-            return 0.0
-        alpha_cur = alpha_0 * Mtil
-        bh_mass_solar = Mtil * M_BH_solar
-        try:
-            r_g_ev = calc_rg_from_bh_mass(bh_mass_solar)
-            mu_ev = alpha_cur / r_g_ev
-            omega_ev = calc_omega_ann(r_g=r_g_ev, alpha=alpha_cur, n=n)
-            with np.errstate(over='ignore', invalid='ignore'):
-                gamma_a_ev = calc_annihilation_rate(
-                    _level_string(n, l), alpha=alpha_cur,
-                    omega=omega_ev, G_N=G_N, r_g=r_g_ev)
-            val = float(gamma_a_ev)
-            if not np.isfinite(val) or val <= 0.0 or mu_ev <= 0.0:
-                return 0.0
-            return val / mu_ev
-        except Exception:
-            return 0.0
+    @lru_cache(maxsize=128)
+    def ann_rates(q):
+        return np.array([
+            dimensionless_annihilation_rate(n, l, alpha_0, q)
+            if ann_available[(n, l)] else 0.0 for n, l, m in levels])
 
-    def gamma_tilde_tr(n_i, l_i, n_j, l_j, Mtil):
-        """Dimensionless transition rate."""
-        if not tr_available.get((n_i, l_i, n_j, l_j), False):
-            return 0.0
-        alpha_cur = alpha_0 * Mtil
-        bh_mass_solar = Mtil * M_BH_solar
-        try:
-            r_g_ev = calc_rg_from_bh_mass(bh_mass_solar)
-            mu_ev = alpha_cur / r_g_ev
-            omega_ev = (alpha_cur**3 / (2.0 * r_g_ev)) * (1.0 / n_j**2 - 1.0 / n_i**2)
-            if omega_ev <= 0.0 or mu_ev <= 0.0:
-                return 0.0
-            key = f"{n_i}{_L_TO_SPEC.get(l_i)} {n_j}{_L_TO_SPEC.get(l_j)}"
-            with np.errstate(over='ignore', invalid='ignore'):
-                gamma_tr_ev = calc_transition_rate(
-                    key, alpha_cur, omega_ev, G_N=G_N, r_g=r_g_ev)
-            val = float(gamma_tr_ev)
-            if not np.isfinite(val) or val <= 0.0:
-                return 0.0
-            return val / mu_ev
-        except Exception:
-            return 0.0
+    @lru_cache(maxsize=128)
+    def tr_rates(q):
+        return np.array([
+            dimensionless_transition_rate(ni, li, nj, lj, alpha_0, q)
+            for i, j, ni, li, nj, lj in pairs])
 
-    # ── ODE system ───────────────────────────────────────────────────
+    def sr_rates(q, spin):
+        return np.array([gamma_tilde_sr(alpha_0*q, spin, n, l, m)
+                         for n, l, m in levels])
+
+    # Each level carries positive angular momentum. Its occupation cannot
+    # exceed the initial total angular momentum divided by m. This extension
+    # of the RHS only bounds temporary solver guesses, not accepted states.
+    ln_eps_cap = np.log((a_star_0 + epsilon_seed*np.sum(m_arr))/m_arr)
+
     def odes(tau, y):
-        """
-        State: y = [ln_eps_0, ..., ln_eps_{K-1}, Mtil, astar]
-        where  eps_i = N_i / NORM = N_i / M0^2  (dimensionless occupation).
+        eps = np.exp(np.minimum(y[:count], ln_eps_cap))
+        # This model only extracts BH mass; trial q>1 is unphysical.
+        q = float(np.clip(y[count], 1e-9, 1.0))
+        spin = float(np.clip(y[count+1], 0.0, 0.99999))
+        sr = sr_rates(q, spin)
+        dlogeps = sr - ann_rates(q)*eps
+        for coefficient, (i, j, *_rest) in zip(tr_rates(q), pairs):
+            dlogeps[i] -= coefficient*eps[j]
+            dlogeps[j] += coefficient*eps[i]
+        dq = -alpha_0*np.dot(sr, eps)
+        dspin = np.dot(sr*eps, 2.0*alpha_0*q*spin-m_arr)/q**2
+        derivative = np.r_[dlogeps, dq, dspin]
+        if not np.all(np.isfinite(derivative)):
+            raise FloatingPointError("Non-finite dimensionless ODE derivative")
+        return derivative
 
-        The BH equations simplify because NORM cancels:
-            dMtil/dtau  = -alpha_0 * dot(g_sr, eps)
-            dastar/dtau = dot(g_sr * eps, 2*alpha*astar - m_i) / Mtil^2
-        """
-        ln_eps_arr = y[:N_LEVELS]
-        Mtil       = max(y[N_LEVELS],     1e-9)
-        astar      = float(np.clip(y[N_LEVELS + 1], 0.0, 0.99999))
+    def jacobian(tau, y):
+        # Use analytic occupation and SR derivatives. Numerical derivatives
+        # across a quenched SR boundary create artificial feedback, while
+        # perturbing empty levels can overflow SciPy's numerical Jacobian.
+        eps = np.exp(np.minimum(y[:count], ln_eps_cap))
+        deps = np.where(y[:count] < ln_eps_cap, eps, 0.0)
+        q = float(np.clip(y[count], 1e-9, 1.0))
+        spin = float(np.clip(y[count+1], 0.0, 0.99999))
+        alpha = alpha_0*q
+        sr = sr_rates(q, spin)
+        sr_q = np.zeros(count)
+        sr_spin = np.zeros(count)
+        root = np.sqrt(1.0-spin**2)
+        rp = 1.0+root
+        rp_prime = -spin/root
+        omega_h = spin/(2.0*rp)
+        omega_prime = 1.0/(2.0*rp)-spin*rp_prime/(2.0*rp**2)
+        for i, (n, l, m) in enumerate(levels):
+            margin = m*omega_h-alpha
+            if sr[i] <= 0 or margin <= 0:
+                continue
+            k = np.arange(1, l+1)
+            z = spin*m-2.0*rp*alpha
+            factors = k**2*(1.0-spin**2)+z**2
+            log_g_alpha = np.sum(-4.0*rp*z/factors)
+            log_g_spin = np.sum((-2.0*k**2*spin
+                                 +2.0*z*(m-2.0*rp_prime*alpha))/factors)
+            sr_q[i] = alpha_0*(sr[i]*((4*l+4)/alpha+log_g_alpha)
+                                       -sr[i]/margin)
+            sr_spin[i] = (sr[i]*(rp_prime/rp+log_g_spin)
+                          +sr[i]/margin*m*omega_prime)
 
-        # Prevent overflow when converting ln(eps) -> eps and forming N = NORM * eps.
-        # Compute a safe cap for ln(eps) so that N = exp(log(NORM) + ln_eps) stays finite.
-        float_max_log = np.log(np.finfo(float).max)
-        # safety margin to avoid hitting the absolute max during arithmetic
-        safety_margin = 5.0
-        try:
-            log_NORM = float(np.log(NORM))
-        except Exception:
-            log_NORM = float_max_log - 100.0
-        ln_eps_cap = min(700.0, float_max_log - log_NORM - safety_margin)
+        jac = np.zeros((count+2, count+2))
+        jac[np.arange(count), np.arange(count)] = -ann_rates(q)*deps
+        for coefficient, (i, j, *_rest) in zip(tr_rates(q), pairs):
+            jac[i, j] -= coefficient*deps[j]
+            jac[j, i] += coefficient*deps[i]
+        spin_factor = 2.0*alpha*spin-m_arr
+        jac[count, :count] = -alpha_0*sr*deps
+        jac[count+1, :count] = sr*deps*spin_factor/q**2
 
-        ln_eps_clipped = np.clip(ln_eps_arr, None, ln_eps_cap)
-        # compute ln(N) directly and clip before exponentiating to avoid overflow
-        ln_N = log_NORM + ln_eps_clipped
-        ln_N_cap = float_max_log - safety_margin
-        ln_N_clipped = np.minimum(ln_N, ln_N_cap)
-        eps_arr = np.exp(ln_eps_clipped)
-        N_arr = np.exp(ln_N_clipped)
-        alpha   = alpha_0 * Mtil
+        # The remaining depletion-rate derivatives are smooth functions of q.
+        step = min(1e-6, q/4.0)
+        left, right = max(1e-9, q-step), min(1.0, q+step)
+        ann_q = (ann_rates(right)-ann_rates(left))/(right-left)
+        tr_q = (tr_rates(right)-tr_rates(left))/(right-left)
+        jac[:count, count] = sr_q-ann_q*eps
+        for coefficient, (i, j, *_rest) in zip(tr_q, pairs):
+            jac[i, count] -= coefficient*eps[j]
+            jac[j, count] += coefficient*eps[i]
+        jac[:count, count+1] = sr_spin
+        jac[count, count] = -alpha_0*np.dot(sr_q, eps)
+        jac[count, count+1] = -alpha_0*np.dot(sr_spin, eps)
+        spin_rhs = np.dot(sr*eps, spin_factor)/q**2
+        jac[count+1, count] = (np.dot(sr_q*eps, spin_factor)/q**2
+                              +2.0*alpha_0*spin*np.dot(sr, eps)/q**2
+                              -2.0*spin_rhs/q)
+        jac[count+1, count+1] = (np.dot(sr_spin*eps, spin_factor)/q**2
+                                +2.0*alpha*np.dot(sr, eps)/q**2)
+        if not 1e-9 <= y[count] <= 1.0:
+            jac[:, count] = 0.0
+        if not 0.0 <= y[count+1] <= 0.99999:
+            jac[:, count+1] = 0.0
+        return jac
 
-        # SR rates
-        g_sr_arr = np.array([gamma_tilde_sr(alpha, astar, n, l, m)
-                             for (n, l, m) in LEVELS])
-
-        # Annihilation rates
-        g_ann_arr = np.array([gamma_tilde_ann(n, l, Mtil)
-                              for (n, l, m) in LEVELS])
-
-        # Transition contributions (NORM cancels: g_tr*N_j = g_tr*NORM*eps_j)
-        dlneps_tr = np.zeros(N_LEVELS)
-        for idx_i, idx_j, n_i, l_i, n_j, l_j in TR_PAIRS_IDX:
-            g_tr = gamma_tilde_tr(n_i, l_i, n_j, l_j, Mtil)
-            if g_tr > 0.0:
-                # Use clipped N_arr values; ln_N_clipped ensures these are finite.
-                dlneps_tr[idx_i] -= g_tr * N_arr[idx_j]   # = g_tr * NORM * eps_j
-                dlneps_tr[idx_j] += g_tr * N_arr[idx_i]   # = g_tr * NORM * eps_i
-
-        # d(ln_eps_i)/dtau  [identical form to d(lnN_i)/dtau]
-        # Compute derivative in a numerically safe way; clip extremely large rates
-        with np.errstate(over='ignore', invalid='ignore'):
-            dlneps_arr = g_sr_arr - g_ann_arr * N_arr + dlneps_tr
-
-        # Replace NaNs/Infs with safe values and cap derivative magnitude
-        dlneps_arr = np.nan_to_num(dlneps_arr, nan=0.0, posinf=np.finfo(float).max, neginf=-np.finfo(float).max)
-        rate_cap = 1e200
-        dlneps_arr = np.clip(dlneps_arr, -rate_cap, rate_cap)
-
-        # BH mass: -(alpha_0/NORM)*dot(g_sr, NORM*eps) = -alpha_0*dot(g_sr, eps)
-        dMtil = -alpha_0 * np.dot(g_sr_arr, eps_arr)
-
-        # BH spin: dot(g_sr*NORM*eps,...)/NORM/Mtil^2 = dot(g_sr*eps,...)/Mtil^2
-        with np.errstate(over='ignore', invalid='ignore'):
-            dastar = (np.dot(g_sr_arr * eps_arr, 2.0 * alpha * astar - _M_ARR)
-                      / Mtil**2)
-        if not np.isfinite(dastar):
-            dastar = 0.0
-        # Ensure dMtil is finite
-        if not np.isfinite(dMtil):
-            dMtil = 0.0
-        return list(dlneps_arr) + [dMtil, dastar]
-
-    # ── Initial SR analysis ───────────────────────────────────────────
-    g0_all    = {(n, l, m): gamma_tilde_sr(alpha_0, a_star_0, n, l, m)
-                 for (n, l, m) in LEVELS}
-    active_t0 = [(n, l, m) for (n, l, m) in LEVELS if g0_all[(n, l, m)] > 0]
-
-    if not active_t0:
-        print("\n  ✗  No levels are superradiant at the initial parameters.")
-        for n, l, m in LEVELS[:7]:
-            print(f"       |{n}{l}{m}⟩  m·Ω_H − α = {sr_margin(alpha_0, a_star_0, m):.4f}")
-        print("\n  Increase ã₀ or decrease α₀ to enter the SR regime.")
+    initial_rates = sr_rates(1.0, a_star_0)
+    active = np.flatnonzero(initial_rates > 0)
+    if not len(active):
+        print(f"No initially superradiant levels at alpha={alpha_0:g}.")
         return None
+    dom_idx = int(np.argmax(initial_rates))
+    dominant_level = levels[dom_idx]
+    g_dom = initial_rates[dom_idx]
+    dom_m = dominant_level[2]
+    astar_f = min(2.0*alpha_0*rhat_plus(a_star_0)/dom_m, a_star_0)
 
-    dom_level       = max(active_t0, key=lambda nlm: g0_all[nlm])
-    dom_n, dom_l, dom_m = dom_level
-    g0_dom          = g0_all[dom_level]
-
-    # ── Time span ─────────────────────────────────────────────────────
-    # We do NOT use terminal events.  The reason is fundamental: scipy's
-    # adaptive-step RK45 evaluates event functions at intermediate
-    # *rejected* trial steps.  Any event that uses mutable state (a
-    # running-peak tracker) gets corrupted by these rejected evaluations,
-    # causing the event to fire far too early — before the second level
-    # has even started growing.
-    #
-    # Instead we pre-compute a tau_end that is large enough to cover:
-    #   Phase 1 — fastest level (dom) grows from seed to saturation
-    #              AND decays DECAY_DECADES below its peak
-    #   Phase 2 — all higher-m levels that are still SR-active at the
-    #              post-spindown spin (astar_f) grow and decay similarly
-    #
-    # This is the same two-phase structure as before, but:
-    #   * decay_efolds are added to BOTH phases
-    #   * Phase 2 uses the rate evaluated at astar_f (the actual spin
-    #     when those levels start growing) not the initial spin
-
-    NORM         = M0**2
-    RATE_RATIO   = 1e40           # include phase-2 levels within 10^40 of fastest
-
-    N_sat        = M0**2 * a_star_0
-    n_efolds     = np.log(max(N_sat, 2.0))
-
-    DECAY_DECADES = 10
-    decay_efolds  = DECAY_DECADES * np.log(10.0)   # ≈ 23 e-folds
-
-    astar_f = min(2.0 * alpha_0 * rhat_plus(a_star_0) / dom_m, a_star_0)
-
-    # Phase 1: fastest level growth + decay
-    tau_phase1 = (n_efolds + decay_efolds) / g0_dom
-
-    # Phase 2: higher-m levels at the reduced spin
-    g_floor    = g0_dom / RATE_RATIO
-    tau_phase2 = 0.0
-    phase2_levels = []
-    for n, l, m in LEVELS:
-        if m <= dom_m:
-            continue
-        g_af = gamma_tilde_sr(alpha_0, astar_f, n, l, m)
-        if g_af >= g_floor:
-            tau_i = (n_efolds + decay_efolds) / g_af
-            if tau_i > tau_phase2:
-                tau_phase2 = tau_i
-            phase2_levels.append((n, l, m, g_af, tau_i))
-
-    tau_end = tau_phase1 + tau_phase2
+    if tau_end is None:
+        # Estimate growth from the dimensionless seed rather than N=1.
+        efolds = max(1.0, np.log(max(a_star_0, epsilon_seed)/epsilon_seed))
+        efolds += 10*np.log(10.0)
+        phase1 = efolds/g_dom
+        phase2 = [efolds/g for (n, l, m) in levels if m > dom_m
+                  for g in [gamma_tilde_sr(alpha_0, astar_f, n, l, m)]
+                  if g > 0 and g >= g_dom/1e40]
+        # Leave margin for rates to slow as earlier levels spin down the BH.
+        tau_end = 10.0*(phase1 + max(phase2, default=0.0))
     if tau_end_factor is not None:
         tau_end *= tau_end_factor
+    _positive_finite('integration end time', tau_end)
 
-    # ── Console output ────────────────────────────────────────────────
-    print("=" * 65)
-    print(f"BH Superradiance — {N_LEVELS} levels (m=l, n≤{max_n})  [hydrogenic]")
-    print("=" * 65)
-    print(f"  M_BH = {M_BH_solar} M_sun  =  {M0:.3e} M_Pl")
-    print(f"  ã₀   = {a_star_0}")
-    print(f"  α₀   = {alpha_0}   →  μ = {MU:.3e} M_Pl")
-    print("\n  Levels tracked:")
-    for n, l, m in LEVELS:
-        g0_i   = g0_all[(n, l, m)]
-        margin = sr_margin(alpha_0, a_star_0, m)
-        if g0_i > 0:
-            print(f"    |{n}{l}{m}⟩   Γ̃₀ = {g0_i:.3e}   τ_SR = {1/g0_i:.2e}   margin = {margin:.4f}")
-        else:
-            print(f"    |{n}{l}{m}⟩   Γ̃₀ = 0   (SR inactive, margin = {margin:.4f})")
-    print("\n  Annihilation rates at initial parameters:")
-    for n, l, m in LEVELS:
-        if ann_available.get((n, l), False):
-            g_ann_0 = gamma_tilde_ann(n, l, 1.0)
-            if g_ann_0 > 0:
-                print(f"    |{n}{l}{m}⟩   Γ̃_a = {g_ann_0:.3e}   τ_a = {1/g_ann_0:.2e}")
-            else:
-                print(f"    |{n}{l}{m}⟩   Γ̃_a = 0")
-        else:
-            print(f"    |{n}{l}{m}⟩   Γ̃_a = not computed")
-    print(f"\n  Initially SR-active levels: {len(active_t0)}/{N_LEVELS}")
-    print(f"  Dominant level: |{dom_n}{dom_l}{dom_m}⟩  Γ̃₀ = {g0_dom:.4e}")
-    print(f"  e-folding τ_SR  = {1/g0_dom:.3e}  =  {1/g0_dom * TAU_TO_YR:.3e} yr")
-    print(f"  ã_f ≈ {astar_f:.4f}  (spin after dominant level switches off)")
-    if phase2_levels:
-        print(f"  Phase-2 levels at ã_f (rate > {g_floor:.1e}):")
-        for n, l, m, g_af, tau_i in sorted(phase2_levels, key=lambda x: -x[3]):
-            print(f"    |{n}{l}{m}⟩   Γ̃(ã_f) = {g_af:.3e}"
-                  f"   window = {tau_i:.2e} τ = {tau_i*TAU_TO_YR:.2e} yr")
-    else:
-        print(f"  No phase-2 levels above rate floor {g_floor:.1e}")
-    print(f"  τ_end = {tau_end:.3e}  =  {tau_end * TAU_TO_YR:.3e} yr")
-    print(f"  (no terminal events — simulation runs to τ_end)")
+    print(f"Dimensionless BHSR: alpha_0={alpha_0:g}, a_star_0={a_star_0:g}, "
+          f"n<={max_n}, epsilon_seed={epsilon_seed:g}")
+    print(f"Tracking {count} levels, {len(pairs)} transitions; tau_end={tau_end:.4e}")
+    y0 = [np.log(epsilon_seed)]*count + [1.0, a_star_0]
+    # Growth, transitions and late annihilation span many orders of magnitude.
+    # An implicit solver can reject large trial steps without overflowing the
+    # rate formulae, and handles depleted modes without explicit-step stiffness.
+    started = last_report = time.monotonic()
 
-    # ── Initial conditions and integration ───────────────────────────
-    ln_eps0 = np.log(N0) - 2.0 * np.log(M0)
-    y0 = [ln_eps0] * N_LEVELS + [1.0, a_star_0]
-    print("\nIntegrating ... ", end="", flush=True)
-    sol = solve_ivp(
-        odes,
-        t_span       = (0.0, tau_end),
-        y0           = y0,
-        method       = "RK45",
-        events       = [],           # no terminal events — see comment above
-        rtol         = 1e-9,
-        atol         = 1e-12,
-        dense_output = False,
-    )
-    print("done.")
+    def integration_progress(tau, y):
+        # This constant, nonterminal event reports accepted steps only.
+        # The timer affects logging, never the equations or stopping time.
+        nonlocal last_report
+        now = time.monotonic()
+        if now-last_report >= 5.0:
+            print(f"Integrating ({now-started:.0f}s elapsed): tau={tau:.4e}, "
+                  f"M/M_initial={y[count]:.6f}, spin={y[count+1]:.6f}",
+                  flush=True)
+            last_report = now
+        return 1.0
 
-    tau   = sol.t
-    Mtil  = sol.y[N_LEVELS]
-    astar = sol.y[N_LEVELS + 1]
+    print("Integrating with Radau; progress is reported about every 5 seconds. "
+          "Large multilevel runs can take a few minutes.", flush=True)
+    def integrate_interval(start, end, initial):
+        solution = solve_ivp(
+            odes, (start, end), initial, method='Radau', jac=jacobian,
+            rtol=1e-9, atol=1e-12, dense_output=False,
+            events=integration_progress)
+        if not solution.success:
+            raise RuntimeError(f"Dimensionless integration failed: {solution.message}")
+        if not np.all(np.isfinite(solution.y)):
+            raise RuntimeError("Integration returned non-finite accepted states")
+        q_values, spin_values = solution.y[count:]
+        tolerance = 1e-8
+        if (np.any(q_values <= 0) or np.any(q_values > 1.0+tolerance)
+                or np.any(spin_values < -tolerance)
+                or np.any(spin_values > a_star_0+tolerance)
+                or np.any(solution.y[:count] > ln_eps_cap[:, None]+tolerance)):
+            raise RuntimeError("Integration returned an accepted state outside the physical bounds")
+        return solution
 
-    # ── Derived quantities ────────────────────────────────────────────
-    # The solver evolved ln_eps; recover eps and N.
-    ln_eps_raw = sol.y[:N_LEVELS]
-    eps_all    = np.exp(np.clip(ln_eps_raw, -500.0, 700.0))   # (N_LEVELS, n_time)
-    N_all      = NORM * eps_all                                # physical occupation
-    lnN_all    = np.log(np.maximum(N_all, 1e-300))            # for downstream compatibility
+    sol = integrate_interval(0.0, tau_end, y0)
+    time_segments = [sol.t]
+    state_segments = [sol.y]
+    peak_logs = sol.y[:count].max(axis=1)
 
-    alpha   = alpha_0 * Mtil
-    M_BH    = Mtil * M0
+    if automatic_end and decay_decades > 0:
+        # After the growth stage, estimate annihilation tails from the actual
+        # populations and mass. For d eps/d tau=-A eps**2, the time to fall
+        # from eps_now to eps_target is (1/eps_target-1/eps_now)/A.
+        # Ignore seed-level/negligible populations so they cannot set an
+        # arbitrarily long horizon. All levels remain in the coupled ODE.
+        for extension in range(5):
+            final = sol.y[:, -1]
+            target_logs = peak_logs-decay_decades*np.log(10.0)
+            significant = peak_logs >= max(
+                np.log(epsilon_seed)+np.log(100.0),
+                peak_logs.max()+np.log(1e-6))
+            coefficients = ann_rates(float(final[count]))
+            pending = significant & (coefficients > 0) & (final[:count] > target_logs)
+            if not np.any(pending):
+                break
+            if extension == 4:
+                import warnings
+                warnings.warn(
+                    "The automatic window ended before all significant levels "
+                    "reached the requested decay. Set tau_end explicitly to "
+                    "inspect a longer interval.", RuntimeWarning, stacklevel=2)
+                break
+            remaining = ((np.exp(-target_logs[pending])
+                          - np.exp(-final[:count][pending]))/coefficients[pending])
+            next_end = max(2.0*sol.t[-1], sol.t[-1]+1.25*float(remaining.max()))
+            _positive_finite('automatic decay end time', next_end)
+            print(f"Extending through annihilation decay: tau={sol.t[-1]:.4e} "
+                  f"to {next_end:.4e} "
+                  f"(target: {decay_decades:g} decades below peak).", flush=True)
+            sol = integrate_interval(sol.t[-1], next_end, final)
+            time_segments.append(sol.t[1:])
+            state_segments.append(sol.y[:, 1:])
+            peak_logs = np.maximum(peak_logs, sol.y[:count].max(axis=1))
 
-    J_cloud = _M_ARR @ N_all
-    M_cloud = MU * N_all.sum(axis=0)
-    J_BH    = astar * Mtil**2 * M0**2
-    J_total = J_BH + J_cloud
-    dJ_frac = np.abs((J_total - J_total[0]) / J_total[0])
-    t_yr    = tau * TAU_TO_YR
+    tau = np.concatenate(time_segments)
+    state = np.concatenate(state_segments, axis=1)
+    q, spin = state[count:]
+    eps = np.exp(state[:count])
+    print(f"ODE solver reached tau={tau[-1]:.4e}; computing strain outputs ...",
+          flush=True)
+    alpha = alpha_0*q
+    sr = np.empty((count, len(tau)))
+    ann = np.empty_like(sr)
+    tr = np.empty((len(pairs), len(tau)))
+    last_report = time.monotonic()
+    for column, (qi, ai) in enumerate(zip(q, spin)):
+        sr[:, column] = sr_rates(qi, ai)
+        ann[:, column] = ann_rates(qi)
+        tr[:, column] = tr_rates(qi)
+        now = time.monotonic()
+        if now-last_report >= 5.0:
+            print(f"Preparing strains: {column+1}/{len(tau)} time samples "
+                  f"({now-started:.0f}s elapsed)", flush=True)
+            last_report = now
+    w_ann = np.array([2.0*(1.0-alpha**2/(2.0*n**2)) for n, l, m in levels])
+    w_ann_initial = np.array([2.0*(1.0-alpha_0**2/(2.0*n**2))
+                              for n, l, m in levels])
+    if np.any(w_ann <= 0):
+        raise ValueError("Non-positive annihilation frequency in hydrogenic model")
+    h_ann = eps*np.sqrt(8.0*ann/w_ann)
+    w_tr = np.empty((len(pairs), len(tau)))
+    h_tr = np.empty_like(w_tr)
+    w_tr_initial = np.empty(len(pairs))
+    for p, (i, j, ni, li, nj, lj) in enumerate(pairs):
+        delta_n = 1.0/nj**2-1.0/ni**2
+        w_tr[p] = alpha**2/2.0*delta_n
+        w_tr_initial[p] = alpha_0**2/2.0*delta_n
+        # Preserve the existing simulation's transition-strain prefactor.
+        h_tr[p] = np.sqrt(eps[i])*np.sqrt(eps[j])*np.sqrt(8.0*tr[p]/w_tr[p])
 
-    M_irr  = np.array([irreducible_mass(m, a) for m, a in zip(M_BH, astar)])
-    E_rot  = M_BH - M_irr
-    dM_irr = M_irr - M_irr[0]
-
-    # SR rates over time
-    g_sr_all = np.array([
-        [gamma_tilde_sr(a, s, n, l, m) for a, s in zip(alpha, astar)]
-        for (n, l, m) in LEVELS
-    ])
-
-    # Annihilation rates over time
-    g_ann_all = np.zeros((N_LEVELS, len(tau)))
-    for k, (n, l, m) in enumerate(LEVELS):
-        if ann_available.get((n, l), False):
-            g_ann_all[k] = np.array([gamma_tilde_ann(n, l, Mt) for Mt in Mtil])
-
-    # ── GW strain from annihilation ──────────────────────────────────
-    omega_ann_all = np.array([
-        2.0 * MU * (1.0 - alpha**2 / (2.0 * n**2))
-        for (n, l, m) in LEVELS
-    ])
-    Gamma_a_phys = g_ann_all * MU
-    with np.errstate(invalid='ignore', divide='ignore'):
-        h_all = N_all * np.sqrt(
-            np.maximum(8.0 * Gamma_a_phys / (KPC_PLANCK**2 * omega_ann_all), 0.0)
-        )
-    h_all = np.nan_to_num(h_all, nan=0.0, posinf=0.0)
-
-    # Dimensionless strain amplitude:  h_dimless = h * r_1kpc / M0
-    # Physical strain at any mass M and distance r:  h = h_dimless * M_Pl / r_Pl
-    h_dimless_all = h_all * KPC_PLANCK / M0   # (N_LEVELS, n_time)
-    f_gw_hz = np.array([
-        2.0 * MU * (1.0 - alpha_0**2 / (2.0 * n**2)) * OMEGA_PL_TO_HZ
-        for (n, l, m) in LEVELS
-    ])
-    P_GW_total = (2.0 * g_ann_all * N_all**2).sum(axis=0)
-
-    # ── GW strain from transitions ────────────────────────────────────
-    n_tr_pairs = len(TR_PAIRS_IDX)
-    g_tr_matrix = np.zeros((n_tr_pairs, len(tau)))
-    h_tr_matrix = np.zeros((n_tr_pairs, len(tau)))
-    f_tr_hz = np.zeros(n_tr_pairs)
-
-    for p, (idx_i, idx_j, n_i, l_i, n_j, l_j) in enumerate(TR_PAIRS_IDX):
-        g_tr_matrix[p] = np.array([gamma_tilde_tr(n_i, l_i, n_j, l_j, Mt) for Mt in Mtil])
-        omega_tr_all = MU * (alpha**2 / 2.0) * (1.0 / n_j**2 - 1.0 / n_i**2)
-        omega_tr_all = np.maximum(omega_tr_all, 1e-300)
-        Gamma_tr_phys = g_tr_matrix[p] * MU
-        with np.errstate(invalid='ignore', divide='ignore'):
-            h_pair = (np.sqrt(np.maximum(N_all[idx_i] * N_all[idx_j], 0.0))
-                      * np.sqrt(np.maximum(
-                          8.0 * Gamma_tr_phys / (KPC_PLANCK**2 * omega_tr_all), 0.0)))
-        h_tr_matrix[p] = np.nan_to_num(h_pair, nan=0.0, posinf=0.0)
-        omega_tr_0 = MU * (alpha_0**2 / 2.0) * (1.0 / n_j**2 - 1.0 / n_i**2)
-        f_tr_hz[p] = omega_tr_0 * OMEGA_PL_TO_HZ
-
-    h_dimless_tr = h_tr_matrix * KPC_PLANCK / M0   # (n_tr_pairs, n_time)
-
-    # ── Summary prints ───────────────────────────────────────────────
-    n_ann_active = sum(1 for (n,l) in ann_available if ann_available[(n,l)])
-    n_tr_active = len(TR_PAIRS_IDX)
-    print(f"\nResults")
-    print(f"  End:  τ = {tau[-1]:.4e}   t = {t_yr[-1]:.4f} yr")
-    print(f"  ã   : {a_star_0:.4f} → {astar[-1]:.4f}  (Δã = {a_star_0 - astar[-1]:.4f})")
-    print(f"  M   : {M_BH_solar:.3f} → {Mtil[-1]*M_BH_solar:.5f} M_sun"
-          f"  (ΔM/M₀ = {1 - Mtil[-1]:.5f})")
-    print(f"\n  Peak occupation numbers:")
-    for k, (n, l, m) in enumerate(LEVELS):
-        peak = lnN_all[k].max() / np.log(10)
-        if peak > 0.5:
-            ann_tag = ("[ann. active]" if ann_available.get((n, l), False) else "[ann. not computed]")
-            print(f"    |{n}{l}{m}⟩   log₁₀N_max = {peak:.2f}   {ann_tag}")
-    M_irr0_sol = M_irr[0] / M_SUN_PLANCK
-    M_irrf_sol = M_irr[-1] / M_SUN_PLANCK
-    E_rot0_sol = E_rot[0] / M_SUN_PLANCK
-    E_rotf_sol = E_rot[-1] / M_SUN_PLANCK
-    print(f"\n  Christodoulou-Ruffini decomposition:")
-    print(f"  M_irr : {M_irr0_sol:.5e} → {M_irrf_sol:.5e} M_sun"
-          f"  (ΔM_irr = +{M_irrf_sol - M_irr0_sol:.5e}, area theorem ✓)")
-    print(f"  E_rot : {E_rot0_sol:.5e} → {E_rotf_sol:.5e} M_sun")
-    print(f"  M_cloud total : {M_cloud[-1]/M_SUN_PLANCK:.5e} M_sun")
-    print(f"  Annihilation  : {n_ann_active}/{N_LEVELS} levels have computed rates")
-    print(f"  Transitions   : {n_tr_active} pairs have computed rates")
-
-    # ── Pack results ──────────────────────────────────────────────────
-    res = SimulationResults(
-        M_BH_solar=M_BH_solar,
-        a_star_0=a_star_0,
-        alpha_0=alpha_0,
-        max_n=max_n,
-        M0=M0,
-        MU=MU,
-        TAU_TO_YR=TAU_TO_YR,
-        LEVELS=LEVELS,
-        _L_ARR=_L_ARR,
-        _M_ARR=_M_ARR,
-        N_LEVELS=N_LEVELS,
-        ann_available=ann_available,
-        tr_pairs_idx=TR_PAIRS_IDX,
-        NORM=NORM,
-        tau=tau,
-        lnN_all=lnN_all,
-        eps_all=eps_all,
-        Mtil=Mtil,
-        astar=astar,
-        t_yr=t_yr,
-        N_all=N_all,
-        alpha=alpha,
-        M_BH=M_BH,
-        J_cloud=J_cloud,
-        M_cloud=M_cloud,
-        J_BH=J_BH,
-        J_total=J_total,
-        dJ_frac=dJ_frac,
-        M_irr=M_irr,
-        E_rot=E_rot,
-        dM_irr=dM_irr,
-        g_sr_all=g_sr_all,
-        g_ann_all=g_ann_all,
-        h_all=h_all,
-        h_dimless_all=h_dimless_all,
-        f_gw_hz=f_gw_hz,
-        P_GW_total=P_GW_total,
-        g_tr_matrix=g_tr_matrix,
-        h_tr_matrix=h_tr_matrix,
-        h_dimless_tr=h_dimless_tr,
-        f_tr_hz=f_tr_hz,
-        astar_f=astar_f,
-        t_final_yr=t_yr[-1],
-        active_levels_t0=len(active_t0),
-        dominant_level=dom_level,
-    )
-    return res
+    print(f"Integration complete: {len(tau)} samples; "
+          f"M/M_initial={q[-1]:.6f}, a_star={spin[-1]:.6f}")
+    return DimensionlessResults(
+        a_star_0=a_star_0, alpha_0=alpha_0, max_n=max_n,
+        epsilon_seed=epsilon_seed, LEVELS=levels, ann_available=ann_available,
+        tr_pairs_idx=pairs, tau=tau, ln_eps_all=state[:count], eps_all=eps,
+        Mtil=q, astar=spin, g_sr_all=sr, ann_coeff_all=ann,
+        tr_coeff_matrix=tr, h_dimless_all=h_ann, h_dimless_tr=h_tr,
+        omega_ann_over_mu=w_ann, omega_tr_over_mu=w_tr,
+        omega_ann_initial_over_mu=w_ann_initial,
+        omega_tr_initial_over_mu=w_tr_initial, astar_f=astar_f,
+        active_levels_t0=len(active), dominant_level=dominant_level)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# Dimensionless file I/O and mass rescaling
-# ══════════════════════════════════════════════════════════════════════
+def to_physical(results: DimensionlessResults, M_BH_solar: float,
+                r_kpc: float = 1.0):
+    """Convert a saved/in-memory solution without integrating again.
 
-def save_dimensionless(results: SimulationResults, filepath: str = None):
+    Fixed alpha_0 implies mu scales inversely with the chosen initial mass.
+    N scales as mass**2, time as mass, strain as mass/distance, and frequency
+    as 1/mass. Frequencies in peak tables use initial alpha, as before.
     """
-    Save the universal dimensionless solution to a compressed NPZ file.
+    if not isinstance(results, DimensionlessResults):
+        raise TypeError("to_physical expects a DimensionlessResults object")
+    _positive_finite('M_BH_solar', M_BH_solar)
+    _positive_finite('r_kpc', r_kpc)
+    M0 = M_BH_solar*M_SUN_PLANCK
+    norm = M0**2
+    mu = results.alpha_0/M0
+    time_unit = M0*T_PL_S/results.alpha_0
+    N = norm*results.eps_all
+    M_BH = M0*results.Mtil
+    m_arr = np.array([m for n, l, m in results.LEVELS])
+    J_cloud = m_arr @ N
+    J_BH = results.astar*M_BH**2
+    J_total = J_BH+J_cloud
+    M_irr = np.array([irreducible_mass(m, a)
+                      for m, a in zip(M_BH, results.astar)])
+    g_ann = results.ann_coeff_all/norm
+    return SimulationResults(
+        M_BH_solar=M_BH_solar, a_star_0=results.a_star_0,
+        alpha_0=results.alpha_0, max_n=results.max_n, M0=M0, MU=mu,
+        TAU_TO_YR=time_unit/YEAR_S, LEVELS=results.LEVELS,
+        _L_ARR=np.array([l for n, l, m in results.LEVELS]), _M_ARR=m_arr,
+        N_LEVELS=results.N_LEVELS, ann_available=results.ann_available,
+        tr_pairs_idx=results.tr_pairs_idx, tau=results.tau,
+        lnN_all=results.ln_eps_all+np.log(norm), NORM=norm,
+        eps_all=results.eps_all, Mtil=results.Mtil, astar=results.astar,
+        t_yr=results.tau*time_unit/YEAR_S, N_all=N, alpha=results.alpha,
+        M_BH=M_BH, J_cloud=J_cloud, M_cloud=mu*N.sum(axis=0),
+        J_BH=J_BH, J_total=J_total,
+        dJ_frac=np.abs((J_total-J_total[0])/J_total[0]), M_irr=M_irr,
+        E_rot=M_BH-M_irr, dM_irr=M_irr-M_irr[0],
+        g_sr_all=results.g_sr_all, g_ann_all=g_ann,
+        h_all=results.h_dimless_all*M0/(r_kpc*KPC_PLANCK),
+        h_dimless_all=results.h_dimless_all,
+        f_gw_hz=results.omega_ann_initial_over_mu*mu*OMEGA_PL_TO_HZ,
+        P_GW_total=(2.0*g_ann*N**2).sum(axis=0),
+        g_tr_matrix=results.tr_coeff_matrix/norm,
+        h_tr_matrix=results.h_dimless_tr*M0/(r_kpc*KPC_PLANCK),
+        h_dimless_tr=results.h_dimless_tr,
+        f_tr_hz=results.omega_tr_initial_over_mu*mu*OMEGA_PL_TO_HZ,
+        astar_f=results.astar_f, t_final_yr=results.tau[-1]*time_unit/YEAR_S,
+        active_levels_t0=results.active_levels_t0,
+        dominant_level=results.dominant_level, epsilon_seed=results.epsilon_seed,
+        r_kpc=r_kpc, dimensionless=results)
 
-    The arrays eps_all, h_dimless_all, h_dimless_tr are functions of
-    (alpha_0, a_star_0) only — they do not change with BH mass.
-    Use rescale_to_mass() to recover physical quantities at any mass M.
 
-    Rescaling rules
-    ---------------
-    M_Pl = M_solar * 9.137e37               [M_Planck]
-    t    = tau * (M_solar * 4.927e-6) / (alpha_0 * 3.156e7)    [yr]
-    N_i  = M_Pl^2 * eps_i
-    h(r) = h_dimless * M_Pl / r_Pl          (r_Pl = r_kpc * 1.910e54)
-    f(M) = f_gw_hz * (M0_solar / M_solar)   [Hz, at fixed alpha_0]
+def run_simulation(M_BH_solar=None, a_star_0=0.65, alpha_0=0.6,
+                   max_n=6, tau_end_factor=None, epsilon_seed=1e-60,
+                   tau_end=None, decay_decades=3.0):
+    """Run without a mass, or optionally convert to the old physical result.
+
+    Omit M_BH_solar to receive DimensionlessResults. Supplying it retains the
+    previous plotting/peak-table interface; the integration is identical.
     """
-    if results is None:
-        print("No results to save.")
-        return
+    if M_BH_solar is not None:
+        _positive_finite('M_BH_solar', M_BH_solar)
+    results = run_dimensionless(a_star_0=a_star_0, alpha_0=alpha_0,
+                                max_n=max_n, epsilon_seed=epsilon_seed,
+                                tau_end_factor=tau_end_factor, tau_end=tau_end,
+                                decay_decades=decay_decades)
+    if results is None or M_BH_solar is None:
+        return results
+    return to_physical(results, M_BH_solar)
 
+
+def _dimensionless_filename(results):
+    # Round-trip precision avoids overwriting nearby points in a dense grid.
+    return (f"dimless_alpha{float(results.alpha_0)!r}_a{float(results.a_star_0)!r}"
+            f"_n{results.max_n}_seed{float(results.epsilon_seed)!r}.npz")
+
+
+def save_dimensionless(results, filepath=None):
+    """Save a mass-free NPZ (schema 2), including seed and frequency ratios.
+
+    Accepts either DimensionlessResults or a converted SimulationResults.
+    No reference PBH mass or physical frequency is needed in the archive.
+    """
+    if isinstance(results, SimulationResults):
+        results = results.dimensionless
+    if not isinstance(results, DimensionlessResults):
+        raise TypeError("save_dimensionless expects a dimensionless solution")
     if filepath is None:
-        data_dir = os.path.join(_THIS_DIR, 'Data')
-        os.makedirs(data_dir, exist_ok=True)
-        filepath = os.path.join(data_dir,
-            f"dimless_alpha{results.alpha_0:.3f}_a{results.a_star_0:.2f}.npz")
-
-    os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
-
-    level_labels = np.array([f"{n}{l}{m}" for (n, l, m) in results.LEVELS])
-    tr_labels = np.array(
-        [f"{n_i}{l_i}{l_i}->{n_j}{l_j}{l_j}"
-         for (_, _, n_i, l_i, n_j, l_j) in results.tr_pairs_idx]
-        if results.tr_pairs_idx else []
-    )
-
-    np.savez_compressed(
-        filepath,
-        alpha_0      = results.alpha_0,
-        a_star_0     = results.a_star_0,
-        M0_solar     = results.M_BH_solar,
-        M0_planck    = results.M0,
-        NORM         = results.NORM,
-        tau          = results.tau,
-        eps_all      = results.eps_all,
-        Mtil         = results.Mtil,
-        astar        = results.astar,
-        alpha        = results.alpha,
-        g_sr_all     = results.g_sr_all,
-        g_ann_all    = results.g_ann_all,
-        g_tr_matrix  = results.g_tr_matrix,
-        h_dimless_all = results.h_dimless_all,
-        h_dimless_tr = results.h_dimless_tr,
-        f_gw_hz      = results.f_gw_hz,
-        f_tr_hz      = results.f_tr_hz,
-        level_labels = level_labels,
-        tr_labels    = tr_labels,
-    )
-    print(f"Dimensionless results saved to {filepath}")
-
-    guide = filepath.replace('.npz', '_rescaling.txt')
-    with open(guide, 'w', encoding='utf-8') as f:
-        f.write("Superradiance simulation — dimensionless output\n")
-        f.write("=" * 60 + "\n")
-        f.write(f"alpha_0  = {results.alpha_0}\n")
-        f.write(f"a_star_0 = {results.a_star_0}\n")
-        f.write(f"M0_solar = {results.M_BH_solar} M_sun\n")
-        f.write(f"M0_Pl    = {results.M0:.6e} M_Pl\n\n")
-        f.write("Arrays tau, eps_all, Mtil, astar, h_dimless_all, h_dimless_tr\n")
-        f.write("are universal at fixed (alpha_0, a_star_0).\n\n")
-        f.write("Rescaling to mass M [solar masses]\n")
-        f.write("-" * 40 + "\n")
-        f.write(f"  M_Pl = M_solar * {M_SUN_PLANCK:.6e}\n")
-        f.write(f"  t [yr] = tau * M_solar * {GM_SUN_OVER_C3:.6e} / (alpha_0 * {YEAR_S:.6e})\n")
-        f.write(f"  N_i    = M_Pl^2 * eps_i\n")
-        f.write(f"  h(r)   = h_dimless * M_Pl / (r_kpc * {KPC_PLANCK:.6e})\n")
-        f.write(f"  f(M)   = f_gw_hz * ({results.M_BH_solar} / M_solar)  [Hz]\n")
-        f.write(f"\n  h ∝ M  at fixed alpha_0 and fixed distance\n")
-        f.write(f"  t ∝ M  at fixed alpha_0\n")
-        f.write(f"  f ∝ 1/M at fixed alpha_0\n")
-    print(f"Rescaling guide saved to {guide}")
+        filepath = Path(_THIS_DIR)/'Data'/_dimensionless_filename(results)
+    filepath = Path(filepath)
+    if filepath.suffix != '.npz':
+        filepath = Path(str(filepath)+'.npz')
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    arrays = dict(vars(results))
+    arrays['schema_version'] = 2
+    arrays['alpha'] = results.alpha
+    arrays['LEVELS'] = np.asarray(results.LEVELS, dtype=int)
+    arrays['ann_available'] = np.array([
+        results.ann_available[(n, l)] for n, l, m in results.LEVELS], dtype=bool)
+    arrays['tr_pairs_idx'] = np.asarray(results.tr_pairs_idx, dtype=int).reshape(-1, 6)
+    arrays['level_labels'] = np.array([f'{n}{l}{m}' for n, l, m in results.LEVELS])
+    arrays['tr_labels'] = np.array([
+        f'{ni}{li}{li}->{nj}{lj}{lj}' for i, j, ni, li, nj, lj in results.tr_pairs_idx],
+        dtype=str)
+    np.savez_compressed(filepath, **arrays)
+    guide = filepath.with_name(filepath.stem+'_rescaling.txt')
+    guide.write_text(
+        'Mass-independent BHSR solution (schema 2)\n'
+        f'alpha_0={results.alpha_0!r}, a_star_0={results.a_star_0!r}, '
+        f'max_n={results.max_n}, epsilon_seed={results.epsilon_seed!r}\n'
+        'epsilon_seed is a fixed dimensionless seed, not N_initial=1.\n'
+        'tau=mu*t; q=M/M_initial; epsilon=N/(G*M_initial**2).\n'
+        'Load with load_dimensionless(path), then to_physical(solution, M_solar).\n'
+        'Or use rescale_to_mass(path, M_solar, r_kpc=1.0) for a dictionary.\n'
+        'At fixed alpha_0, spin and seed: N scales as M**2, t as M, '
+        'h as M/d, frequency and axion mass as 1/M.\n', encoding='utf-8')
+    print(f'Dimensionless results saved to {filepath}')
+    return str(filepath)
 
 
-def rescale_to_mass(filepath: str, M_new_solar: float, r_kpc: float = 1.0):
+def load_dimensionless(filepath):
+    """Load schema-2 results. Old one-particle-seed files are not universal."""
+    with np.load(filepath, allow_pickle=False) as data:
+        if 'schema_version' not in data or int(data['schema_version']) != 2:
+            raise ValueError('This is a legacy archive with a mass-dependent seed. '
+                             'Regenerate it with run_dimensionless(), or use '
+                             'rescale_to_mass() for legacy approximate rescaling.')
+        fields = {name: data[name].copy()
+                  for name in DimensionlessResults.__dataclass_fields__}
+    for name in ('a_star_0', 'alpha_0', 'epsilon_seed', 'astar_f'):
+        fields[name] = float(fields[name])
+    for name in ('max_n', 'active_levels_t0'):
+        fields[name] = int(fields[name])
+    fields['LEVELS'] = [tuple(map(int, row)) for row in fields['LEVELS']]
+    fields['ann_available'] = {
+        (n, l): bool(available) for (n, l, m), available
+        in zip(fields['LEVELS'], fields['ann_available'])}
+    fields['tr_pairs_idx'] = [tuple(map(int, row)) for row in fields['tr_pairs_idx']]
+    fields['dominant_level'] = tuple(map(int, fields['dominant_level']))
+    return DimensionlessResults(**fields)
+
+
+def rescale_to_mass(filepath, M_new_solar, r_kpc=1.0):
+    """Return physical arrays at any mass/distance, with no ODE integration.
+
+    Supports old archives with an explicit warning about their seed; new
+    schema-2 files are exactly rescalable at fixed dimensionless inputs.
+    Use to_physical(load_dimensionless(path), mass) for plotting/peak tables.
     """
-    Load a dimensionless NPZ file and return physical quantities at a new mass.
-
-    Parameters
-    ----------
-    filepath     : path to .npz written by save_dimensionless()
-    M_new_solar  : target BH mass [solar masses]
-    r_kpc        : source distance [kpc]
-
-    Returns
-    -------
-    dict with physical quantities rescaled to M_new_solar at r_kpc.
-    """
-    data         = np.load(filepath, allow_pickle=True)
-    alpha_0      = float(data['alpha_0'])
-    M0_solar     = float(data['M0_solar'])
-    M_new_planck = M_new_solar * M_SUN_PLANCK
-    r_planck     = r_kpc * KPC_PLANCK
-    TAU_TO_YR_new = (M_new_solar * GM_SUN_OVER_C3) / (alpha_0 * YEAR_S)
-
+    _positive_finite('M_new_solar', M_new_solar)
+    _positive_finite('r_kpc', r_kpc)
+    with np.load(filepath, allow_pickle=False) as data:
+        is_new = 'schema_version' in data
+        if not is_new:
+            import warnings
+            warnings.warn('Legacy archive: rescaling preserves its reference '
+                          'dimensionless seed, not N_initial=1 at the new mass.',
+                          UserWarning, stacklevel=2)
+            alpha_0 = float(data['alpha_0'])
+            M0 = M_new_solar*M_SUN_PLANCK
+            mu = alpha_0/M0
+            return {
+                **{key: data[key].copy() for key in
+                   ('tau', 'eps_all', 'Mtil', 'astar', 'alpha', 'level_labels', 'tr_labels')},
+                't_yr': data['tau']*M_new_solar*GM_SUN_OVER_C3/(alpha_0*YEAR_S),
+                'N_all': M0**2*data['eps_all'],
+                'h_ann': data['h_dimless_all']*M0/(r_kpc*KPC_PLANCK),
+                'h_tr': data['h_dimless_tr']*M0/(r_kpc*KPC_PLANCK),
+                'f_gw_hz': data['f_gw_hz']*float(data['M0_solar'])/M_new_solar,
+                'f_tr_hz': data['f_tr_hz']*float(data['M0_solar'])/M_new_solar,
+                'M_planck': M0, 'alpha_0': alpha_0,
+                'a_star_0': float(data['a_star_0']), 'r_kpc': r_kpc,
+                'mu_eV': mu*HBAR_EV_S/T_PL_S,
+            }
+    dim = load_dimensionless(filepath)
+    physical = to_physical(dim, M_new_solar, r_kpc)
     return {
-        # Dimensionless (unchanged by rescaling)
-        'tau':        data['tau'],
-        'eps_all':    data['eps_all'],
-        'Mtil':       data['Mtil'],
-        'astar':      data['astar'],
-        'alpha':      data['alpha'],
-        # Physical time axis
-        't_yr':       data['tau'] * TAU_TO_YR_new,
-        # Physical occupation
-        'N_all':      M_new_planck**2 * data['eps_all'],
-        # Physical GW strain at r_kpc
-        'h_ann':      data['h_dimless_all'] * M_new_planck / r_planck,
-        'h_tr':       data['h_dimless_tr']  * M_new_planck / r_planck,
-        # GW frequencies rescaled to new mass (f ∝ 1/M at fixed alpha_0)
-        'f_gw_hz':    data['f_gw_hz'] * (M0_solar / M_new_solar),
-        'f_tr_hz':    data['f_tr_hz'] * (M0_solar / M_new_solar),
-        # Metadata
-        'M_planck':   M_new_planck,
-        'alpha_0':    alpha_0,
-        'a_star_0':   float(data['a_star_0']),
-        'r_kpc':      r_kpc,
-        'level_labels': data['level_labels'],
-        'tr_labels':    data['tr_labels'],
+        'tau': dim.tau, 'eps_all': dim.eps_all, 'Mtil': dim.Mtil,
+        'astar': dim.astar, 'alpha': dim.alpha, 't_yr': physical.t_yr,
+        'N_all': physical.N_all, 'h_ann': physical.h_all,
+        'h_tr': physical.h_tr_matrix, 'f_gw_hz': physical.f_gw_hz,
+        'f_tr_hz': physical.f_tr_hz, 'M_planck': physical.M0,
+        'M_BH_solar': M_new_solar, 'alpha_0': dim.alpha_0,
+        'a_star_0': dim.a_star_0, 'epsilon_seed': dim.epsilon_seed,
+        'r_kpc': r_kpc, 'mu_eV': physical.MU*HBAR_EV_S/T_PL_S,
+        'level_labels': np.array([f'{n}{l}{m}' for n, l, m in dim.LEVELS]),
+        'tr_labels': np.array([f'{ni}{li}{li}->{nj}{lj}{lj}'
+                               for i, j, ni, li, nj, lj in dim.tr_pairs_idx]),
     }
 
-
-# ══════════════════════════════════════════════════════════════════════
-# Peak characteristic analysis
-# ══════════════════════════════════════════════════════════════════════
 
 def compute_peak_characteristics(results: SimulationResults):
     """
     Compute for each annihilation level and transition pair:
-    - peak strain h_max (at 1 kpc)
+    - peak strain h_max (at results.r_kpc)
     - FWHM (full width at half maximum) in years
     - time of peak t_peak [yr]
     - frequency of emission [Hz]
@@ -938,7 +914,7 @@ def print_peak_tables(ann_char, tr_char):
     # ── Annihilation table ────────────────────────────────────────────
     if ann_char:
         print("\n" + "=" * 110)
-        print("  Annihilation Peak Characteristics (sorted by decreasing peak strain at 1 kpc)")
+        print("  Annihilation Peak Characteristics (sorted by decreasing peak strain)")
         print("=" * 110)
         header = (f"{'Level':<16} {'Peak Strain':>15} {'FWHM [yr]':>15} "
                   f"{'t_peak [yr]':>18} {'Frequency [Hz]':>18}")
@@ -954,7 +930,7 @@ def print_peak_tables(ann_char, tr_char):
     # ── Transition table ──────────────────────────────────────────────
     if tr_char:
         print("\n" + "=" * 110)
-        print("  Transition Peak Characteristics (sorted by decreasing peak strain at 1 kpc)")
+        print("  Transition Peak Characteristics (sorted by decreasing peak strain)")
         print("=" * 110)
         header = (f"{'Transition':<28} {'Peak Strain':>15} {'FWHM [yr]':>15} "
                   f"{'t_peak [yr]':>18} {'Frequency [Hz]':>18}")
@@ -977,6 +953,9 @@ def save_peak_tables(ann_char, tr_char, results: SimulationResults, output_dir="
     """
     if results is None:
         return
+    if results.r_kpc != 1.0:
+        raise ValueError("Detector peak tables require strains at 1 kpc; "
+                         "convert with to_physical(dim, mass, r_kpc=1.0).")
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -1035,24 +1014,42 @@ def level_style(n, l):
     return base_col, ls, lw
 
 
-def plot_occupations_and_spin(results: SimulationResults, save_path=None):
-    """Main plot: spin panel (top) + log10 N(t) for all levels (bottom).
+def plot_occupations_and_spin(results, save_path=None, units="dimensionless"):
+    """Plot spin and log10 occupation, dimensionless by default.
 
-    Changes vs. original:
-      - ã_f annotation moved to the right edge of the spin panel.
-      - No legend: inline coloured text labels stacked vertically at the
-        centre-height / left of the occupation panel.
-      - Colour scheme: n=2 levels → shades of blue,
-                       n=3 levels → dark shades of red.
+    units="dimensionless" accepts DimensionlessResults or SimulationResults
+    and displays tau=mu*t and epsilon=N/(G*M_initial**2).
+    units="physical" requires a result converted with to_physical(), and
+    displays years and N. No mass conversion is performed by this function.
     """
     if results is None:
         print("No simulation results to plot.")
         return
 
-    t_yr      = results.t_yr
-    astar     = results.astar
-    log10N_all = results.lnN_all / np.log(10)
-    LEVELS    = results.LEVELS
+    if units not in ("dimensionless", "physical"):
+        raise ValueError('units must be "dimensionless" or "physical"')
+    if isinstance(results, DimensionlessResults):
+        log_eps = results.ln_eps_all/np.log(10)
+    elif isinstance(results, SimulationResults):
+        log_eps = (results.lnN_all-np.log(results.NORM))/np.log(10)
+    else:
+        raise TypeError("Expected DimensionlessResults or SimulationResults")
+    if units == "dimensionless":
+        plot_time = results.tau
+        log_population = log_eps
+        xlabel = r"$\tau = \mu_a t$"
+        ylabel = r"$\log_{10}\,\epsilon_i$"
+        floor = np.log10(results.epsilon_seed)
+    else:
+        if not isinstance(results, SimulationResults):
+            raise ValueError("Physical axes require to_physical(solution, M_BH_solar)")
+        plot_time = results.t_yr
+        log_population = results.lnN_all/np.log(10)
+        xlabel = r"$t$ [yr]"
+        ylabel = r"$\log_{10}\,N_i$"
+        floor = float(log_population[:, 0].min())
+    astar = results.astar
+    LEVELS = results.LEVELS
 
     # ── Colour palettes ───────────────────────────────────────────────
     _N2_BLUES = ["#1565C0", "#42A5F5", "#0288D1", "#29B6F6"]   # darkest first
@@ -1090,7 +1087,7 @@ def plot_occupations_and_spin(results: SimulationResults, save_path=None):
     ax_main  = fig_main.add_subplot(gs_main[1], sharex=ax_spin)
 
     # ── Spin panel ────────────────────────────────────────────────────
-    ax_spin.plot(t_yr, astar, color='k', lw=1.2)
+    ax_spin.plot(plot_time, astar, color='k', lw=1.2)
     ax_spin.set_ylabel(r"$\tilde{a}$", fontsize=11)
     ax_spin.tick_params(axis="y", labelsize=9)
     ax_spin.tick_params(axis="x", labelbottom=False)
@@ -1111,34 +1108,36 @@ def plot_occupations_and_spin(results: SimulationResults, save_path=None):
     # ã_0 label at the left / top of the spin curve
     ax_spin.annotate(
         fr"$\tilde{{a}}_0 = {results.a_star_0}$",
-        xy=(t_yr[t_yr > 0][0] if np.any(t_yr > 0) else t_yr[1], results.a_star_0),
+        xy=(plot_time[plot_time > 0][0] if np.any(plot_time > 0) else plot_time[1], results.a_star_0),
         xytext=(6, -10), textcoords="offset points",
         fontsize=8, color=color_spin,
     )
     ax_spin.set_xscale("log")
 
     # ── Occupation panel ──────────────────────────────────────────────
-    active_labels = []   # (latex_str, colour, peak_log10N) for inline labels
+    active_labels = []   # (latex_str, colour, peak_log_population) for inline labels
 
     for k, (n, l, m) in enumerate(LEVELS):
         col, ls, lw = level_style_map[(n, l, m)]
-        is_active = log10N_all[k].max() > 0.5
+        is_active = log_eps[k].max() > np.log10(results.epsilon_seed)+0.5
         ax_main.plot(
-            t_yr, log10N_all[k],
+            plot_time, log_population[k],
             color=col, ls=ls, lw=lw,
             alpha=1.0 if is_active else 0.25,
         )
         if is_active:
             active_labels.append(
-                (rf"$|{n}{l}{m}\rangle$", col, float(log10N_all[k].max()))
+                (rf"$|{n}{l}{m}\rangle$", col, float(log_population[k].max()))
             )
 
-    ax_main.set_xlabel(r"$t$  [yr]", fontsize=12)
-    ax_main.set_ylabel(r"$\log_{10}\, N$", fontsize=12)
+    ax_main.set_xlabel(xlabel, fontsize=12)
+    ax_main.set_ylabel(ylabel, fontsize=12)
     ax_main.grid(True, alpha=0.25, linestyle="--")
-    ax_main.set_ylim(0, log10N_all.max() * 1.1)
-    t_min_pos = t_yr[t_yr > 0][0] if np.any(t_yr > 0) else t_yr[1]
-    ax_main.set_xlim(t_min_pos, t_yr[-1])
+    top = float(log_population.max())
+    padding = max(1.0, 0.04*(top-floor))
+    ax_main.set_ylim(floor-padding, top+padding)
+    t_min_pos = plot_time[plot_time > 0][0] if np.any(plot_time > 0) else plot_time[1]
+    ax_main.set_xlim(t_min_pos, plot_time[-1])
     ax_main.set_xscale("log")
 
     # ── Inline coloured text labels ───────────────────────────────────
@@ -1211,7 +1210,7 @@ def plot_gw_transitions(results: SimulationResults, save_path=None):
         ax_tr_h.semilogy(t_yr, np.maximum(h_tr_matrix[p], 1e-100),
                          color=col, ls=ls, lw=lw, label=label)
     ax_tr_h.set_xlabel(r"$t$  [yr]", fontsize=12)
-    ax_tr_h.set_ylabel(r"$h_{\rm tr}$ (at 1\,kpc)", fontsize=12)
+    ax_tr_h.set_ylabel(fr"$h_{{\rm tr}}$ (at {results.r_kpc:g}\,kpc)", fontsize=12)
     ax_tr_h.grid(True, alpha=0.25, which="both", linestyle="--")
     ax_tr_h.legend(fontsize=8, loc="upper left", ncol=1)
     ax_tr_h.set_xscale('log')
@@ -1221,7 +1220,7 @@ def plot_gw_transitions(results: SimulationResults, save_path=None):
     fig_tr.suptitle(
         fr"GW strain from axion transitions — $m=l$ levels ($n\leq{results.max_n}$), "
         fr"$M_{{\rm BH}} = {results.M_BH_solar}\,M_\odot$, "
-        fr"$\alpha_0 = {results.alpha_0}$, distance $= 1\,\rm kpc$",
+        fr"$\alpha_0 = {results.alpha_0}$, distance $= {results.r_kpc:g}\,\rm kpc$",
         fontsize=9, y=1.01)
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -1370,149 +1369,118 @@ def plot_diagnostics(results: SimulationResults, save_path=None):
 # Alpha sweep
 # ══════════════════════════════════════════════════════════════════════
 
-def run_alpha_sweep(M_BH_solar, a_star_0, max_n,
+def run_alpha_sweep(M_BH_solar=None, a_star_0=0.69, max_n=8,
                     alpha_min=0.001, alpha_max=1.5, n_alpha_points=10,
-                    output_dir=None):
-    """
-    Run the superradiance simulation over a geometric grid of alpha values
-    and save the peak-characteristic tables for each point.
+                    output_dir=None, epsilon_seed=1e-60,
+                    tau_end_factor=None, tau_end=None, decay_decades=3.0):
+    """Save mass-independent solutions on the existing linear alpha grid.
 
-    Parameters
-    ----------
-    M_BH_solar : float
-        Initial BH mass in solar masses (fixed across the sweep).
-    a_star_0 : float
-        Initial dimensionless spin (fixed across the sweep).
-    max_n : int
-        Maximum principal quantum number n (fixed across the sweep).
-    alpha_min : float
-        Lower bound of the alpha grid (inclusive).  Default: 0.001.
-    alpha_max : float
-        Upper bound of the alpha grid (inclusive).  Default: 1.5.
-    n_alpha_points : int
-        Number of alpha values sampled geometrically between alpha_min
-        and alpha_max.  Default: 10.
-    output_dir : str or None
-        Directory in which to save the .dat files.  Defaults to a
-        'Data/alpha_sweep' sub-folder next to this script.
+    Specify only spin, coupling grid, max_n and epsilon_seed for reusable NPZ
+    files. Optionally supply M_BH_solar to also produce the existing physical
+    peak tables for GWDetector_alpha.py. Convert any saved solution to other
+    masses later with to_physical()/rescale_to_mass(), without reintegration.
 
-    Returns
-    -------
-    list of SimulationResults (or None for failed points)
-        One entry per alpha value, in the same order as the grid.
+    Returns one DimensionlessResults per grid point (None if SR inactive),
+    or SimulationResults when an output mass is explicitly requested.
     """
+    _positive_finite('alpha_min', alpha_min)
+    _positive_finite('alpha_max', alpha_max)
+    if alpha_max < alpha_min:
+        raise ValueError('alpha_max must be at least alpha_min')
+    if not isinstance(n_alpha_points, (int, np.integer)) or n_alpha_points < 1:
+        raise ValueError('n_alpha_points must be a positive integer')
+    if M_BH_solar is not None:
+        _positive_finite('M_BH_solar', M_BH_solar)
     if output_dir is None:
-        output_dir = os.path.join(_THIS_DIR, 'Data', 'alpha_sweep')
-    os.makedirs(output_dir, exist_ok=True)
-
+        output_dir = Path(_THIS_DIR)/'Data'/'alpha_sweep'
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     alpha_grid = np.linspace(alpha_min, alpha_max, n_alpha_points)
-
-    print("=" * 65)
-    print(f"Alpha sweep: {n_alpha_points} points  "
-          f"[{alpha_min:.4g}, {alpha_max:.4g}]  (geometric)")
-    print(f"M_BH = {M_BH_solar} M_sun   ã₀ = {a_star_0}   max_n = {max_n}")
-    print(f"Output dir: {output_dir}")
-    print("=" * 65)
-
+    print(f'Alpha sweep: {n_alpha_points} linearly spaced points, '
+          f'a_star_0={a_star_0:g}, n<={max_n}, epsilon_seed={epsilon_seed:g}')
     all_results = []
     for i, alpha in enumerate(alpha_grid):
-        print(f"\n── Sweep point {i+1}/{n_alpha_points}  α = {alpha:.6g} ──")
-        results = run_simulation(
-            M_BH_solar=M_BH_solar,
-            a_star_0=a_star_0,
-            alpha_0=alpha,
-            max_n=max_n,
-        )
-        all_results.append(results)
-
-        if results is None:
-            print(f"  Skipped (no SR-active levels at α = {alpha:.6g}).")
+        print(f'\nSweep point {i+1}/{n_alpha_points}: alpha={alpha:.6g}')
+        dim = run_dimensionless(a_star_0=a_star_0, alpha_0=float(alpha),
+                                max_n=max_n, epsilon_seed=epsilon_seed,
+                                tau_end_factor=tau_end_factor, tau_end=tau_end,
+                                decay_decades=decay_decades)
+        if dim is None:
+            all_results.append(None)
             continue
-
-        ann_char, tr_char = compute_peak_characteristics(results)
-        print_peak_tables(ann_char, tr_char)
-        save_peak_tables(ann_char, tr_char, results, output_dir=output_dir)
-
-    # Summary
-    n_ok = sum(r is not None for r in all_results)
-    print("\n" + "=" * 65)
-    print(f"Alpha sweep complete: {n_ok}/{n_alpha_points} points succeeded.")
-    print("=" * 65)
+        save_dimensionless(dim, output_dir/_dimensionless_filename(dim))
+        if M_BH_solar is None:
+            all_results.append(dim)
+        else:
+            physical = to_physical(dim, M_BH_solar)
+            ann_char, tr_char = compute_peak_characteristics(physical)
+            print_peak_tables(ann_char, tr_char)
+            save_peak_tables(ann_char, tr_char, physical, output_dir=output_dir)
+            all_results.append(physical)
+    print(f'Alpha sweep complete: {sum(r is not None for r in all_results)}'
+          f'/{n_alpha_points} superradiant points saved.')
     return all_results
 
 
-# ══════════════════════════════════════════════════════════════════════
-# Main entry point
-# ══════════════════════════════════════════════════════════════════════
-
 def main():
-    # ── Physical input parameters — edit these ────────────────────────
-    M_BH_SOLAR = 1e-11
-    A_STAR_0   = 0.99
-    ALPHA_0    = 0.42      # used for the single-run path only
-    MAX_N      = 6
+    # Dimensionless integration inputs: no PBH mass is used here.
+    A_STAR_0 = 0.69
+    ALPHA_0 = 0.10                 # single-run coupling
+    MAX_N = 3
+    EPSILON_SEED = 1e-60           # fixed epsilon, NOT a one-particle seed
+    TAU_END_FACTOR = None          # optional multiplier of the initial window
+    TAU_END = 1e50                 # explicit tau endpoint; disables automatic tails
+    DECAY_DECADES = 3.0            # follow significant levels below their peaks
 
-    # ── Alpha sweep parameters ────────────────────────────────────────
-    RUN_ALPHA_SWEEP = False   # set True to run the sweep instead of a single sim
-    N_ALPHA_POINTS  = 40      # number of geometrically-spaced alpha values
-    ALPHA_MIN       = 0.01   # lower bound of the sweep
-    ALPHA_MAX       = 0.8     # upper bound of the sweep
+    RUN_ALPHA_SWEEP = False       # True: save reusable solutions across the grid
+    N_ALPHA_POINTS = 40
+    ALPHA_MIN = 0.01
+    ALPHA_MAX = 0.8
+
+    # Optional physical peak tables. The main plot always uses tau and epsilon.
+    # Leave M_BH_SOLAR=None for an entirely dimensionless run.
+    M_BH_SOLAR = None
+    DISTANCE_KPC = 1.0
 
     if RUN_ALPHA_SWEEP:
-        run_alpha_sweep(
-            M_BH_solar=M_BH_SOLAR,
-            a_star_0=A_STAR_0,
-            max_n=MAX_N,
-            alpha_min=ALPHA_MIN,
-            alpha_max=ALPHA_MAX,
-            n_alpha_points=N_ALPHA_POINTS,
-        )
+        run_alpha_sweep(a_star_0=A_STAR_0, max_n=MAX_N,
+                        alpha_min=ALPHA_MIN, alpha_max=ALPHA_MAX,
+                        n_alpha_points=N_ALPHA_POINTS, epsilon_seed=EPSILON_SEED,
+                        tau_end_factor=TAU_END_FACTOR, tau_end=TAU_END,
+                        decay_decades=DECAY_DECADES)
         return
 
-    # ── Single-alpha run ──────────────────────────────────────────────
-    # Run simulation
-    results = run_simulation(M_BH_solar=M_BH_SOLAR,
-                             a_star_0=A_STAR_0,
-                             alpha_0=ALPHA_0,
-                             max_n=MAX_N,
-                             tau_end_factor=1e10)
-    if results is None:
+    dim = run_dimensionless(a_star_0=A_STAR_0, alpha_0=ALPHA_0,
+                            max_n=MAX_N, epsilon_seed=EPSILON_SEED,
+                            tau_end_factor=TAU_END_FACTOR, tau_end=TAU_END,
+                            decay_decades=DECAY_DECADES)
+    if dim is None:
         return
-
-    # ── Compute and print peak characteristics ───────────────────────
-    ann_char, tr_char = compute_peak_characteristics(results)
-    print_peak_tables(ann_char, tr_char)
-
-    # ── Save peak tables to Data folder ──────────────────────────────
-    data_dir = os.path.join(_THIS_DIR, 'Data')
-    save_peak_tables(ann_char, tr_char, results, output_dir=data_dir)
-
-    # Save dimensionless (mass-independent) results
-    save_dimensionless(results, filepath=os.path.join(data_dir,
-        f"dimless_alpha{results.alpha_0:.3f}_a{results.a_star_0:.2f}.npz"))
-
-    # Create output directory for plots
+    save_dimensionless(dim)
     plot_dir = os.path.join(_THIS_DIR, 'Plots')
-    os.makedirs(plot_dir, exist_ok=True)
+    plot_occupations_and_spin(
+        dim, units="dimensionless",
+        save_path=os.path.join(plot_dir, 'superradiance_main.pdf'))
 
-    # Generate all plots
-    main_path = os.path.join(plot_dir, 'superradiance_main.pdf')
-    plot_occupations_and_spin(results, save_path=main_path)
-
-    """gw_ann_path = os.path.join(plot_dir, 'superradiance_gw_strain.pdf')
-    plot_gw_annihilation(results, save_path=gw_ann_path)
-
-    gw_tr_path = os.path.join(plot_dir, 'superradiance_gw_transitions.pdf')
-    plot_gw_transitions(results, save_path=gw_tr_path)
-
-    #ann_rates_path = os.path.join(plot_dir, 'annihilation_rates.pdf')
-    #plot_annihilation_rates(results, save_path=ann_rates_path)
-
-    diag_path = os.path.join(plot_dir, 'superradiance_diagnostics.pdf')
-    plot_diagnostics(results, save_path=diag_path)"""
-
+    if M_BH_SOLAR is not None:
+        results = to_physical(dim, M_BH_SOLAR, r_kpc=DISTANCE_KPC)
+        ann_char, tr_char = compute_peak_characteristics(results)
+        print_peak_tables(ann_char, tr_char)
+        # Detector peak tables retain their 1 kpc normalization.
+        tables = results if DISTANCE_KPC == 1.0 else to_physical(dim, M_BH_SOLAR)
+        ann_tables, tr_tables = compute_peak_characteristics(tables)
+        save_peak_tables(ann_tables, tr_tables, tables,
+                         output_dir=os.path.join(_THIS_DIR, 'Data'))
+    else:
+        print("For physical strain tables, set M_BH_SOLAR or convert a saved "
+              "solution with to_physical().")
     plt.show()
-    plt.close("all")
+    plt.close('all')
 
-if __name__ == "__main__":
-    main()
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nRun cancelled by Ctrl+C.", flush=True)
+        sys.exit(130)

@@ -32,7 +32,7 @@ from ParamCalculator import calc_superradiance_rate
 # ── Configuration ────────────────────────────────────────────────────────────
 FILES = [
     "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n2l1m1_at0.990_aMin0.010_aMax0.564_20260428.dat",
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n3l2m2_at0.990_aMin0.050_aMax0.954_20260503.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n3l2m2_at0.990_aMin0.010_aMax0.954_20260504.dat",
     "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n4l3m3_at0.990_aMin0.300_aMax1.432_20260504.dat",
     "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n5l4m4_at0.990_aMin0.500_aMax2.100_20260504.dat",
 ]

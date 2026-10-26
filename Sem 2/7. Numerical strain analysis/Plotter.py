@@ -13,21 +13,29 @@ HZ_TO_MHZ = 1e-6
 # USER CONTROLS
 # -------------------------------------------------------------------
 
+# Input file: an absolute path, or a file in the launch directory,
+# beside this script, or in the MPhys project root.
+PICKLE_FILE = "transition_peak_data.pkl"
+
 # Points to completely remove from the plot.
 # Use the raw pickle keys, e.g. "7g 5g" for transitions or "5g" for annihilations.
 EXCLUDE_POINTS = {
     "13k 8k",
     "7p 6p",
      "8g 7g",
+     "3p 2p",
 }
 
 # Manual label offsets in points.
 # Positive dx = right, negative dx = left.
 # Positive dy = up, negative dy = down.
 LABEL_OFFSETS = {
+    "7f 6f": (0, -18),
+    "7g 5g": (-2, 4),
+    "3p 2p": (10, 3),
     "8g 6g": (0, -10),
     "9k 8k": (0, 10),
-    # "7g 6g": (5, 0),
+    "7g 6g": (-18, 3),
     "7h 6h": (-2.5, 2.5),
     "7d 5d": (0, -10),
     "8p 4p": (-5,0),
@@ -70,27 +78,74 @@ SAVE_PLOT = True
 PLOTS_SUBFOLDER = "Plots"
 
 
+def resolve_input_path(pickle_file):
+    """Find a peak-data file independently of the script's launch directory."""
+    requested = Path(pickle_file).expanduser()
+    if requested.is_absolute():
+        candidates = [requested]
+    else:
+        script_dir = Path(__file__).resolve().parent
+        candidates = [Path.cwd()/requested, script_dir/requested,
+                      script_dir.parent.parent/requested]
+    candidates = list(dict.fromkeys(path.resolve() for path in candidates))
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    locations = "\n".join(f"  {path}" for path in candidates)
+    raise FileNotFoundError(f"Peak-data file {str(requested)!r} was not found. "
+                            f"Checked:\n{locations}")
+
+
 def load_peak_data(pickle_file):
-    with open(pickle_file, "rb") as f:
+    input_path = resolve_input_path(pickle_file)
+    with input_path.open("rb") as f:
         data = pickle.load(f)
+    if not isinstance(data, dict):
+        raise ValueError("Peak data must be a dictionary keyed by level or transition")
+    print(f"Loaded {len(data)} entries from {input_path}")
     return data
 
 
-def make_label(level_key, is_annihilation=False):
-    if is_annihilation:
-        return rf"${level_key}$"
+def is_annihilation_file(pickle_file):
+    return Path(pickle_file).name.lower().startswith(("ann_", "annihilation"))
 
+
+def _finite_float(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
+
+
+def _ket_label(level, n=None, l=None, m=None):
+    """Convert a spectroscopic key to |n l m>, defaulting to the m=l family."""
+    orbital_l = {"s": 0, "p": 1, "d": 2, "f": 3, "g": 4, "h": 5,
+                 "i": 6, "k": 7, "l": 8, "m": 9, "n": 10, "o": 11, "q": 12}
+    level = level.strip()
+    n = int(level[:-1]) if n is None else int(n)
+    l = orbital_l[level[-1]] if l is None else int(l)
+    m = l if m is None else int(m)
+    # Commas keep multidigit or negative quantum numbers unambiguous.
+    state = f"{n}{l}{m}" if all(0 <= q < 10 for q in (n, l, m)) else f"{n},{l},{m}"
+    return rf"\lvert {state}\rangle"
+
+
+def make_label(level_key, is_annihilation=False, parameters=None):
+    params = parameters or {}
+    if is_annihilation:
+        ket = _ket_label(level_key, params.get("n"), params.get("l"), params.get("m"))
+        return f"${ket}$"
     level_e, level_g = level_key.split()
-    return rf"${level_e} \rightarrow {level_g}$"
+    excited = _ket_label(level_e, params.get("n_e"), params.get("l_e"), params.get("m_e"))
+    ground = _ket_label(level_g, params.get("n_g"), params.get("l_g"), params.get("m_g"))
+    return rf"${excited} \rightarrow {ground}$"
 
 
 def make_output_filename(pickle_file, is_annihilation=False):
     stem = Path(pickle_file).stem
     prefix = "annihilation" if is_annihilation else "transition"
     return f"{prefix}_{stem}.pdf"
-
-
-import matplotlib.ticker as ticker
 
 
 def improve_log_x_ticks(ax):
@@ -167,15 +222,21 @@ def make_scatter_plot(
     l_quantum = []
     labels = []
     keys = []
+    skipped = {"excluded": 0, "failed": 0, "invalid": 0}
 
     for level_key, entry in data.items():
         if level_key in exclude_points:
+            skipped["excluded"] += 1
             continue
 
-        if not entry.get("success", False):
+        if not isinstance(entry, dict) or not entry.get("success", False):
+            skipped["failed"] += 1
             continue
 
-        params = entry.get("parameters", {})
+        params = entry.get("parameters") or {}
+        if not isinstance(params, dict):
+            skipped["invalid"] += 1
+            continue
 
         omega = params.get("omega")
         if omega is None:
@@ -183,33 +244,38 @@ def make_scatter_plot(
         if omega is None:
             omega = params.get("omega_ann")
 
-        h_log = entry.get("h_peak_log10")
-        t_fwhm = entry.get("t_fwhm_years")
+        omega = _finite_float(omega)
+        h_log = _finite_float(entry.get("h_peak_log10"))
+        t_fwhm = _finite_float(entry.get("t_fwhm_years"))
 
-        if omega is None or not np.isfinite(h_log) or not np.isfinite(t_fwhm):
-            continue
-
-        if omega <= 0 or t_fwhm <= 0:
+        if (omega is None or h_log is None or t_fwhm is None
+                or omega <= 0 or t_fwhm <= 0):
+            skipped["invalid"] += 1
             continue
 
         keys.append(level_key)
         omega_arr.append(omega * EV_TO_HZ * HZ_TO_MHZ)
         h_peak_log10.append(h_log)
         fwhm.append(t_fwhm)
-        l_quantum.append(int(params.get('l_g', params.get('l_e', 0))))
-        labels.append(make_label(level_key, is_annihilation=is_annihilation))
+        l_quantum.append(int(params.get('l_g', params.get('l_e', params.get('l', 0)))))
+        labels.append(make_label(level_key, is_annihilation=is_annihilation, parameters=params))
 
     omega_arr = np.array(omega_arr)
     h_peak_log10 = np.array(h_peak_log10)
     fwhm = np.array(fwhm)
     l_quantum = np.array(l_quantum)
 
+    print(f"Plotting {len(omega_arr)} points; skipped "
+          f"{skipped['failed']} failed simulations, "
+          f"{skipped['invalid']} invalid records, and "
+          f"{skipped['excluded']} configured exclusions.")
     if len(omega_arr) == 0:
-        raise RuntimeError("No valid data points to plot.")
+        raise RuntimeError("No valid data points to plot. "
+                           "Check the simulation results and EXCLUDE_POINTS.")
 
     plot_type = "Annihilation" if is_annihilation else "Transition"
 
-    fig, ax = plt.subplots(figsize=(5, 4))
+    fig, ax = plt.subplots(figsize=(6, 4))
 
     if color_by_l:
         unique_ls = sorted(set(l_quantum))
@@ -217,7 +283,7 @@ def make_scatter_plot(
             0: 's', 1: 'p', 2: 'd', 3: 'f', 4: 'g', 5: 'h',
             6: 'i', 7: 'k', 8: 'l', 9: 'm', 10: 'n', 11: 'o', 12: 'q'
         }
-        cmap_discrete = plt.cm.get_cmap('tab10', len(unique_ls))
+        cmap_discrete = plt.get_cmap('tab10', len(unique_ls))
         l_to_idx = {l: i for i, l in enumerate(unique_ls)}
         point_colors = [cmap_discrete(l_to_idx[l]) for l in l_quantum]
         sc = ax.scatter(
@@ -235,14 +301,14 @@ def make_scatter_plot(
             s=40,
         )
         cbar = fig.colorbar(sc, ax=ax)
-        cbar.set_label(r"$\log_{10}(\mathrm{FWHM\ [years]})$")
+        cbar.set_label(r"$\log_{10}\,\mathrm{FWHM\ [years]}$")
 
     ax.set_xscale("log")
-    ax.set_xlabel(r"Frequency $\omega$ [MHz]")
-    ax.set_ylabel(r"$\log_{10}(h_{\mathrm{peak}})$")
+    ax.set_xlabel(r"$f$ [MHz]")
+    ax.set_ylabel(r"$\log_{10}\,h_{\mathrm{peak}}$")
 
     # Add some breathing room so labels do not leave the axes.
-    ax.margins(x=0.15, y=0.15)
+    ax.margins(x=0.20, y=0.15)
     improve_log_x_ticks(ax)
 
     # --- Add labels with manual offsets ---
@@ -289,12 +355,13 @@ def make_scatter_plot(
         print(f"Saved plot to: {output_path}")
 
     plt.show()
+    return fig
 
 
 if __name__ == "__main__":
-    pickle_file = "transition_peak_data.pkl"
+    pickle_file = resolve_input_path(PICKLE_FILE)
 
-    is_annihilation = pickle_file.startswith("ann_")
+    is_annihilation = is_annihilation_file(pickle_file)
 
     data = load_peak_data(pickle_file)
 

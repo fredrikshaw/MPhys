@@ -10,6 +10,7 @@ This script compares:
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import os
 
 from SimplePostMergerSpin import solve_a_star_self_consistent
@@ -104,8 +105,10 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 	mass_xlim_quantile=0.999,
 	log_y=False,
 	log_floor=1e-3,
+	show_mean_spin=True,
 	save_fig=False,
 	filename="matched_spin_hist_lognormal.pdf",
+	mean_spin_filename="mean_final_spin_vs_sigma.pdf",
 	show=True,
 ):
 	"""
@@ -137,18 +140,22 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 		If True, use logarithmic y-axis. Default False
 	log_floor : float, optional
 		Minimum y value used when log_y=True to avoid log(0). Default 1e-3
+	show_mean_spin : bool, optional
+		Whether to mark each distribution's mean final spin on the plot. Default True
 	save_fig : bool, optional
 		Whether to save the figure. Default False
 	filename : str, optional
 		Filename for saved figure. Default "matched_spin_hist_lognormal.pdf"
+	mean_spin_filename : str, optional
+		Filename for the mean-final-spin vs sigma figure. Default "mean_final_spin_vs_sigma.pdf"
 	show : bool, optional
 		Whether to display the figure. Default True
 	"""
 	if sigma_values is None:
 		sigma_values = [0.1, 0.5, 1.0]
 
-	default_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-	colors = ["#2B7BB9", "#38A09C", "#6DAA65", "#D4A832", "#C85D38"]# [default_cycle[i % len(default_cycle)] for i in range(len(sigma_values))]
+	color_palette = ["#2B7BB9", "#38A09C", "#6DAA65", "#D4A832", "#C85D38"]
+	colors = [color_palette[i % len(color_palette)] for i in range(len(sigma_values))]
 	n_sci = f"{N_mergers:.2e}"
 	two_n_sci = f"{2 * N_mergers:.2e}"
 	if log_floor <= 0:
@@ -164,6 +171,7 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 
 	# Compute all histograms first for independent normalization
 	spin_hists = []
+	mean_spins = []
 	mass_hists = []
 	mass_samples_all = []
 
@@ -179,6 +187,9 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 			nu_low=nu_low_valid_max,
 			nu_high=nu_high_valid_min,
 		)
+		mean_spin = np.mean(a_star_values)
+		mean_spins.append(mean_spin)
+		print(f"Mean final spin for sigma={sigma}: {mean_spin:.8f}")
 
 		# Get histogram data and normalize to own maximum
 		counts_spin, edges_spin = np.histogram(a_star_values, bins=bins, density=True)
@@ -204,6 +215,30 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 			linewidth=1.5,
 			label=rf"$\sigma={sigma}$",
 		)
+		if show_mean_spin:
+			mean_spin = mean_spins[idx]
+			mean_bin = np.searchsorted(edges_spin, mean_spin, side="right") - 1
+			mean_bin = np.clip(mean_bin, 0, len(normalized_counts) - 1)
+			ax_spin.scatter(
+				mean_spin,
+				normalized_counts[mean_bin],
+				color=colors[idx],
+				marker="*",
+				s=150,
+				edgecolors="black",
+				linewidths=0.8,
+				zorder=5,
+			)
+			ax_spin.annotate(
+				rf"$\langle \tilde a_f\rangle={mean_spin:.5f}$",
+				xy=(mean_spin, normalized_counts[mean_bin]),
+				xytext=(8, 8 + 12 * idx),
+				textcoords="offset points",
+				color=colors[idx],
+				fontsize=9,
+				ha="left",
+				va="bottom",
+			)
 	ax_spin.set_xlim(0.6, 0.7)
 	ax_spin.set_xlabel(r" $\tilde a_{f}$", fontsize=14)
 	ax_spin.set_ylabel("Peak-normalized value", fontsize=14)
@@ -252,15 +287,64 @@ def plot_matched_spin_histogram_from_lognormal_mergers(
 
 	plt.tight_layout()
 
+	mean_order = np.argsort(sigma_values)
+	sorted_sigmas = np.asarray(sigma_values)[mean_order]
+	sorted_mean_spins = np.asarray(mean_spins)[mean_order]
+	plt.rcParams.update({
+		"text.usetex": True,
+		"font.family": "serif",
+		"font.serif": ["Computer Modern Roman"],
+		"text.latex.preamble": r"\usepackage{amsmath}",
+	})
+	mean_fig, mean_ax = plt.subplots(figsize=(6, 4.5))
+	mean_ax.plot(sorted_sigmas, sorted_mean_spins, color="#356B87", linewidth=2.2)
+	mean_ax.axhline(
+		0.69,
+		color="#85858A",
+		linestyle="--",
+		linewidth=1.2,
+		zorder=1,
+	)
+	mean_ax.annotate(
+		r"$\tilde a_f^{\max}=0.69$",
+		xy=(0.97, 0.69),
+		xycoords=mean_ax.get_yaxis_transform(),
+		xytext=(0, 7),
+		textcoords="offset points",
+		ha="right",
+		va="bottom",
+		fontsize=13,
+		color="black",
+	)
+	mean_ax.set_xscale("log")
+	mean_ax.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
+	spin_min = min(np.min(sorted_mean_spins), 0.69)
+	spin_max = max(np.max(sorted_mean_spins), 0.69)
+	spin_padding = max(0.035, 0.15 * (spin_max - spin_min))
+	mean_ax.set_ylim(spin_min - spin_padding, spin_max + spin_padding)
+	mean_ax.set_xlabel(r"$\sigma$", fontsize=18)
+	mean_ax.set_ylabel(r"$\langle \tilde a_f\rangle$", fontsize=18)
+	mean_ax.tick_params(axis="both", which="both", direction="in", top=True, right=True)
+	mean_ax.tick_params(axis="both", which="major", labelsize=14, length=6)
+	mean_ax.tick_params(axis="both", which="minor", length=3)
+	mean_ax.set_axisbelow(True)
+	mean_ax.grid(False, which="minor")
+	mean_ax.grid(True, which="major", color="#D6D6D6", linewidth=0.6, alpha=0.7)
+	mean_fig.tight_layout()
+
 	if save_fig:
 		output_path = get_plot_output_path(filename)
-		plt.savefig(output_path, dpi=300, bbox_inches="tight")
+		fig.savefig(output_path, dpi=300, bbox_inches="tight")
 		print(f"Saved figure: {output_path}")
+		mean_output_path = get_plot_output_path(mean_spin_filename)
+		mean_fig.savefig(mean_output_path, dpi=300, bbox_inches="tight")
+		print(f"Saved figure: {mean_output_path}")
 
 	if show:
 		plt.show()
 	else:
 		plt.close(fig)
+		plt.close(mean_fig)
 
 	return a_star_values, nu_values
 
@@ -360,12 +444,13 @@ def plot_all_a_star_models(
 if __name__ == "__main__":
 	plot_all_a_star_models(save_fig=True, show=False)
 	plot_matched_spin_histogram_from_lognormal_mergers(
-		N_mergers=2000000,
+		N_mergers=int(1e7),
 		M_central=1e6,
-		sigma_values=[0.05, 0.1, 0.2],
+		sigma_values=np.geomspace(0.01, 1.5, 30),
 		bins=2000,
 		save_fig=True,
+		show_mean_spin=False,
 		include_mass_hist=False,
-		log_y=True,
+		log_y=False,
 		show=True,
 	)

@@ -1,12 +1,31 @@
+'''
+08/11/2026 (FS)
+Script to calculate and create histograms of axion mass distributions in
+the string axiverse by solving the hessian for triangulated Calabi-Yau
+manifolds from the Kreuzer-Skarke database using the cytools package.
+
+To run please select the h11, (the hodge number/amount of axions in a
+given polytope) and the number of polytopes n_polys (the amount of
+polytopes to be checked, higher n gives better stats). Additionally the
+scaling of the Kahler cone, scaling_of_cone, controls which section of
+the moduli space is selected for evaluation and is essentially another
+free parameter which affects axion masses.
+
+The results are then stored as pickle files and can also be plotted
+directly. This script is best run in WSL/Linux.
+
+Please refer to [INSERT PAPER NAME] for physics explanation.
+'''
+
 from cytools import fetch_polytopes
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.differentiate import hessian
 from scipy.linalg import eigh
 from typing import Sequence
 from tqdm import tqdm
 import pickle
 import os
+import multiprocessing as mp
 
 h11=30
 n_polys=50
@@ -248,7 +267,7 @@ def find_masses(polytope, silent=True, return_masses=True, return_potential=Fals
     masses_ev = sqrt_lambda / M_pl_in_ev
     if not silent:
         print(f"Mean mass [eV]: {np.mean(masses_ev)}")
-        print(f"Mass range [eV]: {np.min(masses_ev)} - {np.max(np.masses_ev)}, min non-zero val: {np.min([m for m in masses_ev if m!=0])}")
+        print(f"Mass range [eV]: {np.min(masses_ev)} - {np.max(masses_ev)}, min non-zero val: {np.min([m for m in masses_ev if m!=0])}")
 
         print("Rank(q):", np.linalg.matrix_rank(q_list))
         print("Min exp suppression:", np.min(np.exp(-2*np.pi * q_list @ tau)))
@@ -277,40 +296,58 @@ def find_masses(polytope, silent=True, return_masses=True, return_potential=Fals
     else:
         return None
 
-# Get all the polytopes we want, I think these are drawn randomly from KS database
-polytopes = fetch_polytopes(h11=h11, lattice="N", favorable=True, limit=n_polys)
 
-mass_list = []  # Just have a big ol' chunky list of all the masses to histogram
-for polytope in tqdm(polytopes, desc="Processing polytopes"):
-    mass_list.append(find_masses(polytope))
+def _find_masses_worker(polytope):
+    return find_masses(polytope)
 
-# Flatten the list of arrays and remove NaNs
-all_masses = np.concatenate([m[~np.isnan(m)] for m in mass_list if m is not None])
+if __name__ == "__main__":
+    print('checking')
 
-# Save masses to pickle file (in same directory as this script)
-script_dir = os.path.dirname(os.path.abspath(__file__))
-pickle_dir = os.path.join(script_dir, 'mass_dist_pickles')
-os.makedirs(pickle_dir, exist_ok=True)
-pickle_filename = os.path.join(pickle_dir, f'masses_h11_{h11}_npolys_{n_polys}_scaling_{scaling_of_cone}_nmasses_{len(all_masses)}.pkl')
-with open(pickle_filename, 'wb') as f:
-    pickle.dump(all_masses, f)
-print(f"Saved masses to {pickle_filename}")
+    # Get all the polytopes we want, I think these are drawn randomly from KS database
+    print('fetching polytopes')
+    polytopes = fetch_polytopes(h11=h11, lattice="N", favorable=True, limit=n_polys)
 
-# Plot histogram with logarithmic x-axis and normalized y-axis
-plt.figure(figsize=(12, 7))
-# Create logarithmically spaced bins
-mass_min = np.min(all_masses[all_masses > 0])  # Exclude zeros for log scale
-mass_max = np.max(all_masses)
-log_bins = np.logspace(np.log10(mass_min), np.log10(mass_max), 51)  # 51 edges = 50 bins
-plt.hist(all_masses, bins=log_bins, edgecolor='black', alpha=0.7, color='steelblue')
-plt.xlabel('Axion Mass [eV]', fontsize=12)
-plt.ylabel('N', fontsize=12)
-plt.title(f'Distribution of Axion Masses (N = {len(all_masses)} masses from {n_polys} polytopes\nwith h11={h11} and Kahler cone stretching of {scaling_of_cone})', 
-          fontsize=14, fontweight='bold')
-plt.xscale('log')
-plt.grid(True, alpha=0.3, which='both')
-plt.tight_layout()
-plt.show()
+    available_cores = mp.cpu_count()
+    n_workers = max(1, min(len(polytopes), available_cores))
+    print(f"Detected CPU cores: {available_cores}")
+    print(f"Using multiprocessing workers: {n_workers}")
+    print("Live progress: tqdm progress bar updates as each polytope completes.")
+
+    try:
+        with mp.Pool(processes=n_workers) as pool:
+            mass_list = list(tqdm(pool.imap(_find_masses_worker, polytopes), total=len(polytopes), desc="Processing polytopes"))
+    except Exception as exc:
+        print(f"Multiprocessing failed ({exc}); falling back to serial processing.")
+        print("Using serial workers: 1")
+        mass_list = [_find_masses_worker(polytope) for polytope in tqdm(polytopes, desc="Processing polytopes")]
+
+    # Flatten the list of arrays and remove NaNs
+    all_masses = np.concatenate([m[~np.isnan(m)] for m in mass_list if m is not None])
+
+    # Save masses to pickle file (in same directory as this script)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    pickle_dir = os.path.join(script_dir, 'mass_dist_pickles')
+    os.makedirs(pickle_dir, exist_ok=True)
+    pickle_filename = os.path.join(pickle_dir, f'masses_h11_{h11}_npolys_{n_polys}_scaling_{scaling_of_cone}_nmasses_{len(all_masses)}.pkl')
+    with open(pickle_filename, 'wb') as f:
+        pickle.dump(all_masses, f)
+    print(f"Saved masses to {pickle_filename}")
+
+    # Plot histogram with logarithmic x-axis and normalized y-axis
+    plt.figure(figsize=(12, 7))
+    # Create logarithmically spaced bins
+    mass_min = np.min(all_masses[all_masses > 0])  # Exclude zeros for log scale
+    mass_max = np.max(all_masses)
+    log_bins = np.logspace(np.log10(mass_min), np.log10(mass_max), 51)  # 51 edges = 50 bins
+    plt.hist(all_masses, bins=log_bins, edgecolor='black', alpha=0.7, color='steelblue')
+    plt.xlabel('Axion Mass [eV]', fontsize=12)
+    plt.ylabel('N', fontsize=12)
+    plt.title(f'Distribution of Axion Masses (N = {len(all_masses)} masses from {n_polys} polytopes\nwith h11={h11} and Kahler cone stretching of {scaling_of_cone})', 
+              fontsize=14, fontweight='bold')
+    plt.xscale('log')
+    plt.grid(True, alpha=0.3, which='both')
+    plt.tight_layout()
+    plt.show()
 
 
 

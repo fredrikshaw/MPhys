@@ -1,0 +1,999 @@
+Notebook[{Cell["Continued Fractions \[LongDash] Optimised", "Title"], 
+  Cell["Independent optimised copy of ContinuedFractionsLeaver.nb. The \
+original is unchanged. Evaluate the initialization cells, then the parameter \
+and run cells below. The notebook is self-contained and uses \
+arbitrary-precision Mathematica arithmetic.", "Text"], 
+  Cell["Changes and accuracy controls", "Section"], 
+  Cell["The solver evaluates the complex continued fraction once per trial \
+and returns both real residual components. It precomputes fixed indices and \
+Kerr factors, constructs coefficient lists directly, and uses a local \
+one-entry trial cache. The original recurrence coefficients, terminal \
+condition and Gamma = 2 Im[omega] convention are preserved. Precision \
+controls inside the backward sweep are retained.", "Text"], 
+  Cell["Adaptive depth doubles the truncation until neighbouring depths agree \
+in Im[omega] to RateTolerance (default 10^-4), with a separate real-frequency \
+check. The accepted solution is repeated with 15 extra digits. A depth or \
+precision failure is reported as Failed rather than accepted as a converged \
+rate. The common binding scale is used for both frequency coordinates; the \
+tiny rate is resolved through working precision and checked separately.", 
+   "Text"], Cell["The ten positional PlotSuperradiance arguments are \
+retained. In this copy, Nmax sets the adaptive depth budget; the original \
+small-alpha safeguard Max[Nmax, Ceiling[30/alpha]] still applies. Set \
+\"MaxDepth\" explicitly to override that budget. Small alpha can require tens \
+of thousands of terms. Set \"AdaptiveDepth\" -> False for a fixed-depth \
+comparison. \"RateTolerance\", \"PrecisionCheck\", \"ScaledVariables\", \
+\"MinDepth\", \"ContinuityFactor\", \"TimeLimit\" and \"Verbose\" are \
+configurable options.", "Text"], Cell["Continuation predicts from the actual \
+successful alpha coordinates, including after gaps. The existing factor-three \
+growth-rate continuity guard is retained outside the small-alpha fallback \
+region and can be adjusted with ContinuityFactor. As in the original, n \
+selects an initial seed, so overtone identity still requires sensible seeds \
+and continuous branch tracking. This remains a growing-mode solver (not a \
+signed decay-rate survey); use 0 <= spin < 1. Exact extremality needs a \
+different recurrence.", "Text"], Cell["Outputs are written to an Optimised \
+Data subfolder beside this notebook, with unique filenames. The .dat file \
+retains alpha, CF_Gamma, Hydro_Gamma. A companion diagnostics TSV records \
+status, complex frequency, depth, precision, convergence change and time. \
+Unattempted grid points are marked separately in diagnostics. OutputDirectory \
+can select another folder. Plain TSV writing preserves small rates without \
+relying on Mathematica's general Export framework.", "Text"], 
+  Cell["Solver initialization", "Section"], 
+  Cell[BoxData[RowBox[{RowBox[{"ClearAll", "[", "\"Global`*\"", "]"}], 
+      ";"}]], "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[{RowBox[{"G", "=", "1"}], ";", RowBox[{"M", "=", "1"}], 
+      ";", RowBox[{"prec", "=", "50"}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[{RowBox[{"$SRLastSolve", "=", 
+        RowBox[{"Association", "[", "]"}]}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[{RowBox[{"$SRLastRun", "=", 
+        RowBox[{"Association", "[", "]"}]}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"SRNumber", "[", RowBox[{"x_", ",", "p_Integer"}], 
+          "]"}], ":=", RowBox[{"N", "[", RowBox[
+           {RowBox[{"Rationalize", "[", RowBox[{"x", ",", "0"}], "]"}], ",", 
+            "p"}], "]"}]}], ";"}]], "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"AdaptivePrec", "[", RowBox[{"l_", ",", "alpha_", ",", 
+            RowBox[{"previous_", ":", "Null"}]}], "]"}], ":=", 
+        RowBox[{"Module", "[", RowBox[{RowBox[{"{", RowBox[{"scaling", ",", 
+                "history"}], "}"}], ",", RowBox[{RowBox[{"scaling", "=", 
+                RowBox[{RowBox[{"Ceiling", "[", RowBox[{RowBox[{"(", 
+                        RowBox[{RowBox[{"4", " ", "l"}], "+", "5"}], ")"}], 
+                      " ", RowBox[{"Max", "[", RowBox[{"0", ",", RowBox[
+                          {"-", RowBox[{"Log10", "[", RowBox[{"Abs", "[", 
+                          "alpha", "]"}], "]"}]}]}], "]"}]}], "]"}], "+", 
+                  "30"}]}], ";", RowBox[{"history", "=", RowBox[{"If", "[", 
+                  RowBox[{RowBox[{RowBox[{"NumericQ", "[", "previous", "]"}], 
+                      "&&", RowBox[{"previous", "\[NotEqual]", "0"}]}], ",", 
+                    RowBox[{RowBox[{"Ceiling", "[", RowBox[{"Max", "[", 
+                          RowBox[{"0", ",", RowBox[{"-", RowBox[{"Log10", 
+                          "[", RowBox[{"Abs", "[", "previous", "]"}], 
+                          "]"}]}]}], "]"}], "]"}], "+", "30"}], ",", "0"}], 
+                  "]"}]}], ";", RowBox[{"Max", "[", RowBox[{"40", ",", 
+                  "scaling", ",", "history"}], "]"}]}]}], "]"}]}], ";"}]], 
+   "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"AdaptiveNmax", "[", RowBox[{"l_", ",", "alpha_", ",", 
+            "base_"}], "]"}], ":=", RowBox[{"Max", "[", 
+          RowBox[{"base", ",", RowBox[{"Ceiling", "[", FractionBox["30", 
+               "alpha"], "]"}]}], "]"}]}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"AngularLambda", "[", RowBox[{"omega_", ",", "at_", 
+            ",", "l_", ",", "m_", ",", "alpha_"}], "]"}], ":=", 
+        RowBox[{"N", "[", RowBox[{RowBox[{"SpheroidalEigenvalue", "[", 
+              RowBox[{"l", ",", "m", ",", RowBox[{"\[ImaginaryI]", " ", "at", 
+                  " ", SqrtBox[RowBox[{SuperscriptBox["omega", "2"], "-", 
+                     SuperscriptBox["alpha", "2"]}]]}]}], "]"}], ",", 
+            "prec"}], "]"}]}], ";"}]], "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"HydrogenGamma", "[", RowBox[{"n_", ",", "l_", ",", 
+            "m_", ",", "alpha_", ",", "at_"}], "]"}], ":=", 
+        RowBox[{"Module", "[", RowBox[{RowBox[{"{", RowBox[{"rp", ",", "oh", 
+                ",", "cnl", ",", "glm"}], "}"}], ",", 
+            RowBox[{RowBox[{"rp", "=", RowBox[{"1", "+", SqrtBox[RowBox[
+                    {"1", "-", SuperscriptBox["at", "2"]}]]}]}], ";", 
+              RowBox[{"oh", "=", FractionBox["at", RowBox[{"2", " ", 
+                   "rp"}]]}], ";", RowBox[{"cnl", "=", FractionBox[
+                 RowBox[{SuperscriptBox["2", RowBox[{RowBox[{"4", " ", "l"}], 
+                      "+", "1"}]], " ", RowBox[{RowBox[{"(", RowBox[{"n", 
+                         "+", "l"}], ")"}], "!"}], " ", SuperscriptBox[
+                    RowBox[{"(", FractionBox[RowBox[{"l", "!"}], RowBox[
+                        {RowBox[{RowBox[{"(", RowBox[{"2", " ", "l"}], ")"}], 
+                          "!"}], " ", RowBox[{RowBox[{"(", RowBox[{RowBox[
+                          {"2", " ", "l"}], "+", "1"}], ")"}], "!"}]}]], 
+                      ")"}], "2"]}], RowBox[{SuperscriptBox["n", RowBox[
+                     {RowBox[{"2", " ", "l"}], "+", "4"}]], " ", RowBox[
+                    {RowBox[{"(", RowBox[{"n", "-", "l", "-", "1"}], ")"}], 
+                     "!"}]}]]}], ";", RowBox[{"glm", "=", RowBox[{"If", "[", 
+                  RowBox[{RowBox[{"l", "\[Equal]", "0"}], ",", "1", ",", 
+                    RowBox[{UnderoverscriptBox["\[Product]", RowBox[{"k", 
+                         "=", "1"}], "l"], RowBox[{"(", RowBox[{RowBox[
+                          {SuperscriptBox["k", "2"], " ", RowBox[{"(", 
+                          RowBox[{"1", "-", SuperscriptBox["at", "2"]}], 
+                          ")"}]}], "+", SuperscriptBox[RowBox[{"(", RowBox[
+                          {RowBox[{"at", " ", "m"}], "-", RowBox[{"2", " ", 
+                          "rp", " ", "alpha"}]}], ")"}], "2"]}], ")"}]}]}], 
+                  "]"}]}], ";", RowBox[{"2", " ", "rp", " ", "cnl", " ", 
+                "glm", " ", RowBox[{"(", RowBox[{RowBox[{"m", " ", "oh"}], 
+                    "-", "alpha"}], ")"}], " ", SuperscriptBox["alpha", 
+                 RowBox[{RowBox[{"4", " ", "l"}], "+", "5"}]]}]}]}], "]"}]}], 
+      ";"}]], "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"SRMakeCF", "[", RowBox[{"at0_", ",", "m_Integer", ",", 
+            "l_Integer", ",", "alpha0_", ",", "depth_Integer", ",", 
+            "wp_Integer"}], "]"}], ":=", RowBox[{"Module", "[", 
+          RowBox[{RowBox[{"{", RowBox[{RowBox[{"at", "=", RowBox[{"SRNumber", 
+                    "[", RowBox[{"at0", ",", "wp"}], "]"}]}], ",", 
+                RowBox[{"alpha", "=", RowBox[{"SRNumber", "[", RowBox[
+                     {"alpha0", ",", "wp"}], "]"}]}], ",", "b", ",", 
+                RowBox[{"idx", "=", RowBox[{"Range", "[", RowBox[{"0", ",", 
+                      RowBox[{"depth", "+", "1"}]}], "]"}]}], ",", "idx2", 
+                ",", "twiOverB"}], "}"}], ",", RowBox[
+             {RowBox[{"b", "=", SqrtBox[RowBox[{"1", "-", SuperscriptBox[
+                    "at", "2"]}]]}], ";", RowBox[{"idx2", "=", SuperscriptBox[
+                 "idx", "2"]}], ";", RowBox[{"twiOverB", "=", FractionBox[
+                 RowBox[{"2", " ", "\[ImaginaryI]"}], "b"]}], ";", 
+              RowBox[{"Function", "[", RowBox[{RowBox[{"{", RowBox[{"wr", 
+                      ",", "wi"}], "}"}], ",", RowBox[{"Module", "[", 
+                    RowBox[{RowBox[{"{", RowBox[{"omega", ",", "q", ",", 
+                          "iq", ",", "d", ",", "d2", ",", "t", ",", "lambda", 
+                          ",", "c0", ",", "c1", ",", "c2", ",", "c3", ",", 
+                          "c4", ",", "aa", ",", "bb", ",", "gg", ",", "r", 
+                          ",", "j"}], "}"}], ",", RowBox[{RowBox[{"omega", 
+                          "=", RowBox[{"wr", "+", RowBox[{"\[ImaginaryI]", 
+                          " ", "wi"}]}]}], ";", RowBox[{"q", "=", RowBox[
+                          {"-", SqrtBox[RowBox[{SuperscriptBox["alpha", "2"], 
+                          "-", SuperscriptBox["omega", "2"]}]]}]}], ";", 
+                        RowBox[{"iq", "=", FractionBox["1", "q"]}], ";", 
+                        RowBox[{"d", "=", RowBox[{"omega", "-", RowBox[
+                          {"\[ImaginaryI]", " ", "q"}]}]}], ";", RowBox[
+                         {"d2", "=", SuperscriptBox["d", "2"]}], ";", 
+                        RowBox[{"t", "=", RowBox[{"omega", "-", FractionBox[
+                          RowBox[{"at", " ", "m"}], "2"]}]}], ";", RowBox[
+                         {"lambda", "=", RowBox[{"N", "[", RowBox[{RowBox[
+                          {"SpheroidalEigenvalue", "[", RowBox[{"l", ",", 
+                          "m", ",", RowBox[{"\[ImaginaryI]", " ", "at", " ", 
+                          SqrtBox[RowBox[{SuperscriptBox["omega", "2"], "-", 
+                          SuperscriptBox["alpha", "2"]}]]}]}], "]"}], ",", 
+                          "wp"}], "]"}]}], ";", RowBox[{"c0", "=", RowBox[
+                          {"1", "-", RowBox[{"2", " ", "\[ImaginaryI]", " ", 
+                          "omega"}], "-", RowBox[{"twiOverB", " ", "t"}]}]}], 
+                        ";", RowBox[{"c1", "=", RowBox[{RowBox[{"-", "4"}], 
+                          "+", RowBox[{"4", " ", "\[ImaginaryI]", " ", 
+                          RowBox[{"(", RowBox[{"omega", "-", RowBox[
+                          {"\[ImaginaryI]", " ", "q", " ", RowBox[{"(", 
+                          RowBox[{"1", "+", "b"}], ")"}]}]}], ")"}]}], "+", 
+                          RowBox[{"2", " ", "twiOverB", " ", "t"}], "-", 
+                          RowBox[{"2", " ", RowBox[{"(", RowBox[
+                          {SuperscriptBox["omega", "2"], "+", SuperscriptBox[
+                          "q", "2"]}], ")"}], " ", "iq"}]}]}], ";", RowBox[
+                         {"c2", "=", RowBox[{"3", "-", RowBox[{"2", " ", 
+                          "\[ImaginaryI]", " ", "omega"}], "-", RowBox[
+                          {"2", " ", RowBox[{"(", RowBox[{SuperscriptBox["q", 
+                          "2"], "-", SuperscriptBox["omega", "2"]}], ")"}], 
+                          " ", "iq"}], "-", RowBox[{"twiOverB", " ", 
+                          "t"}]}]}], ";", RowBox[{"c3", "=", RowBox[
+                          {RowBox[{"2", " ", "\[ImaginaryI]", " ", "d2", " ", 
+                          "d", " ", "iq"}], "+", RowBox[{"2", " ", "d2", " ", 
+                          "b"}], "+", RowBox[{SuperscriptBox["q", "2"], " ", 
+                          SuperscriptBox["at", "2"]}], "+", RowBox[{"2", " ", 
+                          "\[ImaginaryI]", " ", "q", " ", "at", " ", "m"}], 
+                          "-", "lambda", "-", "1", "-", RowBox[{"d2", " ", 
+                          "iq"}], "+", RowBox[{"2", " ", "q", " ", "b"}], 
+                          "+", RowBox[{"twiOverB", " ", RowBox[{"(", RowBox[
+                          {RowBox[{"d2", " ", "iq"}], "+", "1"}], ")"}], " ", 
+                          "t"}]}]}], ";", RowBox[{"c4", "=", RowBox[
+                          {RowBox[{SuperscriptBox["d2", "2"], " ", 
+                          SuperscriptBox["iq", "2"]}], "+", RowBox[{"2", " ", 
+                          "\[ImaginaryI]", " ", "omega", " ", "d2", " ", 
+                          "iq"}], "-", RowBox[{"twiOverB", " ", "d2", " ", 
+                          "iq", " ", "t"}]}]}], ";", RowBox[{"aa", "=", 
+                          RowBox[{"SetPrecision", "[", RowBox[{RowBox[
+                          {"idx2", "+", RowBox[{RowBox[{"(", RowBox[{"c0", 
+                          "+", "1"}], ")"}], " ", "idx"}], "+", "c0"}], ",", 
+                          "wp"}], "]"}]}], ";", RowBox[{"bb", "=", RowBox[
+                          {"SetPrecision", "[", RowBox[{RowBox[{RowBox[
+                          {RowBox[{"-", "2"}], " ", "idx2"}], "+", RowBox[
+                          {RowBox[{"(", RowBox[{"c1", "+", "2"}], ")"}], " ", 
+                          "idx"}], "+", "c3"}], ",", "wp"}], "]"}]}], ";", 
+                        RowBox[{"gg", "=", RowBox[{"SetPrecision", "[", 
+                          RowBox[{RowBox[{"idx2", "+", RowBox[{RowBox[{"(", 
+                          RowBox[{"c2", "-", "3"}], ")"}], " ", "idx"}], "+", 
+                          "c4"}], ",", "wp"}], "]"}]}], ";", RowBox[{"r", 
+                          "=", RowBox[{"SetPrecision", "[", RowBox[{RowBox[
+                          {"-", FractionBox[RowBox[{"gg", 
+                          "\[LeftDoubleBracket]", RowBox[{"depth", "+", 
+                          "1"}], "\[RightDoubleBracket]"}], RowBox[{"aa", 
+                          "\[LeftDoubleBracket]", RowBox[{"depth", "+", 
+                          "1"}], "\[RightDoubleBracket]"}]]}], ",", "wp"}], 
+                          "]"}]}], ";", RowBox[{"Do", "[", RowBox[{RowBox[
+                          {"r", "=", RowBox[{"SetPrecision", "[", RowBox[
+                          {RowBox[{RowBox[{"bb", "\[LeftDoubleBracket]", 
+                          RowBox[{"j", "+", "1"}], "\[RightDoubleBracket]"}], 
+                          "-", FractionBox[RowBox[{RowBox[{"aa", 
+                          "\[LeftDoubleBracket]", RowBox[{"j", "+", "1"}], 
+                          "\[RightDoubleBracket]"}], " ", RowBox[{"gg", 
+                          "\[LeftDoubleBracket]", RowBox[{"j", "+", "2"}], 
+                          "\[RightDoubleBracket]"}]}], "r"]}], ",", "wp"}], 
+                          "]"}]}], ",", RowBox[{"{", RowBox[{"j", ",", RowBox[
+                          {"depth", "-", "1"}], ",", "1", ",", RowBox[{"-", 
+                          "1"}]}], "}"}]}], "]"}], ";", RowBox[{RowBox[
+                          {"bb", "\[LeftDoubleBracket]", "1", 
+                          "\[RightDoubleBracket]"}], "-", FractionBox[RowBox[
+                          {RowBox[{"aa", "\[LeftDoubleBracket]", "1", 
+                          "\[RightDoubleBracket]"}], " ", RowBox[{"gg", 
+                          "\[LeftDoubleBracket]", "2", 
+                          "\[RightDoubleBracket]"}]}], "r"]}]}]}], "]"}]}], 
+                "]"}]}]}], "]"}]}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"LeaverCF", "[", RowBox[
+           {RowBox[{"wr_", "?", "NumericQ"}], ",", RowBox[{"wi_", "?", 
+              "NumericQ"}], ",", "at_", ",", "m_Integer", ",", "l_Integer", 
+            ",", "alpha_", ",", RowBox[{"depth_Integer", ":", "400"}]}], 
+          "]"}], ":=", RowBox[{RowBox[{"SRMakeCF", "[", 
+            RowBox[{"at", ",", "m", ",", "l", ",", "alpha", ",", "depth", 
+              ",", "prec"}], "]"}], "[", RowBox[
+           {RowBox[{"SRNumber", "[", RowBox[{"wr", ",", "prec"}], "]"}], ",", 
+            RowBox[{"SRNumber", "[", RowBox[{"wi", ",", "prec"}], "]"}]}], 
+          "]"}]}], ";"}]], "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[{RowBox[{RowBox[{"SRFiniteQ", "[", "z_", "]"}], ":=", 
+        RowBox[{RowBox[{"NumericQ", "[", "z", "]"}], "&&", 
+          RowBox[{"FreeQ", "[", RowBox[{"z", ",", RowBox[{"Indeterminate", 
+                "|", "_DirectedInfinity"}]}], "]"}]}]}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"SRRelativeIm", "[", RowBox[{"a_", ",", "b_"}], "]"}], 
+        ":=", RowBox[{"If", "[", RowBox[{RowBox[{RowBox[{"Max", "[", 
+                RowBox[{RowBox[{"Abs", "[", RowBox[{"Im", "[", "a", "]"}], 
+                    "]"}], ",", RowBox[{"Abs", "[", RowBox[{"Im", "[", "b", 
+                      "]"}], "]"}]}], "]"}], "\[Equal]", "0"}], ",", 
+            "\[Infinity]", ",", FractionBox[RowBox[{"Abs", "[", RowBox[
+                {RowBox[{"Im", "[", "a", "]"}], "-", RowBox[{"Im", "[", "b", 
+                   "]"}]}], "]"}], RowBox[{"Max", "[", RowBox[
+                {RowBox[{"Abs", "[", RowBox[{"Im", "[", "a", "]"}], "]"}], 
+                 ",", RowBox[{"Abs", "[", RowBox[{"Im", "[", "b", "]"}], 
+                   "]"}]}], "]"}]]}], "]"}]}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"SRRootAtDepth", "[", RowBox[{"n_", ",", "l_", ",", 
+            "m_", ",", "alpha0_", ",", "at0_", ",", "seed_", ",", "depth_", 
+            ",", "wp_", ",", "scaled_", ",", "limit_"}], "]"}], ":=", 
+        RowBox[{"Module", "[", RowBox[
+           {RowBox[{"{", RowBox[{RowBox[{"alpha", "=", RowBox[{"SRNumber", 
+                    "[", RowBox[{"alpha0", ",", "wp"}], "]"}]}], ",", 
+                RowBox[{"at", "=", RowBox[{"SRNumber", "[", RowBox[{"at0", 
+                      ",", "wp"}], "]"}]}], ",", "cf", ",", "center", ",", 
+                "reScale", ",", "imScale", ",", "rateScale", ",", "seed0", 
+                ",", "x", ",", "y", ",", "residual", ",", RowBox[{"lastXY", 
+                  "=", "Null"}], ",", "lastValue", ",", RowBox[{"calls", "=", 
+                  "0"}], ",", "sol", ",", "omega", ",", "value", ",", 
+                "seconds", ",", RowBox[{"goal", "=", RowBox[{"wp", "-", 
+                    "15"}]}], ",", "start", ",", "scaledError"}], "}"}], ",", 
+            RowBox[{RowBox[{"start", "=", RowBox[{"AbsoluteTime", "[", 
+                  "]"}]}], ";", RowBox[{"If", "[", RowBox[
+                 {RowBox[{RowBox[{"!", RowBox[{"TrueQ", "[", RowBox[
+                         {RowBox[{"alpha", ">", "0"}], "&&", RowBox[{"0", 
+                          "\[LessEqual]", "at", "<", "1"}]}], "]"}]}], "||", 
+                    RowBox[{"n", "\[LessEqual]", "l"}], "||", RowBox[
+                     {"l", "<", RowBox[{"Abs", "[", "m", "]"}]}]}], ",", 
+                  RowBox[{"Return", "[", RowBox[{"Association", "[", 
+                      RowBox[{"\"Status\"", "\[Rule]", 
+                        "\"InvalidParameters\""}], "]"}], "]"}]}], "]"}], 
+              ";", RowBox[{"seed0", "=", RowBox[{RowBox[{"SRNumber", "[", 
+                    RowBox[{RowBox[{"Re", "[", "seed", "]"}], ",", "wp"}], 
+                    "]"}], "+", RowBox[{"\[ImaginaryI]", " ", RowBox[
+                     {"SRNumber", "[", RowBox[{RowBox[{"Im", "[", "seed", 
+                          "]"}], ",", "wp"}], "]"}]}]}]}], ";", 
+              RowBox[{"center", "=", RowBox[{"If", "[", RowBox[
+                   {RowBox[{"TrueQ", "[", "scaled", "]"}], ",", "alpha", ",", 
+                    "0"}], "]"}]}], ";", RowBox[{"reScale", "=", 
+                RowBox[{"If", "[", RowBox[{RowBox[{"TrueQ", "[", "scaled", 
+                      "]"}], ",", FractionBox[SuperscriptBox["alpha", "3"], 
+                     RowBox[{"2", " ", SuperscriptBox["n", "2"]}]], ",", 
+                    "1"}], "]"}]}], ";", RowBox[{"imScale", "=", "reScale"}], 
+              ";", RowBox[{"rateScale", "=", RowBox[{"Max", "[", 
+                  RowBox[{RowBox[{"Abs", "[", RowBox[{"Im", "[", "seed0", 
+                        "]"}], "]"}], ",", RowBox[{"Abs", "[", RowBox[
+                       {"HydrogenGamma", "[", RowBox[{"n", ",", "l", ",", 
+                          "m", ",", "alpha", ",", "at"}], "]"}], "]"}], ",", 
+                    SuperscriptBox["10", RowBox[{RowBox[{"-", "wp"}], "+", 
+                       "20"}]]}], "]"}]}], ";", RowBox[{"cf", "=", 
+                RowBox[{"SRMakeCF", "[", RowBox[{"at", ",", "m", ",", "l", 
+                    ",", "alpha", ",", "depth", ",", "wp"}], "]"}]}], ";", 
+              RowBox[{RowBox[{"residual", "[", RowBox[{RowBox[{"u_", "?", 
+                      "NumericQ"}], ",", RowBox[{"v_", "?", "NumericQ"}]}], 
+                  "]"}], ":=", RowBox[{"If", "[", RowBox[{RowBox[{"lastXY", 
+                      "===", RowBox[{"{", RowBox[{"u", ",", "v"}], "}"}]}], 
+                    ",", "lastValue", ",", RowBox[{RowBox[{"lastXY", "=", 
+                        RowBox[{"{", RowBox[{"u", ",", "v"}], "}"}]}], ";", 
+                      RowBox[{"calls", "++"}], ";", RowBox[{"With", "[", 
+                        RowBox[{RowBox[{"{", RowBox[{"z", "=", RowBox[{"cf", 
+                          "[", RowBox[{RowBox[{"center", "+", RowBox[
+                          {"reScale", " ", "u"}]}], ",", RowBox[{"imScale", 
+                          " ", "v"}]}], "]"}]}], "}"}], ",", RowBox[
+                          {"lastValue", "=", RowBox[{"{", RowBox[{RowBox[
+                          {"Re", "[", "z", "]"}], ",", RowBox[{"Im", "[", 
+                          "z", "]"}]}], "}"}]}]}], "]"}]}]}], "]"}]}], ";", 
+              RowBox[{"sol", "=", RowBox[{"TimeConstrained", "[", 
+                  RowBox[{RowBox[{"Quiet", "[", RowBox[{"FindRoot", "[", 
+                        RowBox[{RowBox[{"residual", "[", RowBox[{"x", ",", 
+                          "y"}], "]"}], ",", RowBox[{"{", RowBox[{RowBox[
+                          {"{", RowBox[{"x", ",", FractionBox[RowBox[{RowBox[
+                          {"Re", "[", "seed0", "]"}], "-", "center"}], 
+                          "reScale"]}], "}"}], ",", RowBox[{"{", RowBox[
+                          {"y", ",", FractionBox[RowBox[{"Im", "[", "seed0", 
+                          "]"}], "imScale"]}], "}"}]}], "}"}], ",", RowBox[
+                          {"WorkingPrecision", "\[Rule]", "wp"}], ",", 
+                          RowBox[{"AccuracyGoal", "\[Rule]", "goal"}], ",", 
+                          RowBox[{"PrecisionGoal", "\[Rule]", "goal"}], ",", 
+                          RowBox[{"MaxIterations", "\[Rule]", "100"}]}], 
+                        "]"}], "]"}], ",", "limit", ",", "$Failed"}], 
+                  "]"}]}], ";", RowBox[{"seconds", "=", RowBox[
+                 {RowBox[{"AbsoluteTime", "[", "]"}], "-", "start"}]}], ";", 
+              RowBox[{"If", "[", RowBox[{RowBox[{"!", RowBox[{"MatchQ", "[", 
+                      RowBox[{"sol", ",", RowBox[{"{", RowBox[{"_Rule", 
+                          ".."}], "}"}]}], "]"}]}], ",", RowBox[{"Return", 
+                    "[", RowBox[{"Association", "[", RowBox[{RowBox[
+                         {"\"Status\"", "\[Rule]", "\"RootFailed\""}], ",", 
+                        RowBox[{"\"Depth\"", "\[Rule]", "depth"}], ",", 
+                        RowBox[{"\"WorkingPrecision\"", "\[Rule]", "wp"}], 
+                        ",", RowBox[{"\"CFCalls\"", "\[Rule]", "calls"}], 
+                        ",", RowBox[{"\"Seconds\"", "\[Rule]", "seconds"}]}], 
+                      "]"}], "]"}]}], "]"}], ";", RowBox[{"omega", "=", 
+                RowBox[{RowBox[{"center", "+", RowBox[{"reScale", " ", "x"}], 
+                    "+", RowBox[{"\[ImaginaryI]", " ", "imScale", " ", 
+                      "y"}]}], "/.", "\[VeryThinSpace]", "sol"}]}], ";", 
+              RowBox[{"value", "=", RowBox[{"residual", "[", RowBox[
+                   {RowBox[{"x", "/.", "\[VeryThinSpace]", "sol"}], ",", 
+                    RowBox[{"y", "/.", "\[VeryThinSpace]", "sol"}]}], 
+                  "]"}]}], ";", RowBox[{"scaledError", "=", RowBox[
+                 {"Max", "[", RowBox[{"Abs", "[", FractionBox["value", 
+                     RowBox[{"{", RowBox[{"reScale", ",", "rateScale"}], 
+                       "}"}]], "]"}], "]"}]}], ";", RowBox[{"If", "[", 
+                RowBox[{RowBox[{RowBox[{"!", RowBox[{"SRFiniteQ", "[", 
+                        "omega", "]"}]}], "||", RowBox[{"!", RowBox[
+                       {"VectorQ", "[", RowBox[{"value", ",", "SRFiniteQ"}], 
+                        "]"}]}], "||", RowBox[{"!", RowBox[{"TrueQ", "[", 
+                        RowBox[{"scaledError", "<", FractionBox["1", 
+                          SuperscriptBox["10", "8"]]}], "]"}]}], "||", 
+                    RowBox[{"!", RowBox[{"TrueQ", "[", RowBox[{RowBox[
+                          {"0", "<", RowBox[{"Re", "[", "omega", "]"}], "<", 
+                          FractionBox[RowBox[{"105", " ", "alpha"}], 
+                          "100"]}], "&&", RowBox[{"0", "<", RowBox[{"Im", 
+                          "[", "omega", "]"}], "<", RowBox[{"10", " ", 
+                          "alpha"}]}]}], "]"}]}]}], ",", RowBox[{"Return", 
+                    "[", RowBox[{"Association", "[", RowBox[{RowBox[
+                         {"\"Status\"", "\[Rule]", "\"RejectedRoot\""}], ",", 
+                        RowBox[{"\"Omega\"", "\[Rule]", "omega"}], ",", 
+                        RowBox[{"\"ScaledResidual\"", "\[Rule]", 
+                          "scaledError"}], ",", RowBox[{"\"Depth\"", 
+                          "\[Rule]", "depth"}], ",", RowBox[
+                         {"\"WorkingPrecision\"", "\[Rule]", "wp"}], ",", 
+                        RowBox[{"\"CFCalls\"", "\[Rule]", "calls"}], ",", 
+                        RowBox[{"\"Seconds\"", "\[Rule]", "seconds"}]}], 
+                      "]"}], "]"}]}], "]"}], ";", RowBox[{"Association", "[", 
+                RowBox[{RowBox[{"\"Status\"", "\[Rule]", "\"Solved\""}], ",", 
+                  RowBox[{"\"Omega\"", "\[Rule]", "omega"}], ",", 
+                  RowBox[{"\"Depth\"", "\[Rule]", "depth"}], ",", 
+                  RowBox[{"\"WorkingPrecision\"", "\[Rule]", "wp"}], ",", 
+                  RowBox[{"\"ScaledResidual\"", "\[Rule]", "scaledError"}], 
+                  ",", RowBox[{"\"CFCalls\"", "\[Rule]", "calls"}], ",", 
+                  RowBox[{"\"Seconds\"", "\[Rule]", RowBox[{RowBox[
+                       {"AbsoluteTime", "[", "]"}], "-", "start"}]}]}], 
+                "]"}]}]}], "]"}]}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[{RowBox[{RowBox[{"Options", "[", "FindQBSFromSeed", 
+          "]"}], "=", RowBox[{"{", RowBox[{RowBox[{"\"AdaptiveDepth\"", 
+              "\[Rule]", "True"}], ",", RowBox[{"\"RateTolerance\"", 
+              "\[Rule]", FractionBox["1", SuperscriptBox["10", "4"]]}], ",", 
+            RowBox[{"\"MinDepth\"", "\[Rule]", "128"}], ",", 
+            RowBox[{"\"MaxDepth\"", "\[Rule]", "Automatic"}], ",", 
+            RowBox[{"\"PrecisionCheck\"", "\[Rule]", "True"}], ",", 
+            RowBox[{"\"ScaledVariables\"", "\[Rule]", "True"}], ",", 
+            RowBox[{"\"TimeLimit\"", "\[Rule]", "Automatic"}], ",", 
+            RowBox[{"\"Verbose\"", "\[Rule]", "False"}], ",", 
+            RowBox[{"\"ContinuityFactor\"", "\[Rule]", "3"}]}], "}"}]}], 
+      ";"}]], "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[{RowBox[{RowBox[{"FindQBSFromSeed", "[", 
+          RowBox[{"n_", ",", "l_", ",", "m_", ",", RowBox[{"alpha_", "?", 
+              "NumericQ"}], ",", RowBox[{"at_", "?", "NumericQ"}], ",", 
+            RowBox[{"seedRe_", "?", "NumericQ"}], ",", 
+            RowBox[{"seedIm_", "?", "NumericQ"}], ",", 
+            RowBox[{"Nmax_Integer", ":", "1000"}], ",", 
+            RowBox[{"previous", ":", RowBox[{"Null", "|", RowBox[{"_", "?", 
+                  "NumericQ"}]}], ":", "Null"}], ",", 
+            RowBox[{"opts", ":", RowBox[{"OptionsPattern", "[", "]"}]}]}], 
+          "]"}], ":=", RowBox[{"Module", "[", 
+          RowBox[{RowBox[{"{", RowBox[{"wp", ",", "cap", ",", "depth", ",", 
+                RowBox[{"tolerance", "=", RowBox[{"OptionValue", "[", 
+                    "\"RateTolerance\"", "]"}]}], ",", RowBox[{"adaptive", 
+                  "=", RowBox[{"TrueQ", "[", RowBox[{"OptionValue", "[", 
+                      "\"AdaptiveDepth\"", "]"}], "]"}]}], ",", "limit", ",", 
+                RowBox[{"scaled", "=", RowBox[{"OptionValue", "[", 
+                    "\"ScaledVariables\"", "]"}]}], ",", RowBox[{"seed", "=", 
+                  RowBox[{"seedRe", "+", RowBox[{"\[ImaginaryI]", " ", 
+                      "seedIm"}]}]}], ",", "result", ",", RowBox[
+                 {"prev", "=", "Null"}], ",", "omega", ",", RowBox[
+                 {"relative", "=", "\[Infinity]"}], ",", "realChange", ",", 
+                RowBox[{"stable", "=", "0"}], ",", RowBox[{"records", "=", 
+                  RowBox[{"{", "}"}]}], ",", "check", ",", "returnedWP", ",", 
+                RowBox[{"totalStart", "=", RowBox[{"AbsoluteTime", "[", 
+                    "]"}]}]}], "}"}], ",", RowBox[{RowBox[{"wp", "=", 
+                RowBox[{"AdaptivePrec", "[", RowBox[{"l", ",", "alpha", ",", 
+                    RowBox[{"If", "[", RowBox[{RowBox[{"NumericQ", "[", 
+                          "previous", "]"}], ",", "previous", ",", 
+                        "seedIm"}], "]"}]}], "]"}]}], ";", RowBox[{"cap", 
+                "=", RowBox[{"If", "[", RowBox[{RowBox[{RowBox[
+                       {"OptionValue", "[", "\"MaxDepth\"", "]"}], "===", 
+                      "Automatic"}], ",", "Nmax", ",", RowBox[{"OptionValue", 
+                      "[", "\"MaxDepth\"", "]"}]}], "]"}]}], ";", 
+              RowBox[{"If", "[", RowBox[{RowBox[{RowBox[{"!", RowBox[
+                       {"IntegerQ", "[", "cap", "]"}]}], "||", RowBox[
+                     {"cap", "<", "16"}], "||", RowBox[{"!", RowBox[{"TrueQ", 
+                        "[", RowBox[{"tolerance", ">", "0"}], "]"}]}], "||", 
+                    RowBox[{"!", RowBox[{"TrueQ", "[", RowBox[{RowBox[
+                          {"alpha", ">", "0"}], "&&", RowBox[{"0", 
+                          "\[LessEqual]", "at", "<", "1"}]}], "]"}]}], "||", 
+                    RowBox[{"n", "\[LessEqual]", "l"}], "||", RowBox[
+                     {"l", "<", RowBox[{"Abs", "[", "m", "]"}]}]}], ",", 
+                  RowBox[{RowBox[{"$SRLastSolve", "=", RowBox[{"Association", 
+                        "[", RowBox[{"\"Status\"", "\[Rule]", 
+                          "\"InvalidParameters\""}], "]"}]}], ";", 
+                    RowBox[{"Return", "[", "$Failed", "]"}]}]}], "]"}], ";", 
+              RowBox[{"limit", "=", RowBox[{"Replace", "[", RowBox[
+                   {RowBox[{"OptionValue", "[", "\"TimeLimit\"", "]"}], ",", 
+                    RowBox[{"Automatic", "\[RuleDelayed]", RowBox[{"Max", 
+                        "[", RowBox[{"60", ",", RowBox[{RowBox[{"2", " ", 
+                          "wp"}], "+", "10"}]}], "]"}]}]}], "]"}]}], ";", 
+              RowBox[{"If", "[", RowBox[{RowBox[{"adaptive", "&&", 
+                    RowBox[{"cap", "<", "64"}]}], ",", RowBox[
+                   {RowBox[{"$SRLastSolve", "=", RowBox[{"Association", "[", 
+                        RowBox[{RowBox[{"\"Status\"", "\[Rule]", 
+                          "\"DepthBudgetTooSmall\""}], ",", RowBox[
+                          {"\"Depth\"", "\[Rule]", "cap"}]}], "]"}]}], ";", 
+                    RowBox[{"Return", "[", "$Failed", "]"}]}]}], "]"}], ";", 
+              RowBox[{"depth", "=", RowBox[{"If", "[", RowBox[{"adaptive", 
+                    ",", RowBox[{"Min", "[", RowBox[{RowBox[{"Max", "[", 
+                          RowBox[{"16", ",", RowBox[{"Floor", "[", 
+                          FractionBox["cap", "4"], "]"}]}], "]"}], ",", 
+                        RowBox[{"Max", "[", RowBox[{"16", ",", RowBox[
+                          {"OptionValue", "[", "\"MinDepth\"", "]"}]}], 
+                          "]"}]}], "]"}], ",", "cap"}], "]"}]}], ";", 
+              RowBox[{"While", "[", RowBox[{"True", ",", RowBox[
+                   {RowBox[{"result", "=", RowBox[{"SRRootAtDepth", "[", 
+                        RowBox[{"n", ",", "l", ",", "m", ",", "alpha", ",", 
+                          "at", ",", "seed", ",", "depth", ",", "wp", ",", 
+                          "scaled", ",", "limit"}], "]"}]}], ";", RowBox[
+                     {"AppendTo", "[", RowBox[{"records", ",", RowBox[
+                         {"KeyDrop", "[", RowBox[{"result", ",", RowBox[
+                          {"{", "\"Omega\"", "}"}]}], "]"}]}], "]"}], ";", 
+                    RowBox[{"If", "[", RowBox[{RowBox[{"TrueQ", "[", RowBox[
+                          {"OptionValue", "[", "\"Verbose\"", "]"}], "]"}], 
+                        ",", RowBox[{"Print", "[", RowBox[{"\"Nmax=\"", ",", 
+                          "depth", ",", "\", prec=\"", ",", "wp", ",", 
+                          "\": \"", ",", RowBox[{"result", "[", "\"Status\"", 
+                          "]"}]}], "]"}]}], "]"}], ";", RowBox[{"If", "[", 
+                      RowBox[{RowBox[{RowBox[{"result", "[", "\"Status\"", 
+                          "]"}], "===", "\"Solved\""}], ",", RowBox[
+                         {RowBox[{"omega", "=", RowBox[{"result", "[", 
+                          "\"Omega\"", "]"}]}], ";", RowBox[{"If", "[", 
+                          RowBox[{RowBox[{"prev", "=!=", "Null"}], ",", 
+                          RowBox[{RowBox[{"relative", "=", RowBox[
+                          {"SRRelativeIm", "[", RowBox[{"omega", ",", 
+                          "prev"}], "]"}]}], ";", RowBox[{"realChange", "=", 
+                          FractionBox[RowBox[{"Abs", "[", RowBox[{RowBox[
+                          {"Re", "[", "omega", "]"}], "-", RowBox[{"Re", "[", 
+                          "prev", "]"}]}], "]"}], "alpha"]}], ";", RowBox[
+                          {"If", "[", RowBox[{RowBox[{"TrueQ", "[", RowBox[
+                          {RowBox[{"relative", "\[LessEqual]", "tolerance"}], 
+                          "&&", RowBox[{"realChange", "\[LessEqual]", 
+                          FractionBox["1", SuperscriptBox["10", "8"]]}]}], 
+                          "]"}], ",", RowBox[{"stable", "++"}], ",", RowBox[
+                          {"stable", "=", "0"}]}], "]"}]}]}], "]"}], ";", 
+                          RowBox[{"If", "[", RowBox[{RowBox[{RowBox[{"!", 
+                          "adaptive"}], "||", RowBox[{"stable", 
+                          "\[GreaterEqual]", "1"}]}], ",", RowBox[{RowBox[
+                          {"returnedWP", "=", "wp"}], ";", RowBox[{"If", "[", 
+                          RowBox[{RowBox[{"TrueQ", "[", RowBox[
+                          {"OptionValue", "[", "\"PrecisionCheck\"", "]"}], 
+                          "]"}], ",", RowBox[{RowBox[{"check", "=", RowBox[
+                          {"SRRootAtDepth", "[", RowBox[{"n", ",", "l", ",", 
+                          "m", ",", "alpha", ",", "at", ",", "omega", ",", 
+                          "depth", ",", RowBox[{"wp", "+", "15"}], ",", 
+                          "scaled", ",", "limit"}], "]"}]}], ";", RowBox[
+                          {"AppendTo", "[", RowBox[{"records", ",", RowBox[
+                          {"KeyDrop", "[", RowBox[{"check", ",", RowBox[{"{", 
+                          "\"Omega\"", "}"}]}], "]"}]}], "]"}], ";", RowBox[
+                          {"If", "[", RowBox[{RowBox[{RowBox[{RowBox[
+                          {"check", "[", "\"Status\"", "]"}], "=!=", 
+                          "\"Solved\""}], "||", RowBox[{"!", RowBox[{"TrueQ", 
+                          "[", RowBox[{RowBox[{"SRRelativeIm", "[", RowBox[
+                          {"omega", ",", RowBox[{"check", "[", "\"Omega\"", 
+                          "]"}]}], "]"}], "\[LessEqual]", FractionBox[
+                          "tolerance", "10"]}], "]"}]}]}], ",", RowBox[
+                          {RowBox[{"$SRLastSolve", "=", RowBox[{
+                          "Association", "[", RowBox[{RowBox[{"\"Status\"", 
+                          "\[Rule]", "\"PrecisionNotConverged\""}], ",", 
+                          RowBox[{"\"Attempts\"", "\[Rule]", "records"}]}], 
+                          "]"}]}], ";", RowBox[{"Return", "[", "$Failed", 
+                          "]"}]}]}], "]"}], ";", RowBox[{"omega", "=", RowBox[
+                          {"check", "[", "\"Omega\"", "]"}]}], ";", RowBox[
+                          {"returnedWP", "=", RowBox[{"wp", "+", 
+                          "15"}]}]}]}], "]"}], ";", RowBox[{"If", "[", RowBox[
+                          {RowBox[{RowBox[{"NumericQ", "[", "previous", 
+                          "]"}], "&&", RowBox[{"TrueQ", "[", RowBox[
+                          {"previous", ">", "0"}], "]"}], "&&", RowBox[
+                          {RowBox[{"OptionValue", "[", 
+                          "\"ContinuityFactor\"", "]"}], "=!=", 
+                          "\[Infinity]"}], "&&", RowBox[{"!", RowBox[
+                          {"TrueQ", "[", RowBox[{FractionBox["1", RowBox[
+                          {"OptionValue", "[", "\"ContinuityFactor\"", 
+                          "]"}]], "\[LessEqual]", FractionBox[RowBox[{"Im", 
+                          "[", "omega", "]"}], "previous"], "\[LessEqual]", 
+                          RowBox[{"OptionValue", "[", "\"ContinuityFactor\"", 
+                          "]"}]}], "]"}]}]}], ",", RowBox[{RowBox[
+                          {"$SRLastSolve", "=", RowBox[{"Association", "[", 
+                          RowBox[{RowBox[{"\"Status\"", "\[Rule]", 
+                          "\"ContinuityRejected\""}], ",", RowBox[{
+                          "\"Attempts\"", "\[Rule]", "records"}], ",", RowBox[
+                          {"\"Seconds\"", "\[Rule]", RowBox[{RowBox[
+                          {"AbsoluteTime", "[", "]"}], "-", 
+                          "totalStart"}]}]}], "]"}]}], ";", RowBox[{"Return", 
+                          "[", "$Failed", "]"}]}]}], "]"}], ";", RowBox[
+                          {"$SRLastSolve", "=", RowBox[{"Association", "[", 
+                          RowBox[{RowBox[{"\"Status\"", "\[Rule]", RowBox[
+                          {"If", "[", RowBox[{"adaptive", ",", 
+                          "\"Converged\"", ",", "\"FixedDepth\""}], "]"}]}], 
+                          ",", RowBox[{"\"Omega\"", "\[Rule]", "omega"}], 
+                          ",", RowBox[{"\"Depth\"", "\[Rule]", "depth"}], 
+                          ",", RowBox[{"\"WorkingPrecision\"", "\[Rule]", 
+                          "returnedWP"}], ",", RowBox[{
+                          "\"RateRelativeChange\"", "\[Rule]", "relative"}], 
+                          ",", RowBox[{"\"Attempts\"", "\[Rule]", 
+                          "records"}], ",", RowBox[{"\"Seconds\"", "\[Rule]", 
+                          RowBox[{RowBox[{"AbsoluteTime", "[", "]"}], "-", 
+                          "totalStart"}]}]}], "]"}]}], ";", RowBox[{"Return", 
+                          "[", "omega", "]"}]}]}], "]"}], ";", RowBox[
+                          {"prev", "=", "omega"}], ";", RowBox[{"seed", "=", 
+                          "omega"}]}], ",", RowBox[{"stable", "=", "0"}]}], 
+                      "]"}], ";", RowBox[{"If", "[", RowBox[{RowBox[{"depth", 
+                          "\[GreaterEqual]", "cap"}], ",", RowBox[{"Break", 
+                          "[", "]"}]}], "]"}], ";", RowBox[{"depth", "=", 
+                      RowBox[{"Min", "[", RowBox[{"cap", ",", RowBox[{"2", 
+                          " ", "depth"}]}], "]"}]}]}]}], "]"}], ";", 
+              RowBox[{"$SRLastSolve", "=", RowBox[{"Association", "[", 
+                  RowBox[{RowBox[{"\"Status\"", "\[Rule]", RowBox[{"If", "[", 
+                        RowBox[{"adaptive", ",", "\"DepthNotConverged\"", 
+                          ",", "\"RootFailed\""}], "]"}]}], ",", RowBox[
+                     {"\"Depth\"", "\[Rule]", "depth"}], ",", RowBox[
+                     {"\"RateRelativeChange\"", "\[Rule]", "relative"}], ",", 
+                    RowBox[{"\"Attempts\"", "\[Rule]", "records"}], ",", 
+                    RowBox[{"\"Seconds\"", "\[Rule]", RowBox[{RowBox[
+                         {"AbsoluteTime", "[", "]"}], "-", 
+                        "totalStart"}]}]}], "]"}]}], ";", "$Failed"}]}], 
+          "]"}]}], ";"}]], "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"SRPredict", "[", RowBox[{"history_List", ",", 
+            "alpha_"}], "]"}], ":=", RowBox[{"Module", "[", 
+          RowBox[{RowBox[{"{", RowBox[{RowBox[{"h", "=", RowBox[{"Take", "[", 
+                    RowBox[{"history", ",", RowBox[{"-", RowBox[{"Min", "[", 
+                          RowBox[{"3", ",", RowBox[{"Length", "[", "history", 
+                          "]"}]}], "]"}]}]}], "]"}]}], ",", "x1", ",", "x2", 
+                ",", "x3", ",", "z1", ",", "z2", ",", "z3", ",", "d1", ",", 
+                "d2"}], "}"}], ",", RowBox[{"Switch", "[", 
+              RowBox[{RowBox[{"Length", "[", "h", "]"}], ",", "0", ",", 
+                "$Failed", ",", "1", ",", RowBox[{"h", 
+                  "\[LeftDoubleBracket]", RowBox[{"1", ",", "2"}], 
+                  "\[RightDoubleBracket]"}], ",", "2", ",", RowBox[
+                 {RowBox[{RowBox[{"{", RowBox[{"x1", ",", "z1"}], "}"}], "=", 
+                    RowBox[{"h", "\[LeftDoubleBracket]", "1", 
+                      "\[RightDoubleBracket]"}]}], ";", RowBox[
+                   {RowBox[{"{", RowBox[{"x2", ",", "z2"}], "}"}], "=", 
+                    RowBox[{"h", "\[LeftDoubleBracket]", "2", 
+                      "\[RightDoubleBracket]"}]}], ";", RowBox[{"z2", "+", 
+                    FractionBox[RowBox[{RowBox[{"(", RowBox[{"alpha", "-", 
+                          "x2"}], ")"}], " ", RowBox[{"(", RowBox[{"z2", "-", 
+                          "z1"}], ")"}]}], RowBox[{"x2", "-", "x1"}]]}]}], 
+                ",", "3", ",", RowBox[{RowBox[{RowBox[{"{", RowBox[{"x1", 
+                        ",", "z1"}], "}"}], "=", RowBox[{"h", 
+                      "\[LeftDoubleBracket]", "1", 
+                      "\[RightDoubleBracket]"}]}], ";", RowBox[
+                   {RowBox[{"{", RowBox[{"x2", ",", "z2"}], "}"}], "=", 
+                    RowBox[{"h", "\[LeftDoubleBracket]", "2", 
+                      "\[RightDoubleBracket]"}]}], ";", RowBox[
+                   {RowBox[{"{", RowBox[{"x3", ",", "z3"}], "}"}], "=", 
+                    RowBox[{"h", "\[LeftDoubleBracket]", "3", 
+                      "\[RightDoubleBracket]"}]}], ";", RowBox[{"d1", "=", 
+                    FractionBox[RowBox[{"z2", "-", "z1"}], RowBox[{"x2", "-", 
+                       "x1"}]]}], ";", RowBox[{"d2", "=", FractionBox[
+                     RowBox[{"z3", "-", "z2"}], RowBox[{"x3", "-", "x2"}]]}], 
+                  ";", RowBox[{"z1", "+", RowBox[{"d1", " ", RowBox[
+                       {"(", RowBox[{"alpha", "-", "x1"}], ")"}]}], "+", 
+                    FractionBox[RowBox[{RowBox[{"(", RowBox[{"d2", "-", 
+                          "d1"}], ")"}], " ", RowBox[{"(", RowBox[{"alpha", 
+                          "-", "x1"}], ")"}], " ", RowBox[{"(", RowBox[
+                          {"alpha", "-", "x2"}], ")"}]}], RowBox[{"x3", "-", 
+                       "x1"}]]}]}]}], "]"}]}], "]"}]}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"SRField", "[", RowBox[{"x_", "?", "NumericQ"}], "]"}], 
+        ":=", RowBox[{"StringReplace", "[", RowBox[
+           {RowBox[{"ToString", "[", RowBox[{RowBox[{"N", "[", RowBox[
+                   {"x", ",", "16"}], "]"}], ",", "InputForm"}], "]"}], ",", 
+            RowBox[{"{", RowBox[{RowBox[{RowBox[{"RegularExpression", "[", 
+                    "\"`[0-9.]*\"", "]"}], "\[Rule]", "\"\""}], ",", 
+                RowBox[{"\"*^\"", "\[Rule]", "\"e\""}]}], "}"}]}], "]"}]}], 
+      ";"}]], "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[{RowBox[{RowBox[{"SRField", "[", "x_", "]"}], ":=", 
+        RowBox[{"ToString", "[", RowBox[{"x", ",", "OutputForm"}], "]"}]}], 
+      ";"}]], "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"SRWriteTSV", "[", RowBox[{"path_String", ",", 
+            "rows_List"}], "]"}], ":=", RowBox[{"Module", "[", 
+          RowBox[{RowBox[{"{", RowBox[{"stream", ",", "result"}], "}"}], ",", 
+            RowBox[{RowBox[{"stream", "=", RowBox[{"OpenWrite", "[", 
+                  RowBox[{"path", ",", RowBox[{"CharacterEncoding", 
+                      "\[Rule]", "\"UTF-8\""}]}], "]"}]}], ";", 
+              RowBox[{"If", "[", RowBox[{RowBox[{"stream", "===", 
+                    "$Failed"}], ",", RowBox[{"Return", "[", "$Failed", 
+                    "]"}]}], "]"}], ";", RowBox[{"result", "=", 
+                RowBox[{"Check", "[", RowBox[{RowBox[{RowBox[{"Scan", "[", 
+                        RowBox[{RowBox[{RowBox[{"WriteString", "[", RowBox[
+                          {"stream", ",", RowBox[{"StringRiffle", "[", RowBox[
+                          {RowBox[{"SRField", "/@", "#1"}], ",", "\"\\t\""}], 
+                          "]"}], ",", "\"\\n\""}], "]"}], "&"}], ",", 
+                          "rows"}], "]"}], ";", "path"}], ",", "$Failed"}], 
+                  "]"}]}], ";", RowBox[{"Close", "[", "stream", "]"}], ";", 
+              "result"}]}], "]"}]}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[{RowBox[{RowBox[{"Options", "[", "PlotSuperradiance", 
+          "]"}], "=", RowBox[{"Join", "[", RowBox[
+           {RowBox[{"Options", "[", "FindQBSFromSeed", "]"}], ",", 
+            RowBox[{"{", RowBox[{RowBox[{"\"OutputDirectory\"", "\[Rule]", 
+                  "Automatic"}], ",", RowBox[{"\"Progress\"", "\[Rule]", 
+                  "True"}], ",", RowBox[{"\"FailureLimit\"", "\[Rule]", 
+                  "3"}]}], "}"}]}], "]"}]}], ";"}]], "Input", 
+   InitializationCell -> True], 
+  Cell[BoxData[RowBox[{RowBox[{RowBox[{"PlotSuperradiance", "[", 
+          RowBox[{"n_", ",", "l_", ",", "m_", ",", "at_", ",", 
+            RowBox[{"Optional", "[", RowBox[{RowBox[{"alphaMin_", "?", 
+                  "NumericQ"}], ",", "0.05`"}], "]"}], ",", 
+            RowBox[{"Optional", "[", RowBox[{RowBox[{"alphaMax_", "?", 
+                  "NumericQ"}], ",", "1.5`"}], "]"}], ",", 
+            RowBox[{"nPoints_Integer", ":", "20"}], ",", 
+            RowBox[{"Nmax_Integer", ":", "100"}], ",", 
+            RowBox[{"manualSeedRe", ":", RowBox[{"Null", "|", RowBox[
+                 {"_", "?", "NumericQ"}]}], ":", "Null"}], ",", 
+            RowBox[{"manualSeedIm", ":", RowBox[{"Null", "|", RowBox[
+                 {"_", "?", "NumericQ"}]}], ":", "Null"}], ",", 
+            RowBox[{"opts", ":", RowBox[{"OptionsPattern", "[", "]"}]}]}], 
+          "]"}], ":=", RowBox[{"Module", "[", 
+          RowBox[{RowBox[{"{", RowBox[{"grid", ",", "start", ",", "indices", 
+                ",", "history", ",", RowBox[{"allRoots", "=", RowBox[
+                   {"{", "}"}]}], ",", "data", ",", "statuses", ",", "i", 
+                ",", "a", ",", "seed", ",", "sol", ",", "hydro", ",", 
+                "budget", ",", "consecutive", ",", "dir", ",", "j", ",", 
+                RowBox[{"total", "=", "0"}], ",", "rootOptions", ",", 
+                "outputDir", ",", "filename", ",", "diagnosticName", ",", 
+                RowBox[{"diagnostics", "=", RowBox[{"{", "}"}]}], ",", 
+                RowBox[{"t0", "=", RowBox[{"AbsoluteTime", "[", "]"}]}], ",", 
+                "solveInfo", ",", RowBox[{"failureLimit", "=", RowBox[
+                   {"OptionValue", "[", "\"FailureLimit\"", "]"}]}]}], "}"}], 
+            ",", RowBox[{RowBox[{"If", "[", RowBox[{RowBox[{RowBox[
+                     {"!", RowBox[{"TrueQ", "[", RowBox[{RowBox[{"n", ">", 
+                          "l", "\[GreaterEqual]", RowBox[{"Abs", "[", "m", 
+                          "]"}]}], "&&", RowBox[{"l", "\[GreaterEqual]", 
+                          "1"}], "&&", RowBox[{"0", "\[LessEqual]", "at", 
+                          "<", "1"}], "&&", RowBox[{"0", "<", "alphaMin", 
+                          "<", "alphaMax"}]}], "]"}]}], "||", RowBox[
+                     {"!", RowBox[{"IntegerQ", "[", "nPoints", "]"}]}], "||", 
+                    RowBox[{"nPoints", "<", "2"}]}], ",", RowBox[
+                   {RowBox[{"Print", "[", "\"Use n>l>=|m|, l>=1, 0<=spin<1, \
+positive alpha bounds and at least two points.\"", "]"}], ";", RowBox[
+                     {"Return", "[", "$Failed", "]"}]}]}], "]"}], ";", 
+              RowBox[{"grid", "=", RowBox[{"Subdivide", "[", RowBox[
+                   {RowBox[{"Rationalize", "[", RowBox[{"alphaMin", ",", 
+                        "0"}], "]"}], ",", RowBox[{"Rationalize", "[", 
+                      RowBox[{"alphaMax", ",", "0"}], "]"}], ",", RowBox[
+                     {"nPoints", "-", "1"}]}], "]"}]}], ";", RowBox[{"start", 
+                "=", RowBox[{"First", "[", RowBox[{"Ordering", "[", 
+                    RowBox[{RowBox[{"Abs", "[", RowBox[{"grid", "-", RowBox[
+                          {"Min", "[", RowBox[{FractionBox["l", "5"], ",", 
+                          FractionBox[RowBox[{"4", " ", "m", " ", "at"}], 
+                          RowBox[{"5", " ", RowBox[{"(", RowBox[{"2", " ", 
+                          RowBox[{"(", RowBox[{"1", "+", SqrtBox[RowBox[{"1", 
+                          "-", SuperscriptBox["at", "2"]}]]}], ")"}]}], 
+                          ")"}]}]]}], "]"}]}], "]"}], ",", "1"}], "]"}], 
+                  "]"}]}], ";", RowBox[{"data", "=", RowBox[{"ConstantArray", 
+                  "[", RowBox[{"\"Failed\"", ",", "nPoints"}], "]"}]}], ";", 
+              RowBox[{"statuses", "=", RowBox[{"ConstantArray", "[", 
+                  RowBox[{"\"NotAttempted\"", ",", "nPoints"}], "]"}]}], ";", 
+              RowBox[{"rootOptions", "=", RowBox[{"FilterRules", "[", 
+                  RowBox[{RowBox[{"{", "opts", "}"}], ",", RowBox[{"Options", 
+                      "[", "FindQBSFromSeed", "]"}]}], "]"}]}], ";", 
+              RowBox[{"Do", "[", RowBox[{RowBox[{RowBox[{"history", "=", 
+                      RowBox[{"{", "}"}]}], ";", RowBox[{"consecutive", "=", 
+                      "0"}], ";", RowBox[{"indices", "=", RowBox[{"If", "[", 
+                        RowBox[{RowBox[{"dir", "\[Equal]", "1"}], ",", 
+                          RowBox[{"Range", "[", RowBox[{"start", ",", 
+                          "nPoints"}], "]"}], ",", RowBox[{"Range", "[", 
+                          RowBox[{RowBox[{"start", "-", "1"}], ",", "1", ",", 
+                          RowBox[{"-", "1"}]}], "]"}]}], "]"}]}], ";", 
+                    RowBox[{"Do", "[", RowBox[{RowBox[{RowBox[{"i", "=", 
+                          "j"}], ";", RowBox[{"a", "=", RowBox[{"grid", 
+                          "\[LeftDoubleBracket]", "i", 
+                          "\[RightDoubleBracket]"}]}], ";", RowBox[{"hydro", 
+                          "=", RowBox[{"HydrogenGamma", "[", RowBox[{"n", 
+                          ",", "l", ",", "m", ",", "a", ",", RowBox[
+                          {"SRNumber", "[", RowBox[{"at", ",", "prec"}], 
+                          "]"}]}], "]"}]}], ";", RowBox[{"seed", "=", RowBox[
+                          {"Which", "[", RowBox[{RowBox[{RowBox[{"Length", 
+                          "[", "history", "]"}], "\[GreaterEqual]", "2"}], 
+                          ",", RowBox[{"SRPredict", "[", RowBox[{"history", 
+                          ",", "a"}], "]"}], ",", RowBox[{RowBox[{RowBox[
+                          {"Length", "[", "allRoots", "]"}], "\[Equal]", 
+                          "0"}], "&&", RowBox[{"NumericQ", "[", 
+                          "manualSeedRe", "]"}], "&&", RowBox[{"NumericQ", 
+                          "[", "manualSeedIm", "]"}]}], ",", RowBox[
+                          {"manualSeedRe", "+", RowBox[{"\[ImaginaryI]", " ", 
+                          "manualSeedIm"}]}], ",", RowBox[{RowBox[{"Length", 
+                          "[", "allRoots", "]"}], ">", "0"}], ",", RowBox[
+                          {"With", "[", RowBox[{RowBox[{"{", RowBox[{"near", 
+                          "=", RowBox[{"First", "[", RowBox[{"MinimalBy", 
+                          "[", RowBox[{"allRoots", ",", RowBox[{RowBox[
+                          {"Abs", "[", RowBox[{RowBox[{"First", "[", "#1", 
+                          "]"}], "-", "a"}], "]"}], "&"}]}], "]"}], "]"}]}], 
+                          "}"}], ",", RowBox[{RowBox[{"a", " ", RowBox[{"(", 
+                          RowBox[{"1", "-", FractionBox[SuperscriptBox["a", 
+                          "2"], RowBox[{"2", " ", SuperscriptBox["n", 
+                          "2"]}]]}], ")"}]}], "+", RowBox[{"\[ImaginaryI]", 
+                          " ", RowBox[{"Im", "[", RowBox[{"near", 
+                          "\[LeftDoubleBracket]", "2", 
+                          "\[RightDoubleBracket]"}], "]"}]}]}]}], "]"}], ",", 
+                          "True", ",", RowBox[{RowBox[{"a", " ", RowBox[{"(", 
+                          RowBox[{"1", "-", FractionBox[SuperscriptBox["a", 
+                          "2"], RowBox[{"2", " ", SuperscriptBox["n", 
+                          "2"]}]]}], ")"}]}], "+", RowBox[{"\[ImaginaryI]", 
+                          " ", "hydro"}]}]}], "]"}]}], ";", RowBox[{"budget", 
+                          "=", RowBox[{"AdaptiveNmax", "[", RowBox[{"l", ",", 
+                          "a", ",", "Nmax"}], "]"}]}], ";", RowBox[{"sol", 
+                          "=", RowBox[{"FindQBSFromSeed", "[", RowBox[{"n", 
+                          ",", "l", ",", "m", ",", "a", ",", "at", ",", 
+                          RowBox[{"Re", "[", "seed", "]"}], ",", RowBox[
+                          {"Im", "[", "seed", "]"}], ",", "budget", ",", 
+                          RowBox[{"If", "[", RowBox[{RowBox[{RowBox[
+                          {"history", "===", RowBox[{"{", "}"}]}], "||", 
+                          RowBox[{FractionBox["a", "l"], "<", FractionBox[
+                          "3", "20"]}]}], ",", "Null", ",", RowBox[{"Im", 
+                          "[", RowBox[{RowBox[{"Last", "[", "history", "]"}], 
+                          "\[LeftDoubleBracket]", "2", 
+                          "\[RightDoubleBracket]"}], "]"}]}], "]"}], ",", 
+                          RowBox[{"Sequence", "@@", "rootOptions"}]}], 
+                          "]"}]}], ";", RowBox[{"If", "[", RowBox[{RowBox[
+                          {RowBox[{"sol", "===", "$Failed"}], "&&", RowBox[
+                          {RowBox[{"Length", "[", "history", "]"}], 
+                          "\[GreaterEqual]", "3"}]}], ",", RowBox[{RowBox[
+                          {"seed", "=", RowBox[{"SRPredict", "[", RowBox[
+                          {RowBox[{"Take", "[", RowBox[{"history", ",", 
+                          RowBox[{"-", "2"}]}], "]"}], ",", "a"}], "]"}]}], 
+                          ";", RowBox[{"sol", "=", RowBox[{"FindQBSFromSeed", 
+                          "[", RowBox[{"n", ",", "l", ",", "m", ",", "a", 
+                          ",", "at", ",", RowBox[{"Re", "[", "seed", "]"}], 
+                          ",", RowBox[{"Im", "[", "seed", "]"}], ",", 
+                          "budget", ",", RowBox[{"If", "[", RowBox[{RowBox[
+                          {FractionBox["a", "l"], "<", FractionBox["3", 
+                          "20"]}], ",", "Null", ",", RowBox[{"Im", "[", 
+                          RowBox[{RowBox[{"Last", "[", "history", "]"}], 
+                          "\[LeftDoubleBracket]", "2", 
+                          "\[RightDoubleBracket]"}], "]"}]}], "]"}], ",", 
+                          RowBox[{"Sequence", "@@", "rootOptions"}]}], 
+                          "]"}]}]}]}], "]"}], ";", RowBox[{"If", "[", RowBox[
+                          {RowBox[{RowBox[{"sol", "===", "$Failed"}], "&&", 
+                          RowBox[{FractionBox["a", "l"], "<", FractionBox[
+                          "3", "10"]}]}], ",", RowBox[{"sol", "=", RowBox[
+                          {"FindQBSFromSeed", "[", RowBox[{"n", ",", "l", 
+                          ",", "m", ",", "a", ",", "at", ",", RowBox[{"a", 
+                          " ", RowBox[{"(", RowBox[{"1", "-", FractionBox[
+                          SuperscriptBox["a", "2"], RowBox[{"2", " ", 
+                          SuperscriptBox["n", "2"]}]]}], ")"}]}], ",", 
+                          "hydro", ",", "budget", ",", "Null", ",", RowBox[
+                          {"Sequence", "@@", "rootOptions"}]}], "]"}]}]}], 
+                          "]"}], ";", RowBox[{"solveInfo", "=", 
+                          "$SRLastSolve"}], ";", RowBox[{"total", "++"}], 
+                          ";", RowBox[{RowBox[{"statuses", 
+                          "\[LeftDoubleBracket]", "i", 
+                          "\[RightDoubleBracket]"}], "=", RowBox[
+                          {"solveInfo", "[", "\"Status\"", "]"}]}], ";", 
+                          RowBox[{"If", "[", RowBox[{RowBox[{"sol", "=!=", 
+                          "$Failed"}], ",", RowBox[{RowBox[{RowBox[{"data", 
+                          "\[LeftDoubleBracket]", "i", 
+                          "\[RightDoubleBracket]"}], "=", RowBox[{"2", " ", 
+                          RowBox[{"Im", "[", "sol", "]"}]}]}], ";", RowBox[
+                          {"consecutive", "=", "0"}], ";", RowBox[
+                          {"AppendTo", "[", RowBox[{"history", ",", RowBox[
+                          {"{", RowBox[{"a", ",", "sol"}], "}"}]}], "]"}], 
+                          ";", RowBox[{"history", "=", RowBox[{"Take", "[", 
+                          RowBox[{"history", ",", RowBox[{"-", RowBox[{"Min", 
+                          "[", RowBox[{"3", ",", RowBox[{"Length", "[", 
+                          "history", "]"}]}], "]"}]}]}], "]"}]}], ";", RowBox[
+                          {"AppendTo", "[", RowBox[{"allRoots", ",", RowBox[
+                          {"{", RowBox[{"a", ",", "sol"}], "}"}]}], "]"}]}], 
+                          ",", RowBox[{"consecutive", "++"}]}], "]"}], ";", 
+                          RowBox[{"AppendTo", "[", RowBox[{"diagnostics", 
+                          ",", RowBox[{"{", RowBox[{RowBox[{"N", "[", RowBox[
+                          {"a", ",", "16"}], "]"}], ",", RowBox[{"statuses", 
+                          "\[LeftDoubleBracket]", "i", 
+                          "\[RightDoubleBracket]"}], ",", RowBox[{"If", "[", 
+                          RowBox[{RowBox[{"sol", "===", "$Failed"}], ",", 
+                          "\"Failed\"", ",", RowBox[{"Re", "[", "sol", 
+                          "]"}]}], "]"}], ",", RowBox[{"If", "[", RowBox[
+                          {RowBox[{"sol", "===", "$Failed"}], ",", 
+                          "\"Failed\"", ",", RowBox[{"Im", "[", "sol", 
+                          "]"}]}], "]"}], ",", RowBox[{"Lookup", "[", RowBox[
+                          {"solveInfo", ",", "\"Depth\"", ",", "\"\""}], 
+                          "]"}], ",", RowBox[{"Lookup", "[", RowBox[
+                          {"solveInfo", ",", "\"WorkingPrecision\"", ",", 
+                          "\"\""}], "]"}], ",", RowBox[{"Lookup", "[", RowBox[
+                          {"solveInfo", ",", "\"RateRelativeChange\"", ",", 
+                          "\"\""}], "]"}], ",", RowBox[{"Lookup", "[", RowBox[
+                          {"solveInfo", ",", "\"Seconds\"", ",", "\"\""}], 
+                          "]"}]}], "}"}]}], "]"}], ";", RowBox[{"If", "[", 
+                          RowBox[{RowBox[{"TrueQ", "[", RowBox[
+                          {"OptionValue", "[", "\"Progress\"", "]"}], "]"}], 
+                          ",", RowBox[{"Print", "[", RowBox[{"total", ",", 
+                          "\"/\"", ",", "nPoints", ",", "\": alpha=\"", ",", 
+                          TagBox[RowBox[{"N", "[", "a", "]"}], NumberForm[#1, 
+                          {7, 5}] & ], ",", "\"  \"", ",", RowBox[
+                          {"statuses", "\[LeftDoubleBracket]", "i", 
+                          "\[RightDoubleBracket]"}], ",", RowBox[{"If", "[", 
+                          RowBox[{RowBox[{"sol", "===", "$Failed"}], ",", 
+                          "\"\"", ",", TemplateBox[{"\"  Gamma=\"", TagBox[
+                          RowBox[{InterpretationBox[StyleBox["\"2\"", 
+                          ShowStringCharacters -> False], 2, Editable -> 
+                          False], " ", RowBox[{"Im", "[", "sol", "]"}]}], 
+                          ScientificForm[#1, 6] & ]}, "RowDefault"]}], 
+                          "]"}]}], "]"}]}], "]"}], ";", RowBox[{"If", "[", 
+                          RowBox[{RowBox[{"consecutive", "\[GreaterEqual]", 
+                          "failureLimit"}], ",", RowBox[{"Break", "[", 
+                          "]"}]}], "]"}]}], ",", RowBox[{"{", RowBox[{"j", 
+                          ",", "indices"}], "}"}]}], "]"}]}], ",", 
+                  RowBox[{"{", RowBox[{"dir", ",", RowBox[{"{", RowBox[
+                         {"1", ",", RowBox[{"-", "1"}]}], "}"}]}], "}"}]}], 
+                "]"}], ";", RowBox[{"outputDir", "=", RowBox[{"OptionValue", 
+                  "[", "\"OutputDirectory\"", "]"}]}], ";", RowBox[{"If", 
+                "[", RowBox[{RowBox[{"outputDir", "===", "Automatic"}], ",", 
+                  RowBox[{RowBox[{"outputDir", "=", RowBox[{"Quiet", "[", 
+                        RowBox[{"Check", "[", RowBox[{RowBox[
+                          {"NotebookDirectory", "[", "]"}], ",", RowBox[
+                          {"Directory", "[", "]"}]}], "]"}], "]"}]}], ";", 
+                    RowBox[{"If", "[", RowBox[{RowBox[{"!", RowBox[
+                          {"StringQ", "[", "outputDir", "]"}]}], ",", 
+                        RowBox[{"outputDir", "=", RowBox[{"Directory", "[", 
+                          "]"}]}]}], "]"}], ";", RowBox[{"outputDir", "=", 
+                      RowBox[{"FileNameJoin", "[", RowBox[{"{", RowBox[
+                          {"outputDir", ",", "\"Optimised Data\""}], "}"}], 
+                        "]"}]}]}]}], "]"}], ";", RowBox[{"If", "[", 
+                RowBox[{RowBox[{"!", RowBox[{"DirectoryQ", "[", "outputDir", 
+                      "]"}]}], ",", RowBox[{"CreateDirectory", "[", 
+                    RowBox[{"outputDir", ",", RowBox[
+                       {"CreateIntermediateDirectories", "\[Rule]", 
+                        "True"}]}], "]"}]}], "]"}], ";", RowBox[{"filename", 
+                "=", RowBox[{"FileNameJoin", "[", RowBox[{"{", RowBox[
+                     {"outputDir", ",", RowBox[{"\"SR_optimised_n\"", "<>", 
+                        RowBox[{"ToString", "[", "n", "]"}], "<>", "\"l\"", 
+                        "<>", RowBox[{"ToString", "[", "l", "]"}], "<>", 
+                        "\"m\"", "<>", RowBox[{"ToString", "[", "m", "]"}], 
+                        "<>", "\"_at\"", "<>", RowBox[{"ToString", "[", 
+                          RowBox[{RowBox[{"N", "[", "at", "]"}], ",", 
+                          "InputForm"}], "]"}], "<>", "\"_\"", "<>", 
+                        RowBox[{"DateString", "[", RowBox[{"{", RowBox[
+                          {"\"Year\"", ",", "\"Month\"", ",", "\"Day\"", ",", 
+                          "\"_\"", ",", "\"Hour24\"", ",", "\"Minute\"", ",", 
+                          "\"Second\""}], "}"}], "]"}], "<>", "\"_\"", "<>", 
+                        RowBox[{"StringTake", "[", RowBox[{RowBox[
+                          {"CreateUUID", "[", "]"}], ",", "8"}], "]"}], "<>", 
+                        "\".dat\""}]}], "}"}], "]"}]}], ";", RowBox[{"If", 
+                "[", RowBox[{RowBox[{RowBox[{"SRWriteTSV", "[", RowBox[
+                       {"filename", ",", RowBox[{"Prepend", "[", RowBox[
+                          {RowBox[{"Table", "[", RowBox[{RowBox[{"{", RowBox[
+                          {RowBox[{"N", "[", RowBox[{RowBox[{"grid", 
+                          "\[LeftDoubleBracket]", "i", 
+                          "\[RightDoubleBracket]"}], ",", "16"}], "]"}], ",", 
+                          RowBox[{"data", "\[LeftDoubleBracket]", "i", 
+                          "\[RightDoubleBracket]"}], ",", RowBox[{"N", "[", 
+                          RowBox[{RowBox[{"HydrogenGamma", "[", RowBox[{"n", 
+                          ",", "l", ",", "m", ",", RowBox[{"grid", 
+                          "\[LeftDoubleBracket]", "i", 
+                          "\[RightDoubleBracket]"}], ",", RowBox[{"SRNumber", 
+                          "[", RowBox[{"at", ",", "prec"}], "]"}]}], "]"}], 
+                          ",", "16"}], "]"}]}], "}"}], ",", RowBox[{"{", 
+                          RowBox[{"i", ",", "nPoints"}], "}"}]}], "]"}], ",", 
+                          RowBox[{"{", RowBox[{"\"alpha\"", ",", 
+                          "\"CF_Gamma\"", ",", "\"Hydro_Gamma\""}], "}"}]}], 
+                          "]"}]}], "]"}], "===", "$Failed"}], ",", 
+                  RowBox[{"Return", "[", "$Failed", "]"}]}], "]"}], ";", 
+              RowBox[{"diagnosticName", "=", RowBox[{RowBox[{"StringDrop", 
+                    "[", RowBox[{"filename", ",", RowBox[{"-", "4"}]}], 
+                    "]"}], "<>", "\"_diagnostics.tsv\""}]}], ";", 
+              RowBox[{"Do", "[", RowBox[{RowBox[{"If", "[", RowBox[
+                     {RowBox[{RowBox[{"statuses", "\[LeftDoubleBracket]", 
+                          "i", "\[RightDoubleBracket]"}], "===", 
+                        "\"NotAttempted\""}], ",", RowBox[{"AppendTo", "[", 
+                        RowBox[{"diagnostics", ",", RowBox[{"{", RowBox[
+                          {RowBox[{"N", "[", RowBox[{RowBox[{"grid", 
+                          "\[LeftDoubleBracket]", "i", 
+                          "\[RightDoubleBracket]"}], ",", "16"}], "]"}], ",", 
+                          "\"NotAttempted\"", ",", "\"\"", ",", "\"\"", ",", 
+                          "\"\"", ",", "\"\"", ",", "\"\"", ",", "\"\""}], 
+                          "}"}]}], "]"}]}], "]"}], ",", RowBox[{"{", 
+                    RowBox[{"i", ",", "nPoints"}], "}"}]}], "]"}], ";", 
+              RowBox[{"If", "[", RowBox[{RowBox[{RowBox[{"SRWriteTSV", "[", 
+                      RowBox[{"diagnosticName", ",", RowBox[{"Prepend", "[", 
+                          RowBox[{RowBox[{"SortBy", "[", RowBox[
+                          {"diagnostics", ",", "First"}], "]"}], ",", RowBox[
+                          {"{", RowBox[{"\"alpha\"", ",", "\"status\"", ",", 
+                          "\"Re_omega\"", ",", "\"Im_omega\"", ",", 
+                          "\"Nmax\"", ",", "\"working_precision\"", ",", 
+                          "\"relative_rate_change\"", ",", "\"seconds\""}], 
+                          "}"}]}], "]"}]}], "]"}], "===", "$Failed"}], ",", 
+                  RowBox[{"Return", "[", "$Failed", "]"}]}], "]"}], ";", 
+              RowBox[{"$SRLastRun", "=", RowBox[{"Association", "[", 
+                  RowBox[{RowBox[{"\"DataFile\"", "\[Rule]", "filename"}], 
+                    ",", RowBox[{"\"DiagnosticsFile\"", "\[Rule]", 
+                      "diagnosticName"}], ",", RowBox[{"\"Grid\"", "\[Rule]", 
+                      "grid"}], ",", RowBox[{"\"Gamma\"", "\[Rule]", 
+                      "data"}], ",", RowBox[{"\"Status\"", "\[Rule]", 
+                      "statuses"}], ",", RowBox[{"\"Seconds\"", "\[Rule]", 
+                      RowBox[{RowBox[{"AbsoluteTime", "[", "]"}], "-", 
+                        "t0"}]}]}], "]"}]}], ";", RowBox[{"Print", "[", 
+                RowBox[{"\"Saved \"", ",", RowBox[{"Count", "[", RowBox[
+                     {"data", ",", RowBox[{"_", "?", "NumericQ"}]}], "]"}], 
+                  ",", "\"/\"", ",", "nPoints", ",", "\" rates to \"", ",", 
+                  "filename"}], "]"}], ";", "filename"}]}], "]"}]}], ";"}]], 
+   "Input", InitializationCell -> True], 
+  Cell[BoxData[RowBox[
+     {RowBox[{RowBox[{"MaxAlpha", "[", RowBox[{"l_", ",", "at_"}], "]"}], 
+        ":=", FractionBox[RowBox[{"11", " ", "l", " ", "at"}], 
+         RowBox[{"10", " ", "2", " ", RowBox[{"(", RowBox[{"1", "+", SqrtBox[
+                RowBox[{"1", "-", SuperscriptBox["at", "2"]}]]}], ")"}]}]]}], 
+      ";"}]], "Input", InitializationCell -> True], 
+  Cell["Parameters and run", "Section"], Cell["These are the same parameters \
+as the current input in the original notebook. Change them before evaluating \
+the run cell if desired.", "Text"], 
+  Cell[BoxData[RowBox[{RowBox[{"n", "=", "5"}], ";", RowBox[{"l", "=", "4"}], 
+      ";", RowBox[{"m", "=", "l"}], ";", RowBox[{"at", "=", "0.99`"}], 
+      ";"}]], "Input"], 
+  Cell[BoxData[RowBox[{"PlotSuperradiance", "[", 
+      RowBox[{"n", ",", "l", ",", "m", ",", "at", ",", "0.5`", ",", "2", ",", 
+        "300", ",", "12000"}], "]"}]], "Input"], 
+  Cell["Optional settings", "Subsection"], Cell["For example: \
+PlotSuperradiance[n,l,m,at,0.5,2,300,12000, \"RateTolerance\" -> 10^-5, \
+\"MaxDepth\" -> 40000, \"Progress\" -> False]. Inspect $SRLastRun after a \
+sweep and $SRLastSolve after an individual solve. Tighter tolerances may \
+require a larger depth budget.", "Text"], 
+  Cell["Validation on 9 November 2026", "Section"], 
+  Cell["At 80-digit working precision, continued-fraction values agreed with \
+the original to at least approximately 75 digits at five trial points, \
+including l=7. Tests also checked continuation across unequal alpha gaps, \
+option forwarding, three-point data export and the Gamma=2 Im[omega] \
+convention. A small-alpha 211 point at spin 0.5, alpha 0.01 agreed with an \
+80-digit, 40,000-term reference to about 1.5 x 10^-6 relatively in the rate."\
+, "Text"], Cell["The timings below compare the original fixed-depth solver at \
+Nmax=12000 with this copy's default adaptive solver, including its precision \
+check. These are local single-solve measurements; full-sweep speed depends on \
+level, alpha, spin, seeds and requested tolerance.", "Text"], 
+  Cell["{2, 1, 1}  alpha=0.1  spin=0.5  original=4.96s  optimised=1.80s  rate \
+relative difference=         -8\n3.13 \[Times] 10\n{2, 1, 1}  alpha=0.42  \
+spin=0.99  original=7.62s  optimised=2.37s  rate relative difference=         \
+-11\n6.52 \[Times] 10\n{3, 2, 2}  alpha=0.3  spin=0.99  original=6.00s  \
+optimised=2.75s  rate relative difference=         -10\n3.95 \[Times] 10\n{4, \
+2, 2}  alpha=0.3  spin=0.99  original=5.89s  optimised=3.06s  rate relative \
+difference=         -9\n9.78 \[Times] 10\n{5, 4, 4}  alpha=1.2  spin=0.99  \
+original=20.89s  optimised=11.13s  rate relative difference=         \
+-14\n4.57 \[Times] 10", "Text"]}, WindowTitle -> 
+  "Continued Fractions \[LongDash] Optimised", WindowSize -> {1200, 850}, 
+ StyleDefinitions -> "Default.nb", Saveable -> True]

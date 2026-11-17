@@ -12,26 +12,45 @@ Contains
   Instances: ADMX_EFR, DMRADIO_GUT
 - IFOConfig dataclass          — Laser interferometer (high-frequency power law)
   Instance dict: IFO_DETECTORS  (key 'adv_ligo')
-- All noise PSD functions for both detector families
-- plot_all_noise_psds()        — reproduce combined sensitivity curve
+- TABULATED_DETECTORS        — published reference curves in eight detector families
+- SHARK_FIN_DETECTORS         — the ten supplied binary-distance curves
+- PHOTON_REGENERATION_DETECTORS — ALPS II, JURA, OSQAR II, CAST and IAXO
+- detector_noise_psd()        — unified noise access by object or catalogue key
+- plot_all_noise_psds()       — combined PSD/ASD; photon-conversion curves excluded by default
+- plot_shark_fin_horizons()   — imported distance curves in their original units
 
 Usage
 -----
     from GWDetectors import (
         ADMX_EFR, DMRADIO_GUT, IFO_DETECTORS,
         mwb_noise_psd, ifo_noise_psd,
-        plot_all_noise_psds,
+        TABULATED_DETECTORS, detector_noise_psd, plot_all_noise_psds,
     )
+
+    # New detectors: all frequencies in Hz, output PSD in Hz^-1.
+    psd = detector_noise_psd('dmradio_m3_broad', np.array([1e7, 1e8]))
+    fig, ax = plot_all_noise_psds(show=False)  # PSD; quantity='asd' also works
+
+The tabulated catalogue supplies noise and binary-horizon data. Response profiles
+in data/detector_response_models.json distinguish published component parameters
+from explicit hypothetical receiver assumptions. Ring-up times are component
+amplitude time constants, not minimum detectable source lifetimes.
 """
 
 import numpy as np
+import matplotlib
+if __name__ == '__main__':
+    # Standalone runs export files and do not need a desktop plotting backend.
+    matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import os
 from pathlib import Path
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, replace
+from functools import cached_property, lru_cache
+from typing import ClassVar, Optional
 from scipy.interpolate import interp1d
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import LogLocator, LogFormatterMathtext, NullFormatter
+from matplotlib import patheffects
+from DetectorResponse import load_response_models, ResponseComponent
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Physical constants
@@ -62,7 +81,8 @@ def load_ligo_psd(filepath):
     Load LIGO noise PSD file.
 
     Expected format:
-        f [Hz]   S_h [Hz^-1]   OR   sqrt(S_h) [Hz^-1/2]
+        f [Hz]   S_h [Hz^-1]   (Hanford is column 2 in LIGO-NESPSD.dat).
+        This loader does not accept ASD without an explicit conversion.
 
     Returns
     -------
@@ -140,19 +160,17 @@ class MagneticWeberBar:
         if self.f_LC is None:
             self.f_LC = self.f_mech
 
-    def ring_up_time(self) -> float:
-        """
-        Detector ring-up time [s].
+    def ring_up_time(self, component=None) -> float:
+        """Component amplitude time [s]; default is 2 Q_mech / omega_mech.
 
-        The minimum signal characteristic time required for the detector to
-        respond meaningfully.  A source with tau < ring_up_time() contributes
-        no detectable distance reach.
-
-        Placeholder: returns 1 s.
-        Replace with the physical expression (e.g. Q_mech / omega_mech)
-        when ready.
+        This is the mechanical resonance envelope time, not a global broadband
+        cutoff. Use component='receiver_envelope' for the assumed readout pole.
         """
-        return 1.0    # [s]  — placeholder
+        return detector_response(self).ring_up_time(component)
+
+    @property
+    def response_model(self):
+        return detector_response(self)
 
 
 # ── Detector instances ────────────────────────────────────────────────────────
@@ -311,19 +329,18 @@ class IFOConfig:
     def __post_init__(self):
         self.f_FSR = 1000 # C_LIGHT / (2.0 * self.arm_length)   # [Hz]
 
-    def ring_up_time(self) -> float:
-        """
-        Detector ring-up time [s].
+    def ring_up_time(self, component=None) -> float:
+        """Nominal DARM or assumed HF-tooth amplitude time, with provenance."""
+        return detector_response(self).ring_up_time(component)
 
-        The minimum signal characteristic time required for the detector to
-        respond meaningfully.  A source with tau < ring_up_time() contributes
-        no detectable distance reach.
+    @property
+    def response_model(self):
+        return detector_response(self)
 
-        Placeholder: returns 1 s.
-        Replace with the physical expression (e.g. arm cavity storage time
-        = arm_length / C_LIGHT * finesse) when ready.
-        """
-        return 1.0    # [s]  — placeholder
+    @property
+    def physical_fsr_hz(self):
+        """Physical free spectral range; f_FSR above is a legacy ASD anchor."""
+        return C_LIGHT / (2*self.arm_length)
 
 
 # ── IFO detector catalogue ────────────────────────────────────────────────────
@@ -378,143 +395,533 @@ def ifo_asd_envelope(ifo: IFOConfig,
     return ifo.asd_anchor * (freqs / ifo.f_FSR)
 
 
-def _format_log_decade_tick(x, pos):
-    if x <= 0:
-        return ''
-    if x <= 1e3 and np.isclose(x, round(x)):
-        return f'{int(round(x))}'
-    exp = int(round(np.log10(x)))
-    if np.isclose(x, 10 ** exp):
-        return rf'$10^{{{exp}}}$'
-    return ''
-
-
 # ═════════════════════════════════════════════════════════════════════════════
-# ③ Combined sensitivity plot
+# ③ Published detector curves, including those in Shark_fin_plot.zip
+#    Muia, Ringwald & Tamarit, HFGWPlotter_Sh (Zenodo:15720342).
+#    Source version, units and file hashes: data/provenance.json.
 # ═════════════════════════════════════════════════════════════════════════════
 
-def plot_all_noise_psds(
-        f_min: float = 1e1,
-        f_max: float = 1e9,
-        n_pts: int   = 4000,
-        plot_LC      : bool = False,
-        plot_BBN     : bool = False,
-        savepath     : str  = None,
-):
+@lru_cache(maxsize=None)
+def _load_positive_table(filepath):
+    """Load and sort a positive, two-column curve without changing its units."""
+    path = Path(filepath)
+    data = np.loadtxt(path, delimiter=',' if path.suffix == '.csv' else None)
+    if data.ndim != 2 or data.shape[1] != 2 or len(data) < 2:
+        raise ValueError(f'{path}: expected at least two rows and two columns')
+    if not np.all(np.isfinite(data) & (data > 0)):
+        raise ValueError(f'{path}: curve values must be finite and positive')
+    data = data[np.argsort(data[:, 0])]
+    if np.any(np.diff(data[:, 0]) <= 0):
+        raise ValueError(f'{path}: curve coordinates must be unique')
+    data.setflags(write=False)
+    return data
+
+
+def _log_interpolate(points, x, y):
+    """Power-law interpolation, with NaN outside the tabulated domain."""
+    points = np.asarray(points, dtype=float)
+    result = np.full_like(points, np.nan)
+    mask = np.isfinite(points) & (points >= x[0]) & (points <= x[-1])
+    result[mask] = 10.0 ** np.interp(np.log10(points[mask]),
+                                    np.log10(x), np.log10(y))
+    return result
+
+
+@dataclass
+class TabulatedDetector:
+    """Published broadband ASD and an optional, separately supplied binary horizon.
+
+    Noise files contain f [Hz], sqrt(S_h) [Hz^-1/2], except for the explicit
+    MAGO unit factors below. Horizon files, when present, contain chirp mass
+    [M_sun], d [pc]. Noise-only reference curves have horizon_file=None.
+    Binary horizons are not converted to noise, or used as superradiance reach.
+    No mechanical or electromagnetic parameters are inferred from these curves.
     """
-    Plot noise-equivalent strain ASD for all detectors on one figure.
+    name: str
+    noise_file: str
+    horizon_file: Optional[str]
+    color: str
+    frequency_scale: float = 1.0
+    asd_scale: float = 1.0
+    family: ClassVar[str] = 'Tabulated detector'
 
-    Covers both the MWB detectors (ADMX-EFR, DMRadio-GUT) and the
-    LIGO high-frequency power-law envelope (adv_ligo).
+    @cached_property
+    def noise_samples(self):
+        """Sorted frequency and ASD samples, converted to Hz and Hz^-1/2."""
+        data = _load_positive_table(current_dir / 'data' / 'noise' / self.noise_file)
+        return data[:, 0] * self.frequency_scale, data[:, 1] * self.asd_scale
 
-    Parameters
-    ----------
-    f_min, f_max : float
-        Frequency range [Hz].
-    n_pts : int
-        Number of points in the frequency grid.
-    plot_LC : bool
-        If True, also draw the LC resonant sensitivity for MWB detectors
-        where use_LC = True.
-    plot_BBN : bool
-        If True, overlay the cosmological BBN bound on stochastic GW background.
-    savepath : str, optional
-        If given, save the figure to this path (PDF recommended).
+    @property
+    def frequency_band(self):
+        freqs, _ = self.noise_samples
+        return float(freqs[0]), float(freqs[-1])
+
+    def noise_psd(self, freqs):
+        """Noise-equivalent strain PSD [Hz^-1], only within the native band."""
+        f, asd = self.noise_samples
+        return _log_interpolate(freqs, f, asd) ** 2
+
+    def ring_up_time(self, component=None) -> float:
+        """Selected component amplitude time [s]; see response_model for scope."""
+        return detector_response(self).ring_up_time(component)
+
+    @property
+    def response_model(self):
+        return detector_response(self)
+
+    @cached_property
+    def horizon_samples(self):
+        """Original chirp mass [M_sun] and binary distance [pc] samples."""
+        if self.horizon_file is None:
+            raise ValueError(f'No binary horizon data supplied for {self.name}')
+        data = _load_positive_table(current_dir / 'data' / 'shark_fin' / self.horizon_file)
+        return data[:, 0], data[:, 1]
+
+    def binary_horizon_pc(self, chirp_mass_solar):
+        """Interpolate the supplied binary horizon; NaN outside its mass range."""
+        return _log_interpolate(chirp_mass_solar, *self.horizon_samples)
+
+
+class TabulatedInterferometer(TabulatedDetector):
+    family = 'Laser interferometer'
+
+
+class TabulatedMagneticWeberBar(TabulatedDetector):
+    family = 'Magnetic Weber bar'
+
+
+class LCResonator(TabulatedDetector):
+    family = 'Electromagnetic LC resonator'
+
+
+class RFCavity(TabulatedDetector):
+    family = 'Superconducting RF cavity'
+
+
+class LevitatedSuperconductor(TabulatedDetector):
+    family = 'Levitated superconductor'
+
+
+class DielectricHaloscope(TabulatedDetector):
+    family = 'Dielectric haloscope'
+
+
+class LightShiningThroughWall(TabulatedDetector):
+    """Magnetic photon-conversion experiment with single-photon readout.
+
+    Tabulated noise-equivalent strain is suitable for sensitivity comparisons.
+    Reach calculations also need photon statistics and directional acceptance;
+    these curves alone do not specify a linear matched-filter detector.
     """
+    family = 'Light-shining-through-a-wall experiment'
 
-    plt.rcParams.update({
-        "text.usetex"        : True,
-        "font.family"        : "serif",
-        "font.serif"         : ["Computer Modern Roman"],
-        "text.latex.preamble": r"\usepackage{amsmath}",
-    })
 
-    freqs = np.logspace(np.log10(f_min), np.log10(f_max), n_pts)
-    fig, ax = plt.subplots(figsize=(4, 3.5))
+class AxionHelioscope(TabulatedDetector):
+    """Magnetic photon conversion with X-ray photon-counting readout.
 
-    # ── MWB detectors ─────────────────────────────────────────────────────────
-    mwb_colors = {'MWB-EFR': 'steelblue', 'MWB-DMR': 'teal'}
+    The supplied GW sensitivity refers to the receiver's native frequency band
+    and incidence assumptions. Photon counts and acceptance enter detection.
+    """
+    family = 'Axion helioscope'
 
-    for det in MWB_DETECTORS:
-        col  = mwb_colors.get(det.name, 'gray')
-        S_h  = mwb_noise_psd(det, freqs)
-        ax.loglog(freqs, np.sqrt(S_h),
-                  color=col, linewidth=2.0, label=det.name)
 
-        if plot_LC and det.use_LC:
-            S_h_LC = mwb_noise_psd_LC(det, freqs)
-            mask   = ~np.isnan(S_h_LC)
-            ax.loglog(freqs[mask], np.sqrt(S_h_LC[mask]),
-                      color=col, linewidth=1.5, linestyle='--',
-                      label=fr'{det.name} (LC)', zorder=1)
+# Reference curves are distinct from the existing analytic MWB and IFO models.
+# In particular, DMRadio-GUT's electromagnetic response is not MWB-DMR.
+SHARK_FIN_DETECTORS = {
+    'ligo_o4a': TabulatedInterferometer(
+        'LIGO O4a (simplified)', 'ligoO4a_simple.csv', 'HorLigoO4as.txt', 'darkorange'),
+    'mwb_dmr_broad': TabulatedMagneticWeberBar(
+        'Mag. Weber bars (broadband)', 'MWB-DMR-broad.csv', 'HorMWBDMRbroad.txt', 'darkcyan'),
+    'lev_sc_30kg': LevitatedSuperconductor(
+        'Lev. SC 30 kg', 'SLedDoG_30kg.csv', 'HorLevSup30kg.txt', 'darkturquoise'),
+    'mago_broad': RFCavity(
+        'MAGO (broadband)', 'MAGO_broad.csv', 'HorMAGObroad.txt', 'rebeccapurple',
+        frequency_scale=1 / (2 * np.pi), asd_scale=1 / np.sqrt(2 * np.pi)),
+    'holometer': TabulatedInterferometer(
+        'Holometer', 'HOLOMETER.txt', 'HorHolometerSingle.txt', 'sienna'),
+    'lev_sc_1g': LevitatedSuperconductor(
+        'Lev. SC 1 g', 'SLedDoG1g.csv', 'HorLevSup.txt', 'cadetblue'),
+    'dmradio_m3_broad': LCResonator(
+        'DMRadio-m3 (broadband)', 'DMRadiom3BB.txt', 'HorDMRadio3BB.txt', 'orchid'),
+    'dmradio_gut_broad': LCResonator(
+        'DMRadio-GUT (broadband)', 'DMRadioGUTBB.txt', 'HorDMRadioGUTBB.txt', 'mediumpurple'),
+    'madmax_broad': DielectricHaloscope(
+        'MADMAX (broadband)', 'madmax_hybrid_broad_ext.csv', 'HorMadmaxBroad.txt', 'darkmagenta'),
+    'dali_ii': DielectricHaloscope(
+        'DALI II', 'DALI.txt', 'HorDALI.txt', 'crimson'),
+}
 
-    # ── IFO detectors ─────────────────────────────────────────────────────────
-    for key, ifo in IFO_DETECTORS.items():
+# Broadband optical and X-ray reference noise curves; no binary horizons were
+# supplied for these five detectors. Do not extend them beyond their table bands.
+PHOTON_REGENERATION_DETECTORS = {
+    'alps_ii': LightShiningThroughWall(
+        'ALPS II', 'ALPSII.txt', None, 'mediumvioletred'),
+    'jura': LightShiningThroughWall(
+        'JURA', 'JURA.txt', None, 'royalblue'),
+    'osqar_ii': LightShiningThroughWall(
+        'OSQAR II', 'OSQAR.txt', None, 'darkorange'),
+    'cast': AxionHelioscope(
+        'CAST', 'CAST.txt', None, 'sienna'),
+    'iaxo': AxionHelioscope(
+        'IAXO', 'IAXO.txt', None, 'darkgreen'),
+}
+TABULATED_DETECTORS = {**SHARK_FIN_DETECTORS, **PHOTON_REGENERATION_DETECTORS}
 
-        S_h = ifo_noise_psd(freqs, detector_key=key)
+# Unified access for plotting and frequency-domain noise calculations. Existing
+# MWB_DETECTORS and IFO_DETECTORS retain their original entries and behaviour.
+ALL_DETECTORS = {
+    'mwb_efr': ADMX_EFR,
+    'mwb_dmr': DMRADIO_GUT,
+    **IFO_DETECTORS,
+    **TABULATED_DETECTORS,
+}
 
-        mask = np.isfinite(S_h)
-        if not mask.any():
-            continue
+DETECTOR_RESPONSE_MODELS = load_response_models()
+PLOTTED_DETECTOR_KEYS = ('mwb_efr', 'mwb_dmr', *IFO_DETECTORS, *SHARK_FIN_DETECTORS)
 
-        ax.loglog(freqs[mask], np.sqrt(S_h[mask]),
-                color=ifo.color,
-                linewidth=1.8,
-                linestyle=ifo.linestyle,
-                label=ifo.name, zorder=2)
 
-        # Optional: only draw FSR line for analytic model
-        if key == 'adv_ligo':
-            ax.axvline(ifo.f_FSR,
-                    color=ifo.color,
-                    linewidth=0.7,
-                    linestyle=':',
-                    alpha=0.4)
+def detector_response(detector):
+    """Component-level physical/assumed timing model for a plotted detector.
 
-    # ── BBN bound ─────────────────────────────────────────────────────────────
-    if plot_BBN:
-        H0    = 67.4e3 / 3.086e22   # s^-1
-        Omega = 1.8e-6
-        S_BBN = (3.0 * H0**2 / (2.0 * np.pi**2)) * Omega / freqs**3
-        ax.loglog(freqs, np.sqrt(S_BBN),
-                  color='darkgreen', linewidth=1.2,
-                  linestyle=':', label='BBN bound')
+    Inspect has_hypothetical_parameters, assumptions and component.scope before
+    interpreting a returned time. No claim of a fully calibrated transient
+    response is made by attaching a component time to an ASD curve.
+    """
+    if isinstance(detector, str):
+        key, det = detector, ALL_DETECTORS[detector]
+    else:
+        det = detector
+        key = next((k for k, value in ALL_DETECTORS.items() if value is det), None)
+        if key is None and isinstance(det, MagneticWeberBar):
+            key = 'mwb_efr'  # Same oscillator model, with this instance's values.
+    if key not in DETECTOR_RESPONSE_MODELS:
+        raise ValueError('No timing model for this detector; excluded photon-conversion curves are not modelled')
+    model = DETECTOR_RESPONSE_MODELS[key]
+    if isinstance(det, MagneticWeberBar):
+        model = model.with_component_parameters('mechanical_mode',
+                    frequency_hz=det.f_mech, quality_factor=det.Q_mech)
+        model = replace(model, name=det.name or model.name)
+        if det.use_LC:
+            lc = ResponseComponent('lc_mode', 'oscillator',
+                {'frequency_hz': det.f_LC, 'quality_factor': det.Q_EM},
+                'configured_parameters', 'Optional resonant LC readout only; not the default broadband curve.',
+                'https://arxiv.org/html/2408.01483v2')
+            model = replace(model, components=(*model.components, lc))
+    return model
 
-    ax.set_xlabel(r'$f\ [\mathrm{Hz}]$', fontsize=13)
-    ax.set_ylabel(
-        r'$\left(S_h^\mathrm{noise}\right)^{1/2}\ [\mathrm{Hz}^{-1/2}]$',
-        fontsize=13,
-    )
-    ax.set_xlim(10, 1e10)
-    ax.set_ylim(1e-26, 1e-14)
-    ax.xaxis.set_major_formatter(FuncFormatter(_format_log_decade_tick))
-    ax.legend(fontsize=9, loc='upper right', frameon=False)
-    ax.grid(True, which='both', alpha=0.3)
-    plt.tight_layout()
 
-    if savepath is not None:
-        plt.savefig(savepath, dpi=150, bbox_inches='tight')
-        print(f'[saved] {savepath}')
+def detector_noise_psd(detector, freqs):
+    """Return S_h [Hz^-1] for a catalogue key or detector configuration."""
+    det = ALL_DETECTORS[detector] if isinstance(detector, str) else detector
+    freqs = np.asarray(freqs, dtype=float)
+    if isinstance(det, TabulatedDetector):
+        return det.noise_psd(freqs)
+    if isinstance(det, MagneticWeberBar):
+        return mwb_noise_psd(det, freqs)
+    if isinstance(det, IFOConfig):
+        key = next((k for k, value in IFO_DETECTORS.items() if value is det), None)
+        if key is None:
+            raise ValueError('IFOConfig must be registered in IFO_DETECTORS')
+        return ifo_noise_psd(freqs, key)
+    raise TypeError(f'Unsupported detector configuration: {type(det).__name__}')
 
-    plt.show()
+
+def plot_detector_response_times(savepath=None, show=True):
+    """Compare selected component times; assumptions are labelled explicitly.
+
+    The figure is a timing audit, not a plot of a universal source-duration cut.
+    Full component lists, parameters, scopes and sources are in the JSON model.
+    """
+    with plt.rc_context({'text.usetex': True, 'font.family': 'serif',
+                         'font.serif': ['Computer Modern Roman']}):
+        fig, ax = plt.subplots(figsize=(12, 8), layout='constrained')
+        seen = set()
+        for index, key in enumerate(PLOTTED_DETECTOR_KEYS):
+            model = detector_response(key)
+            component = model.component(model.representative_component)
+            assumed = component.origin == 'hypothetical'
+            tau = model.ring_up_time()
+            if assumed:
+                color, marker, label = 'darkorange', 's', 'Hypothetical receiver/component'
+            elif model.assumptions:
+                color, marker, label = 'teal', '^', 'Nominal/approximate benchmark match'
+            else:
+                color, marker, label = 'steelblue', 'o', 'Published component benchmark'
+            ax.scatter(tau, index, s=55, marker=marker, color=color,
+                       label=label if label not in seen else None)
+            seen.add(label)
+            value = (f'{tau:,.0f} s' if tau >= 1 else
+                     f'{tau*1e3:.3g} ms' if tau >= 1e-4 else
+                     f'{tau*1e6:.3g} us' if tau >= 1e-6 else f'{tau*1e9:.3g} ns')
+            ax.annotate(value, (tau, index), xytext=(7, 0),
+                        textcoords='offset points', va='center', fontsize=11, color=color)
+        labels=[]
+        for key in PLOTTED_DETECTOR_KEYS:
+            m=detector_response(key)
+            c=m.component(m.representative_component)
+            scope={'mechanical_mode':'mechanical resonance', 'darm_pole':'DARM pole',
+                   'signal_em_mode':'signal EM mode', 'receiver_rlc':'receiver RLC'}.get(c.name,c.name.replace('_',' '))
+            labels.append(f'{m.name} ({scope})')
+        ax.set_yticks(range(len(labels)), labels, fontsize=11)
+        ax.invert_yaxis()
+        ax.set_xscale('log')
+        ax.set_xlim(5e-8, 1e5)
+        ax.xaxis.set_major_locator(LogLocator(base=10, numticks=100))
+        ax.xaxis.set_major_formatter(LogFormatterMathtext(base=10))
+        ax.tick_params(direction='in', top=True, right=True, labelsize=11)
+        ax.set_xlabel('Component amplitude-envelope time [s]', fontsize=14)
+        ax.set_title('Detector response-time benchmarks', fontsize=17)
+        ax.grid(axis='x', alpha=0.2)
+        ax.legend(loc='lower right', fontsize=11, frameon=False)
+        fig.suptitle('Component times apply to the stated modes; they are not minimum source lifetimes.',
+                     fontsize=12)
+        if savepath is not None:
+            path=Path(savepath); path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(path, dpi=200, bbox_inches='tight')
+        if show:
+            plt.show()
     return fig, ax
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Run standalone: plot combined sensitivity
-# ─────────────────────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+# ④ Combined noise plot and imported binary-horizon plot
+# ═════════════════════════════════════════════════════════════════════════════
+
+def _label_noise_curves(ax):
+    """Write each curve's name along its slope, in the same colour as the line."""
+    # Frequencies keep labels on distinct, relatively smooth curve segments.
+    anchors = {
+        'MWB-EFR (analytic)': 5e9,
+        'MWB-DMR (analytic)': 5e7,
+        'LIGO HF (analytic)': 2e9,
+        'LIGO Hanford (existing PSD)': 150,
+        'LIGO O4a (simplified)': 220,
+        'Mag. Weber bars (broadband)': 1e6,
+        'Lev. SC 30 kg': 1e6,
+        'MAGO (broadband)': 4e4,
+        'Holometer': 5e6,
+        'Lev. SC 1 g': 700,
+        'DMRadio-m3 (broadband)': 2.5e7,
+        'DMRadio-GUT (broadband)': 2e5,
+        'MADMAX (broadband)': 8e9,
+        'DALI II': 2e10,
+        'ALPS II': 5.5e14,
+        'JURA': 5.5e14,
+        'OSQAR II': 5.5e14,
+        'CAST': 7e17,
+        'IAXO': 5.5e17,
+    }
+    if np.log10(ax.get_xlim()[1] / ax.get_xlim()[0]) > 12:
+        anchors.update({'MWB-EFR (analytic)': 2e10, 'MAGO (broadband)': 4e4})
+    ax.figure.canvas.draw()
+    for line in ax.lines:
+        name = line.get_label()
+        if name.startswith('_'):
+            continue
+        x, y = line.get_data()
+        target = anchors.get(name, np.sqrt(x[0] * x[-1]))
+        target = np.clip(target, x[0], x[-1])
+        value = 10 ** np.interp(np.log10(target), np.log10(x), np.log10(y))
+        # A local log-space chord follows the visible slope, independent of PSD
+        # versus ASD units and of the square axes' pixel dimensions.
+        sample_x = np.clip(target * np.array([0.85, 1.15]), x[0], x[-1])
+        sample_y = 10 ** np.interp(np.log10(sample_x), np.log10(x), np.log10(y))
+        p0, p1 = ax.transData.transform(np.column_stack([sample_x, sample_y]))
+        angle = np.degrees(np.arctan2(*(p1 - p0)[::-1]))
+        offset = -7 if name in ('LIGO O4a (simplified)', 'MWB-DMR (analytic)',
+                               'DALI II', 'IAXO', 'Holometer') else 5
+        if name in ('LIGO Hanford (existing PSD)', 'LIGO O4a (simplified)',
+                    'Mag. Weber bars (broadband)'):
+            angle = 0
+        text = name.replace('LIGO Hanford (existing PSD)', 'LIGO Hanford\n(existing PSD)')
+        # Preserve the point size while fitting full curve names on the compact canvas.
+        if ax.figure.get_size_inches()[0] <= 8.5:
+            for qualifier in ('broadband', 'analytic', 'simplified'):
+                text = text.replace(f' ({qualifier})', f'\n({qualifier})')
+        ax.annotate(text, (target, value), xytext=(0, offset),
+                    textcoords='offset points', ha='center',
+                    va='bottom' if offset >= 0 else 'top',
+                    color=line.get_color(), fontsize=12.5, rotation=angle,
+                    rotation_mode='anchor', annotation_clip=True,
+                    path_effects=[patheffects.withStroke(linewidth=3, foreground='white')])
+
+
+def plot_all_noise_psds(
+        f_min: float = None,
+        f_max: float = None,
+        n_pts: int = 4000,
+        plot_LC: bool = False,
+        plot_BBN: bool = False,
+        savepath: str = None,
+        quantity: str = 'psd',
+        show: bool = True,
+        include_photon_regeneration: bool = False,
+):
+    """Plot the selected analytic and published detector noise curves.
+
+    Default quantity is PSD S_h [Hz^-1]; use quantity='asd' for sqrt(S_h).
+    Defaults show the original fourteen curves, covering about 10 Hz--97 GHz.
+    ALPS II, JURA, OSQAR II, CAST and IAXO are omitted from the default plot;
+    include_photon_regeneration=True explicitly restores those reference curves.
+    Tables are never extrapolated. Native samples are retained, including narrow
+    features that a shared logarithmic grid would otherwise miss. Analytic MWB
+    and LIGO HF curves retain their original radiofrequency display range (up to
+    about 97 GHz), rather than being extrapolated into the optical/X-ray bands;
+    their dashed lines distinguish them from published reference curves.
+    Uses the original LaTeX Computer Modern font; pass savepath to export while
+    that font context is active. The axes are square with inward ticks and each
+    curve is labelled directly, replacing a separate legend.
+    """
+    if quantity not in ('psd', 'asd'):
+        raise ValueError("quantity must be 'psd' or 'asd'")
+    if not isinstance(n_pts, (int, np.integer)) or n_pts < 2:
+        raise ValueError('n_pts must be an integer of at least 2')
+    reference_detectors = (TABULATED_DETECTORS if include_photon_regeneration
+                           else SHARK_FIN_DETECTORS)
+    bands = [det.frequency_band for det in reference_detectors.values()]
+    if f_min is None:
+        f_min = min(10.0, *(band[0] for band in bands))
+    if f_max is None:
+        f_max = max(1e9, *(band[1] for band in bands))
+    if not (np.isfinite(f_min) and np.isfinite(f_max) and 0 < f_min < f_max):
+        raise ValueError('Frequency limits must satisfy 0 < f_min < f_max')
+    freqs = np.geomspace(f_min, f_max, n_pts)
+    # Preserve the earlier analytic display domain as the catalogue grows.
+    # This is a plotting cap, not a newly asserted physical validity limit.
+    analytic_f_max = min(f_max, max(1e9, *(det.frequency_band[1]
+                                         for det in SHARK_FIN_DETECTORS.values())))
+    analytic_freqs = np.unique(np.r_[freqs[freqs <= analytic_f_max], analytic_f_max])
+    transform = np.sqrt if quantity == 'asd' else np.asarray
+
+    # Match the original Computer Modern typography without changing caller styles.
+    with plt.rc_context({
+        'text.usetex': True,
+        'font.family': 'serif',
+        'font.serif': ['Computer Modern Roman'],
+        'text.latex.preamble': r'\usepackage{amsmath}',
+        'font.size': 15,
+        'axes.labelsize': 19,
+        'axes.titlesize': 20,
+        'xtick.labelsize': 15,
+        'ytick.labelsize': 15,
+    }):
+        # Keep text at its established point sizes on a smaller square canvas.
+        side = (18 if quantity == 'psd' else 16) if include_photon_regeneration else 8
+        fig, ax = plt.subplots(figsize=(side, side), layout='constrained')
+        ax.set_box_aspect(1)
+
+        def draw(f, psd, **style):
+            valid = np.isfinite(psd) & (psd > 0) & (f >= f_min) & (f <= f_max)
+            if valid.any():
+                ax.loglog(f[valid], transform(psd[valid]), **style)
+
+        for det, color in zip(MWB_DETECTORS, ('steelblue', 'teal')):
+            f = np.unique(np.r_[analytic_freqs, det.f_mech])
+            draw(f, mwb_noise_psd(det, f), color=color, ls='--', lw=1.4,
+                 label=f'{det.name} (analytic)', alpha=0.85)
+            if plot_LC and det.use_LC:
+                draw(f, mwb_noise_psd_LC(det, f), color=color, ls=':', lw=1.3,
+                     label=f'{det.name} (LC model)')
+
+        for key, ifo in IFO_DETECTORS.items():
+            native = LIGO_PSD_interp.x if key == 'ligo_data' else [ifo.f_FSR]
+            grid = analytic_freqs if key == 'adv_ligo' else freqs
+            f = np.unique(np.r_[grid, native])
+            name = 'LIGO Hanford (existing PSD)' if key == 'ligo_data' else 'LIGO HF (analytic)'
+            draw(f, ifo_noise_psd(f, key), color='0.55' if key == 'ligo_data' else '0.2',
+                 ls=':' if key == 'ligo_data' else '--', lw=1.2, label=name)
+
+        for det in reference_detectors.values():
+            native, _ = det.noise_samples
+            low, high = det.frequency_band
+            f = np.unique(np.r_[native, freqs[(freqs >= low) & (freqs <= high)]])
+            draw(f, det.noise_psd(f), color=det.color, lw=1.7, label=det.name)
+
+        if plot_BBN:
+            H0 = 67.4e3 / 3.086e22
+            psd = (3 * H0**2 / (2 * np.pi**2)) * 1.8e-6 / freqs**3
+            draw(freqs, psd, color='darkgreen', ls=':', lw=1.2, label='BBN bound')
+
+        ax.set_xlabel(r'$f\ [\mathrm{Hz}]$')
+        ax.set_ylabel(r'Noise PSD $S_h^{\mathrm{noise}}\ [\mathrm{Hz}^{-1}]$'
+                      if quantity == 'psd' else
+                      r'$\left(S_h^{\mathrm{noise}}\right)^{1/2}\ [\mathrm{Hz}^{-1/2}]$')
+        ax.set_xlim(f_min, f_max)
+        # Explicit locators prevent Matplotlib from skipping alternate decades.
+        for axis in (ax.xaxis, ax.yaxis):
+            axis.set_major_locator(LogLocator(base=10, subs=(1,), numticks=100))
+            axis.set_major_formatter(LogFormatterMathtext(base=10, labelOnlyBase=True))
+            axis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10), numticks=100))
+            axis.set_minor_formatter(NullFormatter())
+        ax.tick_params(axis='both', which='major', direction='in', top=True,
+                       right=True, length=8, width=1.2, labelsize=15)
+        ax.tick_params(axis='both', which='minor', direction='in', top=True,
+                       right=True, length=4, width=0.9)
+        ax.grid(True, which='major', alpha=0.2)
+        _label_noise_curves(ax)
+        if savepath is not None:
+            path = Path(savepath)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(path, dpi=200, bbox_inches='tight')
+        if show:
+            plt.show()
+    return fig, ax
+
+
+def plot_shark_fin_horizons(savepath=None, show=True):
+    """Plot the ten imported binary-distance curves in their original units.
+
+    These horizons describe binary inspirals, not superradiance signals.
+    Event-rate boundaries are copied from the supplied notebook, including its
+    conversion from kpc to pc. Display limits match the supplied shark-fin plot.
+    """
+    with plt.rc_context({'text.usetex': False, 'font.family': 'DejaVu Sans'}):
+        fig, ax = plt.subplots(figsize=(5.5, 4), layout='constrained')
+        for det in SHARK_FIN_DETECTORS.values():
+            ax.loglog(*det.horizon_samples, color=det.color, lw=1.6, label=det.name)
+        for fraction, linestyle in (('1', '-'), ('1em3', '--')):
+            data = _load_positive_table(
+                current_dir / 'data' / 'shark_fin' / f'dyr_fPBH={fraction}_STDRate.txt')
+            mass, distance = data[:, 0], data[:, 1] * 1000
+            label = '1 event / yr, 100% DM' if fraction == '1' else '1 event / yr, 0.1% DM'
+            ax.loglog(mass, distance, color='black', ls=linestyle, lw=1.3, label=label)
+            if fraction == '1':
+                ax.fill_between(mass, distance, 1e9, color='0.7', alpha=0.4)
+        ax.set(xlim=(1e-14, 1), ylim=(1e-8, 10**7.5),
+               xlabel=r'Chirp mass $M_c$ [$M_\odot$]', ylabel='Binary distance [pc]',
+               title='Imported binary distance reaches')
+        ax.grid(True, which='major', alpha=0.2)
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=3,
+                  fontsize=8, frameon=False)
+        if savepath is not None:
+            path = Path(savepath)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fig.savefig(path, dpi=200, bbox_inches='tight')
+        if show:
+            plt.show()
+    return fig, ax
+
 
 if __name__ == '__main__':
-
-    # Optionally enable LC readout for DMRadio-GUT
-    DMRADIO_GUT.use_LC = True
-    DMRADIO_GUT.T_LC   = 0.01
-    DMRADIO_GUT.Q_EM   = 2.0e7
-
-    plot_all_noise_psds(
-        f_min    = 1e0,
-        f_max    = 1e9,
-        plot_LC  = False,
-        plot_BBN = False,
-        savepath = 'Sem 2/4. Detector Distance Reach/Plots/detector_noise_psds.pdf',
-    )
+    # Paths resolve beside this module regardless of the launch directory.
+    output_dir = current_dir / 'Plots'
+    print(f'Saving detector plots to: {output_dir}', flush=True)
+    for quantity, basename in (('psd', 'detector_noise_psds'),
+                               ('asd', 'detector_noise_asds')):
+        for extension in ('pdf', 'png'):
+            # Export inside the function's LaTeX font context for both formats.
+            fig, _ = plot_all_noise_psds(
+                quantity=quantity, show=False,
+                savepath=output_dir / f'{basename}.{extension}')
+            plt.close(fig)
+            print(f'Saved {basename}.{extension}', flush=True)
+    fig, _ = plot_shark_fin_horizons(show=False)
+    for extension in ('pdf', 'png'):
+        fig.savefig(output_dir / f'shark_fin_horizons.{extension}', dpi=200, bbox_inches='tight')
+        print(f'Saved shark_fin_horizons.{extension}', flush=True)
+    plt.close(fig)
+    for extension in ('pdf', 'png'):
+        fig, _ = plot_detector_response_times(
+            savepath=output_dir / f'detector_response_times.{extension}', show=False)
+        plt.close(fig)
+        print(f'Saved detector_response_times.{extension}', flush=True)

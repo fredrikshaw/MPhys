@@ -43,6 +43,7 @@ from GWDetectors import (
     # IFO
     IFOConfig, IFO_DETECTORS,
     ifo_noise_psd,
+    TabulatedDetector, ALL_DETECTORS, detector_noise_psd, detector_response,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -113,7 +114,8 @@ from MergerRate import (
 #   tau_func(f, M_solar)   -> tau [s]
 #
 # d_max = h_unit * sqrt(tau_obs / S_h_noise)   (for both source types)
-# where tau_obs = min(tau, 1 year), provided tau >= det.ring_up_time()
+# where tau_obs = min(tau, 1 year). This is a steady-state narrowband estimate;
+# component response times are checked, not imposed as detection cutoffs.
 # ═════════════════════════════════════════════════════════════════════════════
 
 def make_transition_source(alpha, transition, n_e, n_g, filepath, debug=False):
@@ -266,61 +268,52 @@ def make_annihilation_source(alpha, level, n, l, m, astar_init, debug=False):
 # ═════════════════════════════════════════════════════════════════════════════
 
 def _get_noise(det, f_t):
-    """
-    Return S_h_noise [Hz^-1] at frequency f_t for either a MWB or IFO detector.
-
-    Parameters
-    ----------
-    det : MagneticWeberBar | str
-        MagneticWeberBar instance, or IFO key string (e.g. 'adv_ligo').
-    f_t : float
-        Frequency [Hz].
-    """
-    if isinstance(det, MagneticWeberBar):
-        return mwb_noise_psd(det, np.array([f_t]))[0]
-    elif isinstance(det, str):
-        val = ifo_noise_psd(np.array([f_t]), detector_key=det)[0]
-        return val   # may be NaN below f_FSR
-    else:
-        raise TypeError(f"det must be MagneticWeberBar or str, got {type(det)}")
+    """Return input-referred S_h [Hz^-1] for a catalogue key or configuration."""
+    return float(detector_noise_psd(det, np.array([f_t]))[0])
 
 
 def _get_det_config(det):
     """
-    Return the detector config object (MagneticWeberBar or IFOConfig) for det.
+    Return a registered configuration or an explicitly supplied detector object.
 
     When det is already a dataclass instance this is a no-op; when it is a
-    string key the corresponding IFOConfig is looked up from IFO_DETECTORS.
-    This allows ring_up_time() to be called uniformly on any detector.
+    string key it is looked up in the unified detector catalogue.
     """
-    if isinstance(det, (MagneticWeberBar, IFOConfig)):
+    if isinstance(det, (MagneticWeberBar, IFOConfig, TabulatedDetector)):
         return det
     elif isinstance(det, str):
-        return IFO_DETECTORS[det]
+        return ALL_DETECTORS[det]
     else:
-        raise TypeError(f"det must be MagneticWeberBar, IFOConfig, or str, "
+        raise TypeError(f"det must be a detector configuration or catalogue key, "
                         f"got {type(det)}")
 
 
 def compute_point(M_solar, freq_func, h_func, tau_func,
-                  det, f_band, rho_star=1.0):
+                  det, f_band, rho_star=1.0, strict_response=False):
     """
     Compute (f, d_max_kpc) for a single BH mass and detector.
 
     Observation time logic
     ----------------------
     tau_val   : characteristic signal duration returned by tau_func [s]
-    t_ring    : detector ring-up time from det.ring_up_time() [s]
     ONE_YEAR  : 365.25 days in seconds
 
-    - If tau_val < t_ring  →  no reach (detector has not rung up); return nan.
-    - Otherwise            →  tau_obs = min(tau_val, ONE_YEAR).
-    - If tau_val > ONE_YEAR a debug warning is printed.
+    tau_obs = min(tau_val, ONE_YEAR). Component response times are checked using
+    source-backed or explicitly hypothetical receiver profiles. A short signal
+    is not declared undetectable simply because it is shorter than a pole time.
 
     d_max = h_unit * sqrt(tau_obs / S_h_noise) / rho_star
 
+    This remains a monochromatic steady-state approximation, not a calibrated
+    transient calculation. Finite-duration signals spanning a detector feature
+    require integrating their Fourier spectrum against S_h(f). A universal
+    exp(-T/t_ring) penalty would double-count or misapply the response already
+    folded into input-referred noise. strict_response=True raises when the
+    response check identifies short-time or hypothetical-model limitations;
+    otherwise those limitations generate explicit warnings.
+
     Returns (f, d_max_kpc, h_unit, tau_val, S_h_noise).
-    Any failure returns np.nan for d_max_kpc; f is returned when known.
+    Source/noise failures return NaN; strict response errors deliberately raise.
     """
     try:
         f_t = freq_func(M_solar)
@@ -340,13 +333,7 @@ def compute_point(M_solar, freq_func, h_func, tau_func,
     except Exception:
         return f_t, np.nan, np.nan, np.nan, np.nan
 
-    # ── Ring-up threshold ─────────────────────────────────────────────────────
-    # Resolve the config object so ring_up_time() is always available,
-    # regardless of whether det was passed as an instance or a string key.
-    det_config = _get_det_config(det)
-    t_ring     = det_config.ring_up_time()
-
-    if tau_val < t_ring:
+    if np.isnan(tau_val) or tau_val <= 0:
         return f_t, np.nan, h_unit, tau_val, np.nan
 
     S_h_noise = _get_noise(det, f_t)
@@ -357,6 +344,7 @@ def compute_point(M_solar, freq_func, h_func, tau_func,
     # Integrate for at most one year; warn if the signal outlasts this.
     ONE_YEAR_S = 365.25 * 24.0 * 3600.0          # [s]
     tau_obs = min(tau_val, ONE_YEAR_S)
+    detector_response(det).check_steady_state(f_t, tau_obs, strict=strict_response)
 
     d_max_m   = h_unit * np.sqrt(tau_obs / S_h_noise) / rho_star
     d_max_kpc = d_max_m / KPC_TO_M
@@ -373,7 +361,7 @@ def compute_point(M_solar, freq_func, h_func, tau_func,
 
 def _single_det_sweep(freq_func, h_func, tau_func,
                       det, f_band, M_range,
-                      n_coarse, n_dense, rho_star):
+                      n_coarse, n_dense, rho_star, strict_response=False):
     """
     Two-stage mass sweep for one detector.
 
@@ -384,7 +372,8 @@ def _single_det_sweep(freq_func, h_func, tau_func,
         fs, ds, Ms, taus = [], [], [], []
         for M in M_array:
             f, d, _, tau, _ = compute_point(
-                M, freq_func, h_func, tau_func, det, f_band, rho_star
+                M, freq_func, h_func, tau_func, det, f_band, rho_star,
+                strict_response=strict_response,
             )
             fs.append(f); ds.append(d); Ms.append(M); taus.append(tau)
         return np.array(fs), np.array(ds), np.array(Ms), np.array(taus)
@@ -396,9 +385,7 @@ def _single_det_sweep(freq_func, h_func, tau_func,
 
     # ── Diagnose silently when the whole coarse sweep yields nothing ──────────
     if not valid_c.any():
-        det_name = det.name if isinstance(det, MagneticWeberBar) else (
-            IFO_DETECTORS[det].name if isinstance(det, str) else str(det)
-        )
+        det_name = _get_det_config(det).name
         _diagnose_sweep_failure(det_name, M_coarse, f_c, d_c, tau_c, f_band, det)
 
     M_res, f_res, d_res = np.nan, np.nan, np.nan
@@ -517,24 +504,6 @@ def _diagnose_sweep_failure(det_name, M_array, freq_vals, d_vals,
               f"(frequencies may lie outside the detector's hardware bandwidth).")
         return
 
-    # Check: did tau < ring-up time kill all in-band points?
-    finite_tau_mask = in_band_mask & np.isfinite(tau_vals)
-    if finite_tau_mask.any():
-        try:
-            det_config = _get_det_config(det)
-            t_ring = det_config.ring_up_time()
-            n_tau_fail = int(np.sum(tau_vals[finite_tau_mask] < t_ring))
-            n_tau_fin  = int(np.sum(finite_tau_mask))
-            if n_tau_fail == n_tau_fin:
-                tau_min = float(np.nanmin(tau_vals[finite_tau_mask]))
-                print(f"{prefix} {n_tau_fin} in-band points had tau < ring-up "
-                      f"time ({t_ring:.2e} s) for ALL of them. "
-                      f"Shortest tau = {tau_min:.2e} s. "
-                      f"Signal duration is too short for this detector.")
-                return
-        except Exception:
-            pass
-
     # Generic catch-all for mixed / unknown reasons
     frac_in = n_in_band / n_total
     print(f"{prefix} {n_in_band}/{n_total} mass points ({100*frac_in:.0f}%) "
@@ -580,9 +549,13 @@ def run_sweep(freq_func, h_func, tau_func,
               n_dense  = 800,
               f_band   = (1e2, 1e8),
               rho_star = 1.0,
-              include_ligo: bool = True):
+              include_ligo: bool = True,
+              strict_response: bool = False):
     """
     Run the two-stage mass sweep for every detector.
+
+    strict_response propagates the response checks in compute_point; with True,
+    short-time or hypothetical-model limitations raise rather than only warn.
 
     Returns
     -------
@@ -602,6 +575,7 @@ def run_sweep(freq_func, h_func, tau_func,
         data = _single_det_sweep(
             freq_func, h_func, tau_func,
             det, mwb_f_band, M_range, n_coarse, n_dense, rho_star,
+            strict_response=strict_response,
         )
         data['name'] = det.name
         results[det.name] = data
@@ -617,6 +591,7 @@ def run_sweep(freq_func, h_func, tau_func,
             data = _single_det_sweep(
                 freq_func, h_func, tau_func,
                 key, ifo_f_band, M_range, n_coarse, n_dense, rho_star,
+                strict_response=strict_response,
             )
             data['name'] = ifo.name
             results[ifo.name] = data

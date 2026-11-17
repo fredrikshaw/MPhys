@@ -1,0 +1,77 @@
+{
+  "noise_source": "https://github.com/ctamaritd/HFGWPlotter_Sh",
+  "noise_archive": "https://zenodo.org/records/15720342",
+  "noise_commit": "6f6bf1ffb2e8d52845a27b3cee5305c168aeda76",
+  "paper": "https://arxiv.org/abs/2501.11723",
+  "download_date": "2026-11-16",
+  "noise_columns": [
+    "frequency [Hz]",
+    "ASD [Hz^-1/2]"
+  ],
+  "mago_exception": "MAGO_broad.csv gives angular frequency; divide x by 2*pi and y by sqrt(2*pi), matching the authors loader.",
+  "ligo_note": "Use the simplified O4a curve to avoid duplicate frequencies in the detailed digitisation. The association with HorLigoO4as follows its filename; exact numerical reproduction is not asserted.",
+  "horizon_source": "User-supplied Shark_fin_plot.zip; data copied unchanged.",
+  "horizon_columns": [
+    "chirp mass [solar masses]",
+    "binary distance [pc]"
+  ],
+  "rate_note": "dyr_fPBH=* tables have distances in kpc; multiply by 1000 for pc, matching the notebook.",
+  "interpolation": "Linear in log(f), log(ASD) or log(chirp mass), log(distance). Return NaN outside native bounds; no extrapolation.",
+  "sha256": {
+    "noise/DALI.txt": "0111bf49b56bf8f62fca66ac5a4ff8fa8ac3cf499612f32933d3393f2586fb45",
+    "noise/DMRadioGUTBB.txt": "3899eb307844decc8145552eff40012e1b38918b2fb01562bd908d5fa54490a3",
+    "noise/DMRadiom3BB.txt": "31a0308a2dbea1281fdc33acb6be21a2ab3834468c37cb7f0e9b9b4b7b3008fa",
+    "noise/HOLOMETER.txt": "fa35f968d444a9e97dfd8b14b8fd6ac0f8cc1e2639dff478dfd05b446631fcc0",
+    "noise/LICENSE": "c83fb027ddd5ed3b5ec6de00987b0034b3cc8cd7c5d8c23b79a9f3a3ec6d7ff0",
+    "noise/MAGO_broad.csv": "fa22c1025a0aa69547172bb6ea9557f94bbb7dc794c42a4dda59e1529ccd53da",
+    "noise/MWB-DMR-broad.csv": "57e4fd982fc74e0a6dbc8313b52be3065a147df9938139f788fc50f6f99870c2",
+    "noise/SLedDoG1g.csv": "e4ab670624de10f385ef2d68975d11bd6b715afafc62563c9ac3f32768bfc472",
+    "noise/SLedDoG_30kg.csv": "21be25686209d2ff7330dad83e2f33f3cf1391eaa6a0054498705b0be3b88fc5",
+    "noise/ligoO4a_simple.csv": "727f5610bda659c63b13faacd9eee9bdc02cee4f80241cdc0adb48d5c78d0d6d",
+    "noise/madmax_hybrid_broad_ext.csv": "7562a459f0cc5212512197ac4111c1665c96e2c2605be4b6a2d6cfa343735069",
+    "shark_fin/HorDALI.txt": "15ee8b577b2cedcf78b76c2d4f4093019d5cd1a73c5dd9968a59a05b188e25a0",
+    "shark_fin/HorDMRadio3BB.txt": "6dca803230d6330099e7921c6fa16ed6da28a4c6e754b496cc34bfd5910e69ea",
+    "shark_fin/HorDMRadioGUTBB.txt": "8fbda2ceeac18d02985b9b920d953a4d9f92e2b94ea9ba0c6650c1261be052db",
+    "shark_fin/HorHolometerSingle.txt": "34853806987a3389c3254fb2ce8f5843045de5ecf887cc37848ed6fc70daeeb1",
+    "shark_fin/HorLevSup.txt": "451cabda08d2373161a7d452b2d3a29c9445593728edf3148c98e3f465d9a631",
+    "shark_fin/HorLevSup30kg.txt": "9b9b8b463ab2c3603c6a9b1f5b28b731d76848f05b568aa21b81b8581340252a",
+    "shark_fin/HorLigoO4as.txt": "3acc7d00f185f7e4650f95f3030a68f6f578778248a2802b86858decc354ba57",
+    "shark_fin/HorMAGObroad.txt": "e5520446d90486cb537dd772be8732000e8bc855700a0d5f3352a77162d520ac",
+    "shark_fin/HorMWBDMRbroad.txt": "df5cebf6f27bfcbbb3118f2ba52448e3aa13db83f02cced060465fb3585098c7",
+    "shark_fin/HorMadmaxBroad.txt": "7b970eb5f47967b3bcf38fc88d0de0a193bc27553f74c9a5e3eeeead6977bb23",
+    "shark_fin/dyr_fPBH=1_STDRate.txt": "8b3c4e172e365e823f85b8ad5e137d6e6f530575fe464aa5d5bc7a075e438b35",
+    "shark_fin/dyr_fPBH=1em3_STDRate.txt": "1bc0a794c40560e5ba9562e45b78e9b52c5123f14267b47339eea73ba16e315e",
+    "shark_fin/f1.txt": "30caa8a2c2034ebf927120cc057bbf2382575ae91ce3b4f1e5a0a6de5bf5136c",
+    "shark_fin/fm3.txt": "b221ba4938edef85b8c70116e243533423de043b44a26ec188b57e7f5244d3a0",
+    "noise/ALPSII.txt": "9512a1b0547aff52f420340dd6c26607d71a2daf9e2cff79387d476f7a351c3c",
+    "noise/JURA.txt": "fce7e49e85235590ec130866dc02f89a7c6be74eef09bf384b62a6fac469fe57",
+    "noise/OSQAR.txt": "9c6dc2ecf08df5d42dc90d52b62df3f57b0eb0b0ac82f5b24b8cdb3582cdaa5a",
+    "noise/CAST.txt": "6d5732c3ec93afc5858310d7967079c827cd5f1dcc429d9b5f076d4b8a397588",
+    "noise/IAXO.txt": "e8a66dd36d74df9f781dedb2b061a7b72fc86ce62bf57b870c9d1decc0c42a19"
+  },
+  "photon_regeneration": {
+    "paper": "https://arxiv.org/abs/1908.00232",
+    "noise_definition": "https://link.springer.com/article/10.1007/s41114-025-00060-5#Sec33",
+    "files": {
+      "alps_ii": "ALPSII.txt",
+      "jura": "JURA.txt",
+      "osqar_ii": "OSQAR.txt",
+      "cast": "CAST.txt",
+      "iaxo": "IAXO.txt"
+    },
+    "units": "The second column is noise-equivalent strain ASD [Hz^-1/2]. Square after interpolation to obtain PSD [Hz^-1].",
+    "interpretation": "ALPS II, JURA and IAXO are projected GW sensitivities; OSQAR II and CAST are reference sensitivities from existing photon-conversion instruments. Native receiver bands and incidence assumptions apply.",
+    "reach_caveat": "These are photon-counting instruments. Signal photon counts, backgrounds, exposure and directional acceptance are required for reach calculations; a noise-equivalent PSD alone does not justify using a linear matched-filter reach formula.",
+    "horizons": "No binary horizon tables supplied. The original ten-curve shark-fin plot is retained.",
+    "resonant_alps_ii": "Not included: ALPSIIRes.txt is a single-frequency benchmark, whereas the added ALPSII.txt is the broadband curve."
+  },
+  "analytic_display_note": "The combined plot preserves the previous analytic MWB/LIGO-HF display range, capped at max(1e9 Hz, highest native frequency in the original ten-curve shark-fin catalogue), currently 9.67084860994832e10 Hz. This is a display cap, not a physical validity claim; no optical/X-ray extrapolation is drawn.",
+  "response_models": {
+    "file": "detector_response_models.json",
+    "definition": "Amplitude envelope e-folding time; not a minimum source lifetime. Propagation windows are separate.",
+    "coverage": "All fourteen default plotted detector configurations.",
+    "hypotheses": "The user authorised hypothetical receiver models on 2026-11-16. Missing broadband/readout dynamics use an editable first-order 1 MHz baseband envelope pole. LIGO HF uses an explicitly assumed representative comb-tooth power FWHM of 1 kHz.",
+    "source_status": "Published component parameters, nominal/geometry benchmarks, and hypothetical parameters are distinguished per component. These are not full calibrated detector transfer functions.",
+    "reach": "The one-second placeholder rejection was removed. Monochromatic steady-state reach is retained as an approximation, with duration/assumption warnings and optional strict response checks; no universal ring-up multiplier is applied to an input-referred PSD."
+  }
+}

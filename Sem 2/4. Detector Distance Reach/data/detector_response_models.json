@@ -1,0 +1,426 @@
+{
+  "convention": "All exponential times are amplitude-envelope e-folding times. Oscillator tau_amp=2Q/omega0=Q/(pi*f0); energy decay is half as long. Propagation windows are stored separately.",
+  "hypothetical_receiver_default": "1 MHz first-order envelope pole after carrier conversion, tau=1/(2*pi*1e6). Explicitly authorised by the user where source timing is absent; not a published detector specification.",
+  "use": "These are component-level response benchmarks. They do not add a second response factor to input-referred noise PSDs. Finite-duration reach requires a finite-waveform/noise integral and an observation window.",
+  "detectors": {
+    "mwb_efr": {
+      "name": "MWB-EFR",
+      "representative_component": "mechanical_mode",
+      "components": [
+        {
+          "name": "mechanical_mode",
+          "kind": "oscillator",
+          "parameters": {
+            "frequency_hz": 1400,
+            "quality_factor": 1000000.0
+          },
+          "origin": "published_parameters",
+          "scope": "Near the mechanical resonance only; Eq. S4. Not a global broadband minimum source lifetime.",
+          "source": "https://arxiv.org/html/2408.01483v2"
+        },
+        {
+          "name": "receiver_envelope",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 1000000.0
+          },
+          "origin": "hypothetical",
+          "scope": "Causal first-order envelope receiver after carrier translation. 1 MHz is an editable design assumption, not the GW carrier frequency or a published raw SQUID bandwidth.",
+          "source": "https://arxiv.org/abs/2501.11723"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "The benchmark receiver envelope is not a measured SQUID calibration. Mechanical GW force and broadband response must not be replaced by a global exponential penalty."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "mwb_dmr": {
+      "name": "MWB-DMR",
+      "representative_component": "mechanical_mode",
+      "components": [
+        {
+          "name": "mechanical_mode",
+          "kind": "oscillator",
+          "parameters": {
+            "frequency_hz": 1000,
+            "quality_factor": 10000000.0
+          },
+          "origin": "published_parameters",
+          "scope": "Near the mechanical resonance only; Eq. S4. Not a global broadband minimum source lifetime.",
+          "source": "https://arxiv.org/html/2408.01483v2"
+        },
+        {
+          "name": "receiver_envelope",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 1000000.0
+          },
+          "origin": "hypothetical",
+          "scope": "Causal first-order envelope receiver after carrier translation. 1 MHz is an editable design assumption, not the GW carrier frequency or a published raw SQUID bandwidth.",
+          "source": "https://arxiv.org/abs/2501.11723"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "The benchmark receiver envelope is not a measured SQUID calibration. Mechanical GW force and broadband response must not be replaced by a global exponential penalty."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "mwb_dmr_broad": {
+      "name": "Mag. Weber bars (broadband)",
+      "representative_component": "mechanical_mode",
+      "components": [
+        {
+          "name": "mechanical_mode",
+          "kind": "oscillator",
+          "parameters": {
+            "frequency_hz": 1000,
+            "quality_factor": 10000000.0
+          },
+          "origin": "published_parameters",
+          "scope": "Near the mechanical resonance only; Eq. S4. Not a global broadband minimum source lifetime.",
+          "source": "https://arxiv.org/html/2408.01483v2"
+        },
+        {
+          "name": "receiver_envelope",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 1000000.0
+          },
+          "origin": "hypothetical",
+          "scope": "Causal first-order envelope receiver after carrier translation. 1 MHz is an editable design assumption, not the GW carrier frequency or a published raw SQUID bandwidth.",
+          "source": "https://arxiv.org/abs/2501.11723"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "The benchmark receiver envelope is not a measured SQUID calibration. Mechanical GW force and broadband response must not be replaced by a global exponential penalty."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "ligo_o4a": {
+      "name": "LIGO O4a",
+      "representative_component": "darm_pole",
+      "components": [
+        {
+          "name": "darm_pole",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 450
+          },
+          "origin": "published_parameters",
+          "scope": "Nominal O4 audio-band coupled-cavity DARM pole, Sec. V.1. Not the bare arm-cavity storage time.",
+          "source": "https://arxiv.org/html/2411.14607"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "A nominal one-pole benchmark, not an epoch-specific calibrated complex response or an optical-FSR model."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "ligo_data": {
+      "name": "LIGO Hanford (existing PSD)",
+      "representative_component": "darm_pole",
+      "components": [
+        {
+          "name": "darm_pole",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 450
+          },
+          "origin": "published_parameters",
+          "scope": "Nominal O4 audio-band coupled-cavity DARM pole, Sec. V.1. Not the bare arm-cavity storage time.",
+          "source": "https://arxiv.org/html/2411.14607"
+        }
+      ],
+      "assumptions": [
+        "Apply the nominal O4 450 Hz pole to an existing PSD whose epoch is unspecified."
+      ],
+      "limitations": [
+        "A nominal one-pole benchmark, not an epoch-specific calibrated complex response or an optical-FSR model."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "adv_ligo": {
+      "name": "LIGO HF (analytic)",
+      "representative_component": "comb_tooth",
+      "components": [
+        {
+          "name": "comb_tooth",
+          "kind": "oscillator",
+          "parameters": {
+            "frequency_hz": 37474.05725,
+            "quality_factor": 37.47405725,
+            "drive_comb_spacing_hz": 37474.05725,
+            "power_linewidth_hz": 1000
+          },
+          "origin": "hypothetical",
+          "scope": "Representative optical comb tooth with assumed power FWHM 1 kHz. The physical FSR is c/(2L), not the legacy 1000 Hz ASD anchor.",
+          "source": "https://arxiv.org/html/2409.03019"
+        }
+      ],
+      "assumptions": [
+        "Loaded FWHM of 1 kHz is an explicit hypothetical representative tooth. Real linewidth and response vary with tooth/frequency; the plotted smooth ASD does not specify them.",
+        "For duration diagnostics, apply the same assumed 1 kHz linewidth to each notional comb tooth; this is not a reconstructed frequency-dependent optical comb."
+      ],
+      "limitations": [
+        "The smooth analytic ASD remains a sensitivity envelope, not the reconstructed resonant optical comb. A single component time is not a validated high-frequency GW response."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "holometer": {
+      "name": "Holometer",
+      "representative_component": "receiver_rlc",
+      "components": [
+        {
+          "name": "optical_window",
+          "kind": "propagation_window",
+          "parameters": {
+            "length_m": 39.2,
+            "passes": 2
+          },
+          "origin": "published_parameters",
+          "scope": "Single-pass Michelson optical response window; not a cavity exponential or the 350 Hz carrier recycling response.",
+          "source": "https://arxiv.org/html/1611.08265"
+        },
+        {
+          "name": "receiver_rlc",
+          "kind": "oscillator",
+          "parameters": {
+            "frequency_hz": 1500000.0,
+            "quality_factor": 2
+          },
+          "origin": "published_parameters",
+          "scope": "HF receiver RLC damping envelope, Sec. 5.1. This is a component time, not full calibrated impulse response.",
+          "source": "https://arxiv.org/html/1611.08265"
+        },
+        {
+          "name": "receiver_lowpass",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 10000000.0
+          },
+          "origin": "published_parameters",
+          "scope": "Approximate additional HF receiver low-pass pole, Sec. 5.1.",
+          "source": "https://arxiv.org/html/1611.08265"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "Two-pole Bessel ADC filtering and measured calibration transfer functions remain necessary for a complete readout model."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "mago_broad": {
+      "name": "MAGO (broadband)",
+      "representative_component": "signal_em_mode",
+      "components": [
+        {
+          "name": "mechanical_mode",
+          "kind": "oscillator",
+          "parameters": {
+            "angular_frequency_rad_s": 10000.0,
+            "quality_factor": 1000000.0
+          },
+          "origin": "published_parameters",
+          "scope": "Approximate lowest mechanical mode benchmark. Only relevant near the mechanical mode.",
+          "source": "https://arxiv.org/html/2303.01518v1"
+        },
+        {
+          "name": "signal_em_mode",
+          "kind": "oscillator",
+          "parameters": {
+            "angular_frequency_rad_s": 1000000000.0,
+            "quality_factor": 100000.0,
+            "drive_frequency_hz": 1591.5494309189535,
+            "power_linewidth_hz": 1591.5494309189535
+          },
+          "origin": "published_parameters",
+          "scope": "Broadband loaded signal EM mode benchmark, Sec. V and App. G. Q_loaded, not intrinsic Q=1e10; pump is already filled. GW drive centre is the mode splitting omega_1-omega_pump, approximately 1e4 rad/s, not the GHz carrier.",
+          "source": "https://arxiv.org/html/2303.01518v1"
+        }
+      ],
+      "assumptions": [
+        "Use the order-of-magnitude angular-frequency benchmarks as written in the source (rad/s); exact geometry/mode values of the digitised curve are not supplied."
+      ],
+      "limitations": [
+        "Coupled mechanical/EM response, detuning, and pump dynamics are not fully reconstructed. Appendix F.2 has a dimensionally inverted printed ring-up expression; times are derived from the damped equations."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "lev_sc_1g": {
+      "name": "Lev. SC 1 g",
+      "representative_component": "receiver_envelope",
+      "components": [
+        {
+          "name": "mechanical_damping",
+          "kind": "mechanical_damping",
+          "parameters": {
+            "damping_rate_s_inv": 1e-10
+          },
+          "origin": "published_parameters",
+          "scope": "Illustrative mechanical damping benchmark from v2. The resulting long damping time is not the response time throughout the free-particle measurement band.",
+          "source": "https://arxiv.org/html/2408.01583v2"
+        },
+        {
+          "name": "receiver_envelope",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 1000000.0
+          },
+          "origin": "hypothetical",
+          "scope": "Causal first-order envelope receiver after carrier translation. 1 MHz is an editable design assumption, not the GW carrier frequency or a published raw SQUID bandwidth.",
+          "source": "https://arxiv.org/abs/2501.11723"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "Exact kappa/omega_* for each digitised curve cannot be uniquely verified from the paper versions. The hypothetical envelope receiver fills this gap; it is not a claimed reconstruction of Fig. 1."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "lev_sc_30kg": {
+      "name": "Lev. SC 30 kg",
+      "representative_component": "receiver_envelope",
+      "components": [
+        {
+          "name": "mechanical_damping",
+          "kind": "mechanical_damping",
+          "parameters": {
+            "damping_rate_s_inv": 1e-10
+          },
+          "origin": "published_parameters",
+          "scope": "Illustrative mechanical damping benchmark from v2. The resulting long damping time is not the response time throughout the free-particle measurement band.",
+          "source": "https://arxiv.org/html/2408.01583v2"
+        },
+        {
+          "name": "receiver_envelope",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 1000000.0
+          },
+          "origin": "hypothetical",
+          "scope": "Causal first-order envelope receiver after carrier translation. 1 MHz is an editable design assumption, not the GW carrier frequency or a published raw SQUID bandwidth.",
+          "source": "https://arxiv.org/abs/2501.11723"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "Exact kappa/omega_* for each digitised curve cannot be uniquely verified from the paper versions. The hypothetical envelope receiver fills this gap; it is not a claimed reconstruction of Fig. 1."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "dmradio_m3_broad": {
+      "name": "DMRadio-m3 (broadband)",
+      "representative_component": "receiver_envelope",
+      "components": [
+        {
+          "name": "receiver_envelope",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 1000000.0
+          },
+          "origin": "hypothetical",
+          "scope": "Causal first-order envelope receiver after carrier translation. 1 MHz is an editable design assumption, not the GW carrier frequency or a published raw SQUID bandwidth.",
+          "source": "https://arxiv.org/abs/2501.11723"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "Review Eq. 118: no LC Q enhancement; do not borrow Q=1e5 from the resonant scanning mode.",
+        "No intrinsic resonant buildup is assumed for the ideal broadband contribution. The 1 MHz receiver model is hypothetical and does not assert a measured hardware settling time."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "dmradio_gut_broad": {
+      "name": "DMRadio-GUT (broadband)",
+      "representative_component": "receiver_envelope",
+      "components": [
+        {
+          "name": "receiver_envelope",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 1000000.0
+          },
+          "origin": "hypothetical",
+          "scope": "Causal first-order envelope receiver after carrier translation. 1 MHz is an editable design assumption, not the GW carrier frequency or a published raw SQUID bandwidth.",
+          "source": "https://arxiv.org/abs/2501.11723"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "Review Eq. 118: no LC Q enhancement; do not borrow Q=2e7 from the resonant scanning mode.",
+        "No intrinsic resonant buildup is assumed for the ideal broadband contribution. The 1 MHz receiver model is hypothetical and does not assert a measured hardware settling time."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "madmax_broad": {
+      "name": "MADMAX (broadband)",
+      "representative_component": "receiver_envelope",
+      "components": [
+        {
+          "name": "receiver_envelope",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 1000000.0
+          },
+          "origin": "hypothetical",
+          "scope": "Causal first-order envelope receiver after carrier translation. 1 MHz is an editable design assumption, not the GW carrier frequency or a published raw SQUID bandwidth.",
+          "source": "https://arxiv.org/abs/2501.11723"
+        },
+        {
+          "name": "conversion_path",
+          "kind": "propagation_window",
+          "parameters": {
+            "length_m": 1,
+            "passes": 1
+          },
+          "origin": "published_parameters",
+          "scope": "Conversion-path light-travel scale; not an exponential ring-up.",
+          "source": "https://arxiv.org/html/2409.06462v1"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "Vacuum-section broadband signal follows the GW wavefront (Sec. V and Eqs. 19-20); resonant disk enhancement is a different contribution.",
+        "No intrinsic resonant buildup is assumed for the ideal broadband contribution. The 1 MHz receiver model is hypothetical and does not assert a measured hardware settling time."
+      ],
+      "calibrated_full_transfer": false
+    },
+    "dali_ii": {
+      "name": "DALI II (broadband)",
+      "representative_component": "receiver_envelope",
+      "components": [
+        {
+          "name": "receiver_envelope",
+          "kind": "lowpass",
+          "parameters": {
+            "pole_hz": 1000000.0
+          },
+          "origin": "hypothetical",
+          "scope": "Causal first-order envelope receiver after carrier translation. 1 MHz is an editable design assumption, not the GW carrier frequency or a published raw SQUID bandwidth.",
+          "source": "https://arxiv.org/abs/2501.11723"
+        },
+        {
+          "name": "conversion_path",
+          "kind": "propagation_window",
+          "parameters": {
+            "length_m": 1.1,
+            "passes": 1
+          },
+          "origin": "published_parameters",
+          "scope": "Conversion-path light-travel scale; not an exponential ring-up.",
+          "source": "https://arxiv.org/abs/2501.11723"
+        }
+      ],
+      "assumptions": [],
+      "limitations": [
+        "Review Eq. 126 and Table 5 use broadband thermal readout; axion-resonator Q~1e4 is not assigned to this curve.",
+        "No intrinsic resonant buildup is assumed for the ideal broadband contribution. The 1 MHz receiver model is hypothetical and does not assert a measured hardware settling time."
+      ],
+      "calibrated_full_transfer": false
+    }
+  }
+}

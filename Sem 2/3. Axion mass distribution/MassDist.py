@@ -1,37 +1,48 @@
-'''
-08/11/2026 (FS)
-Script to calculate and create histograms of axion mass distributions in
-the string axiverse by solving the hessian for triangulated Calabi-Yau
-manifolds from the Kreuzer-Skarke database using the cytools package.
+"""Compute and save axion mass spectra for favorable Kreuzer–Skarke polytopes."""
 
-To run please select the h11, (the hodge number/amount of axions in a
-given polytope) and the number of polytopes n_polys (the amount of
-polytopes to be checked, higher n gives better stats). Additionally the
-scaling of the Kahler cone, scaling_of_cone, controls which section of
-the moduli space is selected for evaluation and is essentially another
-free parameter which affects axion masses.
-
-The results are then stored as pickle files and can also be plotted
-directly. This script is best run in WSL/Linux.
-
-Please refer to [INSERT PAPER NAME] for physics explanation.
-'''
-
-from cytools import fetch_polytopes
-import matplotlib.pyplot as plt
-import numpy as np
-from scipy.linalg import eigh
-from typing import Sequence
-from tqdm import tqdm
-import pickle
-import os
+import argparse
+from functools import partial
+import hashlib
+from importlib.metadata import version
+from itertools import permutations
+import json
 import multiprocessing as mp
+import os
+from pathlib import Path
+import pickle
+import tempfile
+from typing import NamedTuple, Sequence
+import warnings
 
-h11=30
-n_polys=50
-scaling_of_cone = 2
+if __name__ == "__main__":
+    for variable in (
+        "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS", "NUMBA_NUM_THREADS",
+    ):
+        os.environ.setdefault(variable, "1")
+
+from cytools import Polytope
+import numpy as np
+
+from MassDistBatch import run_mass_jobs
+from MassDistInputs import load_polytope_vertices
+from MassDistMath import AxionPotential, instanton_charges, multiprecision_masses
+
+# Install the filter in the main process and in spawned workers.
+warnings.filterwarnings(
+    "ignore",
+    message=r"(divide by zero|overflow|invalid value) encountered in det$",
+    category=RuntimeWarning,
+    module=r"numpy\.linalg(?:\..*)?$",
+)
+
+h11 = 10
+n_polys = 100000
+max_workers = 8  # Maximum number of polytopes to process concurrently
+scaling_of_cone = 1
 
 M_pl_in_ev = 1.22e28
+W0 = 1.0
 
 def axion_potential(theta: Sequence[float],
                     q: np.ndarray,
@@ -115,11 +126,11 @@ def axion_potential_optimized(theta: np.ndarray,
     """
     theta = np.asarray(theta, dtype=float)
     n_inst = len(q)
-    
+
     # First sum: only compute theta-dependent parts
     qa_dot_theta = q.dot(theta)
     term1 = np.sum(qa_dot_tau_precomp * W0 * exp_qa_dot_tau_precomp * np.cos(2*np.pi * qa_dot_theta))
-    
+
     # Second double-sum: only compute theta-dependent parts
     term2 = 0.0
     idx = 0
@@ -129,7 +140,7 @@ def axion_potential_optimized(theta: np.ndarray,
             bracket = qa_ginv_qb_precomp[idx] + qsum_dot_tau_precomp[idx]
             term2 += bracket * exp_qsum_dot_tau_precomp[idx] * np.cos(2*np.pi * qdiff_dot_theta)
             idx += 1
-    
+
     V = prefactor * (term1 + term2)
     V_phys = V * M_pl_in_ev**4
     return float(V_phys)
@@ -138,19 +149,19 @@ def numerical_hessian(f, x0, eps=1e-5):
     x0 = np.asarray(x0, dtype=float)
     n = x0.size
     H = np.zeros((n, n))
-    
-    for i in tqdm(range(n), desc="Computing Hessian"):
+
+    for i in range(n):
         dx_i = np.zeros(n)
         dx_i[i] = eps
         for j in range(i, n):
             dx_j = np.zeros(n)
             dx_j[j] = eps
-            
+
             f_pp = f(x0 + dx_i + dx_j)
             f_pm = f(x0 + dx_i - dx_j)
             f_mp = f(x0 - dx_i + dx_j)
             f_mm = f(x0 - dx_i - dx_j)
-            
+
             H[i, j] = (f_pp - f_pm - f_mp + f_mm) / (4 * eps**2)
             if i != j:
                 H[j, i] = H[i, j]
@@ -158,196 +169,369 @@ def numerical_hessian(f, x0, eps=1e-5):
     return H
 
 
-def find_masses(polytope, silent=True, return_masses=True, return_potential=False, plot_hessian=False, plot_potential=False):
-    # First find CY manifold for each polytope, we need to do this via triangulation
-    t = polytope.triangulate(backend="topcom")
-    # t = t.random_flips(10, only_fine=True, only_star=True)
-    cy = t.get_cy()
+class Geometry(NamedTuple):
+    q: np.ndarray
+    tau: np.ndarray
+    inverse_metric: np.ndarray
+    volume: float
+    precise_divisor_volumes: np.ndarray | None = None
 
-    # Now we want the intersection numbers \kappa_{ijk} to be able to compute the CY volume
-    kappa = cy.intersection_numbers()
+    def scaled(self, cone_scale):
+        # The base point is the unit-stretched tip on this same cone ray.
+        divisor_volumes = self.precise_divisor_volumes
+        if divisor_volumes is not None:
+            divisor_volumes = divisor_volumes * cone_scale**2
+        return Geometry(
+            self.q,
+            self.tau * cone_scale**2,
+            self.inverse_metric * cone_scale**4,
+            self.volume * cone_scale**3,
+            divisor_volumes,
+        )
 
-    # Now comes the point where we choose a random point in the cone
-    # I can't remember if this is just cause of sampling and we would ideally integrate over all points
-    # or if it's something else.
-    # I think it might be to do with fixing the saxion value
-    # It might implicitly set dV/dtau = 0
-    cone = cy.toric_kahler_cone()
-    point = cone.tip_of_stretched_cone(scaling_of_cone)
 
-    # Compute the total colume of the CY space
-    V = cy.compute_cy_volume(point)
-    # Find the saxion field (is this literally just a number?)
-    tau = cy.compute_divisor_volumes(point, in_basis=True)
-    # Seems to return list of 14 floats if in_basis=False, otherwise it returns list of 10
-    # tau = tau/np.mean(tau)
+def _precise_geometry(q, point, intersections):
+    from mpmath import mp
 
-    # Get the metric, might be handy later?
-    g = cy.compute_kahler_metric(point)
-    g_inv = cy.compute_inverse_kahler_metric(point)
+    ctx = mp.clone()
+    ctx.dps = 55
+    t = ctx.matrix(point.tolist())
+    contraction = ctx.matrix(len(point))
+    for indices, coefficient in intersections.items():
+        value = ctx.mpf(float(coefficient))
+        for i, j, k in set(permutations(indices)):
+            contraction[i, j] += value * t[k]
+    tau = contraction * t / 2
+    volume = (tau.T * t)[0] / 3
+    # Convert the divisor volumes only after applying the charge matrix.
+    # Rounding tau first would reintroduce cancellation in q @ tau.
+    divisor_volumes = np.asarray((ctx.matrix(q.tolist()) * tau).tolist(), dtype=float).ravel()
+    inverse_metric = 4 * (tau * tau.T - contraction * volume)
+    return Geometry(q, np.asarray(tau.tolist(), dtype=float).ravel(),
+                    np.asarray(inverse_metric.tolist(), dtype=float), float(volume), divisor_volumes)
 
-    # Now we just need to compute the hessian and find the masses from that
-    # Need to define a wrapper function for the potential
-    # To do this we need to find q, the integer charge vector
-    # Then should be able to calculate the Hessian straight from that
-    # Then we should be able to get the masses as m^2 = g^-1 H, where g^-1 is to remove kinetic terms
 
-    prime_divisors = cy.prime_toric_divisors() # We can use prime toric divisors as they're basically always rigid
-    basis = cy.divisor_basis(as_matrix=True)
+def _geometry_at_tip(triangulation):
+    cy = triangulation.get_cy()
+    point = cy.toric_kahler_cone().tip_of_stretched_cone(1)
+    if point is None:
+        raise ValueError("CYTools did not find a stretched Kähler-cone tip.")
+    # Contract CYTools' checked Calabi–Yau intersection numbers in the cone's
+    # divisor basis. The fast fan volume helpers can give inaccurate
+    # intersection coefficients, especially when high-h11 volumes cancel.
+    kappa_point = np.zeros((len(point), len(point)))
+    intersections = cy.intersection_numbers(in_basis=True)
+    for indices, coefficient in intersections.items():
+        for i, j, k in set(permutations(indices)):
+            kappa_point[i, j] += coefficient * point[k]
+    tau = (kappa_point @ point) / 2
+    volume = float(tau @ point / 3)
+    q = instanton_charges(cy)
+    divisor_volumes = q @ tau
+    if not np.all(np.isfinite(divisor_volumes) & (divisor_volumes > 0)):
+        geometry = _precise_geometry(q, point, intersections)
+        divisor_volumes = geometry.precise_divisor_volumes
+        if not np.all(np.isfinite(divisor_volumes) & (divisor_volumes > 0)):
+            raise ValueError(
+                f"Invalid prime divisor volumes at the cone tip after a precision retry "
+                f"(minimum {divisor_volumes.min():g})."
+            )
+        if not np.isfinite(geometry.volume) or geometry.volume <= 0:
+            raise ValueError(f"Invalid Calabi–Yau volume at the cone tip ({geometry.volume:g}).")
+        print("Used higher precision for divisor volumes at the original cone tip.", flush=True)
+        return geometry
+    if not np.isfinite(volume) or volume <= 0:
+        raise ValueError(f"Invalid Calabi–Yau volume at the cone tip ({volume:g}).")
+    inverse_metric = 4 * (np.outer(tau, tau) - kappa_point * volume)
+    return Geometry(q, tau, inverse_metric, volume)
 
-    # Now we need the charge matrix (whatever that is)
-    q_list = []
 
-    for div_index in prime_divisors:
-        q_list.append(basis[:, div_index])
-    
-    q_list = np.array(q_list)
+def _potential(geometry):
+    return AxionPotential(
+        *geometry[:4], M_pl_in_ev, W0=W0, divisor_volumes=geometry.precise_divisor_volumes,
+    )
+
+
+def find_masses(
+    polytope,
+    silent=True,
+    return_masses=True,
+    return_potential=False,
+    plot_hessian=False,
+    plot_potential=False,
+):
+    """Compute masses or return the potential for a single TOPCOM geometry."""
+    geometry = _geometry_at_tip(polytope.triangulate(backend="topcom")).scaled(scaling_of_cone)
+    potential = _potential(geometry)
+    masses = potential.masses() if return_masses else None
+
     if not silent:
-        print("Charge matrix shape:", q_list.shape)
-        print(q_list)
-        print(f"\n tau: {tau}")
+        print(f"Charge matrix shape: {geometry.q.shape}")
+        print(f"Charge matrix rank: {np.linalg.matrix_rank(geometry.q)}")
+        if masses is not None:
+            finite = masses[np.isfinite(masses)]
+            print(f"Finite masses: {finite.size}/{masses.size}")
+            if finite.size:
+                print(f"Mass range [eV]: {finite.min():.6g} to {finite.max():.6g}")
 
-    # Pre-compute expensive operations that don't depend on theta
-    W0 = 1  # Approximation for classical flux superpotential used in 1808.0282
-    prefactor = -8.0 * np.pi / (V**2)
-    
-    # Pre-compute q·tau and its exponential (used in term1)
-    qa_dot_tau = q_list @ tau
-    exp_qa_dot_tau = np.exp(-2*np.pi * qa_dot_tau)
-    
-    # Pre-compute all metric products and (q_a + q_b)·tau for term2
-    n_inst = len(q_list)
-    n_pairs = n_inst * (n_inst - 1) // 2
-    qa_ginv_qb = np.zeros(n_pairs)
-    qsum_dot_tau = np.zeros(n_pairs)
-    exp_qsum_dot_tau = np.zeros(n_pairs)
-    
-    idx = 0
-    for a in range(n_inst):
-        qa = q_list[a]
-        for b in range(a):
-            qb = q_list[b]
-            qa_ginv_qb[idx] = np.pi * (qa @ g_inv @ qb)
-            qsum_dot_tau[idx] = qa_dot_tau[a] + qa_dot_tau[b]
-            exp_qsum_dot_tau[idx] = np.exp(-2*np.pi * qsum_dot_tau[idx])
-            idx += 1
-    
-    def pot_wrapper(theta):
-        theta = np.asarray(theta).reshape(-1)
-        return axion_potential_optimized(theta=theta,
-                                         q=q_list,
-                                         W0=W0,
-                                         prefactor=prefactor,
-                                         qa_dot_tau_precomp=qa_dot_tau,
-                                         exp_qa_dot_tau_precomp=exp_qa_dot_tau,
-                                         qsum_dot_tau_precomp=qsum_dot_tau,
-                                         exp_qsum_dot_tau_precomp=exp_qsum_dot_tau,
-                                         qa_ginv_qb_precomp=qa_ginv_qb)
+    if plot_hessian or plot_potential:
+        import matplotlib.pyplot as plt
 
-    theta0 = np.zeros(h11)
-    H = numerical_hessian(pot_wrapper, theta0)
-
-    # Plot 1: Potential along diagonal (all thetas equal)
-    if plot_potential:
-        theta_vals = np.linspace(-2*np.pi, 2*np.pi, 500)
-        V_diagonal = [pot_wrapper(t * np.ones(h11)) for t in theta_vals]
-        
-        plt.figure(figsize=(10, 6))
-        plt.plot(theta_vals, V_diagonal, 'b-', linewidth=2)
-        plt.xlabel(r'$\theta$ (all $\theta_i$ equal) [radians]', fontsize=12)
-        plt.ylabel(r'$V(\theta)$ [eV$^4$]', fontsize=12)
-        plt.title(f'Axion Potential Along Diagonal (h$^{{1,1}}$ = {h11})', fontsize=14, fontweight='bold')
-        plt.grid(True, alpha=0.3)
-        plt.tight_layout()
+        if plot_hessian:
+            _, ax = plt.subplots()
+            image = ax.imshow(potential.hessian(), cmap="RdBu_r")
+            ax.set(xlabel="Axion index", ylabel="Axion index", title="Axion Hessian at the origin")
+            plt.colorbar(image, label=r"Hessian element [eV$^4$]")
+        if plot_potential:
+            angles = np.linspace(-0.5, 0.5, 500)
+            _, ax = plt.subplots()
+            ax.plot(angles, [potential(angle * np.ones(len(geometry.tau))) for angle in angles])
+            ax.set(xlabel="Common axion angle (period 1)", ylabel=r"Potential [eV$^4$]")
         plt.show()
 
-    eigvals, eigvecs = eigh(H, g)  # This is solving the generalised eigenvalue problem which avoids the need to actively transform to canonical basis
-
-    sqrt_lambda = np.where(eigvals >= 0, np.sqrt(eigvals), np.nan)
-    masses_ev = sqrt_lambda / M_pl_in_ev
-    if not silent:
-        print(f"Mean mass [eV]: {np.mean(masses_ev)}")
-        print(f"Mass range [eV]: {np.min(masses_ev)} - {np.max(masses_ev)}, min non-zero val: {np.min([m for m in masses_ev if m!=0])}")
-
-        print("Rank(q):", np.linalg.matrix_rank(q_list))
-        print("Min exp suppression:", np.min(np.exp(-2*np.pi * q_list @ tau)))
-        print("Hessian norm:", np.linalg.norm(H))
-        qa_dot_tau = q_list @ tau
-        print("q·tau stats:", np.min(qa_dot_tau), np.max(qa_dot_tau))
-
-    if plot_hessian:
-        # Plot the Hessian matrix
-        plt.figure(figsize=(10, 8))
-        im = plt.imshow(H, cmap='RdBu_r', aspect='auto', interpolation='nearest')
-        plt.colorbar(im, label=r'Hessian Element Value [eV$^4$]')
-        plt.xlabel('Axion Index $j$', fontsize=12)
-        plt.ylabel('Axion Index $i$', fontsize=12)
-        plt.title(r'Hessian Matrix $H_{ij} = \frac{\partial^2 V}{\partial \theta_i \partial \theta_j}$', 
-                fontsize=14, fontweight='bold')
-        plt.tight_layout()
-        plt.show()
-    
     if return_masses and return_potential:
-        return masses_ev, pot_wrapper
-    elif return_masses:
-        return masses_ev
-    elif return_potential:
-        return pot_wrapper
-    else:
-        return None
+        return masses, potential
+    if return_potential:
+        return potential
+    return masses
 
 
-def _find_masses_worker(polytope):
-    return find_masses(polytope)
+def _signature(*values):
+    serialized = json.dumps(values, separators=(",", ":"), sort_keys=True).encode()
+    return hashlib.sha256(serialized).hexdigest()
+
+
+def _write_atomic(path, write):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+        temporary = Path(handle.name)
+        try:
+            write(handle)
+            handle.close()
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def _compute_geometry_batch(vertices, task_seed, backend, triangulations):
+    polytope = Polytope(vertices)
+    if triangulations == 1:
+        return [_geometry_at_tip(polytope.triangulate(backend=backend))]
+    # A small polytope may have fewer than the requested number of distinct FRSTs.
+    sample = polytope.random_triangulations_fast(
+        N=triangulations, backend=backend, seed=task_seed, progress_bar=False,
+    )
+    geometries = [_geometry_at_tip(triangulation) for triangulation in sample]
+    if not geometries:
+        raise ValueError("CYTools did not find any fine, regular, star triangulations.")
+    return geometries
+
+
+def _load_geometry_batch(vertices, task_seed, backend, triangulations, geometry_cache, geometry_version):
+    if geometry_cache is None:
+        return _compute_geometry_batch(vertices, task_seed, backend, triangulations)
+
+    sample_seed = task_seed if triangulations > 1 else None
+    key = _signature(geometry_version, vertices, sample_seed, backend, triangulations)
+    path = geometry_cache / key[:2] / f"{key}.npz"
+    base_fields = Geometry._fields[:-1]
+    if path.exists():
+        with np.load(path, allow_pickle=False) as data:
+            arrays = [data[field] for field in base_fields]
+            return [
+                Geometry(*values, data.get(f"precise_divisor_volumes_{index}"))
+                for index, values in enumerate(zip(*arrays))
+            ]
+
+    geometries = _compute_geometry_batch(vertices, task_seed, backend, triangulations)
+    arrays = {field: np.stack([getattr(geometry, field) for geometry in geometries])
+              for field in base_fields}
+    arrays.update({
+        f"precise_divisor_volumes_{index}": geometry.precise_divisor_volumes
+        for index, geometry in enumerate(geometries)
+        if geometry.precise_divisor_volumes is not None
+    })
+    _write_atomic(path, lambda handle: np.savez(handle, **arrays))
+    return geometries
+
+
+def _find_masses_worker(
+    job, *, scale, backend, triangulations, geometry_cache, geometry_version, precision_dps=None,
+):
+    vertices, task_seed = job
+    geometries = _load_geometry_batch(
+        vertices, task_seed, backend, triangulations, geometry_cache, geometry_version,
+    )
+    scaled = [geometry.scaled(scale) for geometry in geometries]
+    if precision_dps is None:
+        return np.concatenate([_potential(geometry).masses() for geometry in scaled])
+    return np.concatenate([
+        multiprecision_masses(
+            *geometry[:4], M_pl_in_ev, W0=W0, dps=precision_dps,
+            divisor_volumes=geometry.precise_divisor_volumes,
+        )
+        for geometry in scaled
+    ])
+
+
+def _arguments(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--h11", type=int, default=h11)
+    parser.add_argument("--n-polys", type=int, default=n_polys)
+    parser.add_argument("--scale", type=float, default=scaling_of_cone)
+    parser.add_argument("--workers", "--max-workers", type=int, default=max_workers)
+    parser.add_argument("--chunksize", type=int, default=16)
+    parser.add_argument(
+        "--precision-dps", type=int, metavar="DIGITS",
+        help="Build and diagonalize the Hessian with this many decimal digits; default is float64.",
+    )
+    parser.add_argument(
+        "--start-polytope", type=int, default=0, metavar="INDEX",
+        help="Start at this zero-based index in the full seeded sample.",
+    )
+    parser.add_argument(
+        "--take-polys", type=int, metavar="COUNT",
+        help="Calculate up to COUNT polytopes starting at --start-polytope in the seeded sample.",
+    )
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--online-sampling", choices=("full", "prefix"), default="full",
+        help="Draw from the full online catalog or reproduce the legacy prefix sampling.",
+    )
+    parser.add_argument("--backend", choices=("topcom", "cgal", "qhull"), default="topcom")
+    parser.add_argument(
+        "--triangulations-per-polytope", type=int, default=1,
+        help="Request up to this many distinct FRSTs using CYTools fast sampling with CGAL or QHull.",
+    )
+    parser.add_argument(
+        "--cache-dir", type=Path, default=Path.home() / ".cache" / "massdist",
+        help="Local directory for cached vertex samples and resumable mass checkpoints.",
+    )
+    parser.add_argument(
+        "--source-file", type=Path, help="Local Kreuzer–Skarke text or KS Cornell Parquet source."
+    )
+    parser.add_argument(
+        "--cache-geometry", action="store_true",
+        help="Save reusable geometry at the unit-stretched toric cone tip (adds disk usage).",
+    )
+    parser.add_argument(
+        "--output-dir", type=Path, default=Path(__file__).resolve().parent / "mass_dist_pickles",
+    )
+    parser.add_argument("--no-plot", action="store_true", help="Save masses without opening a plot.")
+    args = parser.parse_args(argv)
+    if not 1 <= args.h11 <= 491:
+        parser.error("--h11 must be between 1 and 491.")
+    if min(args.n_polys, args.workers, args.chunksize, args.triangulations_per_polytope) < 1:
+        parser.error("Polytope count, worker count, chunk size and triangulation count must be positive.")
+    if args.precision_dps is not None and args.precision_dps < 16:
+        parser.error("--precision-dps must be at least 16.")
+    if args.start_polytope < 0:
+        parser.error("--start-polytope must be nonnegative.")
+    if args.take_polys is not None and args.take_polys < 1:
+        parser.error("--take-polys must be positive.")
+    if not 0 <= args.seed < 2**32:
+        parser.error("--seed must be between 0 and 4294967295.")
+    if not np.isfinite(args.scale) or args.scale <= 0:
+        parser.error("--scale must be finite and positive.")
+    if args.triangulations_per_polytope > 1 and args.backend == "topcom":
+        parser.error("Multiple triangulations require --backend cgal or --backend qhull.")
+    return args
+
+
+class MassRun(NamedTuple):
+    output: Path
+    n_polytopes: int
+    n_geometries: int
+    n_modes: int
+
+
+def main(argv=None):
+    args = _arguments(argv)
+    vertices = load_polytope_vertices(
+        args.h11, args.n_polys, cache_dir=args.cache_dir / "vertices",
+        seed=args.seed, source_file=args.source_file, online_sampling=args.online_sampling,
+    )
+    if not vertices:
+        raise SystemExit(f"No favorable polytopes found for h11={args.h11}.")
+    start = args.start_polytope
+    if start >= len(vertices):
+        raise ValueError(f"Start index {start} lies outside the sample of {len(vertices)} polytopes.")
+    stop = None if args.take_polys is None else start + args.take_polys
+    vertices = vertices[start:stop]
+    # Keep geometry caches independent of cone scale and mass checkpoints.
+    geometry_version = _signature("unit-cone-tip-checked-intersections-v2", version("cytools"), version("numpy"))
+    geometry_cache = args.cache_dir / "geometry" if args.cache_geometry else None
+    rng = np.random.default_rng(args.seed)
+    # Advance the same seed stream for slices as for the unsliced sample.
+    for _ in range(start):
+        rng.integers(2**32)
+    jobs = [
+        (str(index), (coords, int(rng.integers(2**32))))
+        for index, coords in enumerate(vertices, start=start)
+    ]
+    precision_key = ()
+    precision_label = "float64"
+    precision_suffix = ""
+    if args.precision_dps is not None:
+        precision_key = ("multiprecision-masses-v1", version("mpmath"), args.precision_dps)
+        precision_label = f"{args.precision_dps} decimal digits"
+        precision_suffix = f"_dps{args.precision_dps}"
+    signature = _signature(
+        "analytic-masses-v1", geometry_version, version("scipy"), M_pl_in_ev, W0,
+        args.h11, args.scale, args.backend, args.triangulations_per_polytope, jobs,
+        *precision_key,
+    )
+    workers = min(len(jobs), mp.cpu_count(), args.workers)
+    print(f"Using {len(jobs):,} favorable polytopes (requested up to {args.n_polys:,})")
+    print(f"Using {workers} worker(s), {args.backend} backend, cone scale {args.scale:g}")
+    print(f"Hessian and eigensolver precision: {precision_label}")
+    worker = partial(
+        _find_masses_worker, scale=args.scale, backend=args.backend,
+        triangulations=args.triangulations_per_polytope, geometry_cache=geometry_cache,
+        geometry_version=geometry_version, precision_dps=args.precision_dps,
+    )
+    mass_list = run_mass_jobs(
+        jobs, worker, workers=workers, chunksize=args.chunksize,
+        checkpoint_path=args.cache_dir / "checkpoints" / f"{signature[:20]}.sqlite3",
+        run_signature=signature,
+    )
+    if any(len(masses) % args.h11 for masses in mass_list):
+        raise ValueError(f"Worker returned a spectrum with incompatible dimension for h11={args.h11}.")
+    spectra = np.concatenate(mass_list)
+    n_geometries = len(spectra) // args.h11
+    all_masses = spectra[np.isfinite(spectra)]
+    filename = (
+        f"masses_h11_{args.h11}_npolys_{len(jobs)}_scaling_{args.scale:g}"
+        f"_nmasses_{len(all_masses)}{precision_suffix}_{signature[:12]}.pkl"
+    )
+    output = args.output_dir / filename
+    _write_atomic(output, lambda handle: pickle.dump(all_masses, handle, protocol=pickle.HIGHEST_PROTOCOL))
+    print(f"Saved {len(all_masses):,} finite masses from {n_geometries:,} geometries to {output}")
+    excluded = len(spectra) - len(all_masses)
+    if excluded:
+        reason = "negative squared masses or nonfinite mass"
+        if args.precision_dps is not None:
+            reason = "negative or unresolved squared masses, or nonfinite mass"
+        print(f"Excluded {excluded:,} modes with {reason}.")
+
+    result = MassRun(output, len(jobs), n_geometries, len(spectra))
+    if not args.no_plot:
+        import matplotlib.pyplot as plt
+
+        positive = all_masses[all_masses > 0]
+        if not len(positive):
+            print("No positive masses to plot on a logarithmic axis.")
+            return result
+        logs = np.log10(positive)
+        _, ax = plt.subplots(figsize=(12, 7))
+        ax.hist(logs, bins=50, density=True, color="steelblue", edgecolor="black")
+        ax.set(xlabel=r"$\log_{10}(m_a/\mathrm{eV})$", ylabel="Density",
+               xlim=(-33, 30),
+               title=f"{n_geometries:,} geometries, h11={args.h11}, cone scale={args.scale:g}"
+                     f" ({precision_label})")
+        plt.show()
+    return result
+
 
 if __name__ == "__main__":
-    print('checking')
-
-    # Get all the polytopes we want, I think these are drawn randomly from KS database
-    print('fetching polytopes')
-    polytopes = fetch_polytopes(h11=h11, lattice="N", favorable=True, limit=n_polys)
-
-    available_cores = mp.cpu_count()
-    n_workers = max(1, min(len(polytopes), available_cores))
-    print(f"Detected CPU cores: {available_cores}")
-    print(f"Using multiprocessing workers: {n_workers}")
-    print("Live progress: tqdm progress bar updates as each polytope completes.")
-
-    try:
-        with mp.Pool(processes=n_workers) as pool:
-            mass_list = list(tqdm(pool.imap(_find_masses_worker, polytopes), total=len(polytopes), desc="Processing polytopes"))
-    except Exception as exc:
-        print(f"Multiprocessing failed ({exc}); falling back to serial processing.")
-        print("Using serial workers: 1")
-        mass_list = [_find_masses_worker(polytope) for polytope in tqdm(polytopes, desc="Processing polytopes")]
-
-    # Flatten the list of arrays and remove NaNs
-    all_masses = np.concatenate([m[~np.isnan(m)] for m in mass_list if m is not None])
-
-    # Save masses to pickle file (in same directory as this script)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    pickle_dir = os.path.join(script_dir, 'mass_dist_pickles')
-    os.makedirs(pickle_dir, exist_ok=True)
-    pickle_filename = os.path.join(pickle_dir, f'masses_h11_{h11}_npolys_{n_polys}_scaling_{scaling_of_cone}_nmasses_{len(all_masses)}.pkl')
-    with open(pickle_filename, 'wb') as f:
-        pickle.dump(all_masses, f)
-    print(f"Saved masses to {pickle_filename}")
-
-    # Plot histogram with logarithmic x-axis and normalized y-axis
-    plt.figure(figsize=(12, 7))
-    # Create logarithmically spaced bins
-    mass_min = np.min(all_masses[all_masses > 0])  # Exclude zeros for log scale
-    mass_max = np.max(all_masses)
-    log_bins = np.logspace(np.log10(mass_min), np.log10(mass_max), 51)  # 51 edges = 50 bins
-    plt.hist(all_masses, bins=log_bins, edgecolor='black', alpha=0.7, color='steelblue')
-    plt.xlabel('Axion Mass [eV]', fontsize=12)
-    plt.ylabel('N', fontsize=12)
-    plt.title(f'Distribution of Axion Masses (N = {len(all_masses)} masses from {n_polys} polytopes\nwith h11={h11} and Kahler cone stretching of {scaling_of_cone})', 
-              fontsize=14, fontweight='bold')
-    plt.xscale('log')
-    plt.grid(True, alpha=0.3, which='both')
-    plt.tight_layout()
-    plt.show()
-
-
-
+    main()

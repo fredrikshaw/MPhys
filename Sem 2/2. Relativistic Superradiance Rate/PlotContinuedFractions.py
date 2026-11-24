@@ -36,7 +36,6 @@ FILES = [
     "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n3l2m2_at0.990_aMin0.010_aMax0.954_20260504.dat",
     "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n4l3m3_at0.990_aMin0.300_aMax1.432_20260504.dat",
     "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n5l4m4_at0.990_aMin0.500_aMax2.100_20260504.dat",
-    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_optimised_n8l7m7_at0.99_20261110_154215_9e1f5d41.dat"
 ]
 
 

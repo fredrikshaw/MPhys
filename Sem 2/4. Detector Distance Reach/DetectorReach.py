@@ -29,6 +29,8 @@ import numpy as np
 import sys
 from pathlib import Path
 import matplotlib.pyplot as plt
+from scipy.integrate import quad
+from scipy.optimize import brentq
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Import all detector machinery from GWDetectors.py
@@ -846,17 +848,37 @@ def plot_reach(results, alpha, process_label,
 
 
 def _rate_density_to_distance_kpc(rate_density_kpc):
-    """Convert a uniform event-rate density [yr^-1 kpc^-3] to a 1-event/year radius [kpc]."""
-    rate = np.asarray(rate_density_kpc, dtype=float)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        distance = np.where(
-            rate > 0,
-            (3.0 / (4.0 * np.pi * rate)) ** (1.0 / 3.0),
-            np.nan,
+    """Integrate the uniform merger-rate model over a sphere for one year."""
+    rates = np.asarray(rate_density_kpc, dtype=float)
+    distances = np.full_like(rates, np.nan)
+    exposure_years = 1.0
+
+    for index, rate in np.ndenumerate(rates):
+        if not np.isfinite(rate) or rate <= 0:
+            continue
+
+        def count_residual(radius):
+            # Integrate in fractional radius to keep the quadrature
+            # well-scaled for both small and large distances.
+            def shell_count(fraction):
+                return rate * radius * radius * radius * (4.0 * np.pi * fraction**2)
+
+            expected_count, _ = quad(shell_count, 0.0, 1.0)
+            return exposure_years * expected_count - 1.0
+
+        lower, upper = 0.0, 1.0
+        while count_residual(upper) < 0.0:
+            lower, upper = upper, 2.0 * upper
+        while count_residual(upper / 2.0) >= 0.0:
+            upper *= 0.5
+        lower = max(lower, upper / 2.0)
+        distances[index] = brentq(
+            count_residual, lower, upper, xtol=np.finfo(float).tiny
         )
-    if np.ndim(rate) == 0:
-        return float(distance)
-    return distance
+
+    if distances.ndim == 0:
+        return float(distances)
+    return distances
 
 
 def compute_merger_reach_curve(
@@ -936,7 +958,7 @@ if __name__ == '__main__':
 
     # ── Common parameters ─────────────────────────────────────────────────────
     alpha      = 0.4
-    astar_init = 0.99
+    astar_init = 0.69
     M_range    = (1e-12, 1e4)
     rho_star   = 1.0               # SNR threshold
     savedir    = 'Sem 2/4. Detector Distance Reach/Plots'

@@ -1,4 +1,5 @@
 import sys
+from itertools import cycle
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -35,6 +36,7 @@ FILES = [
     "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n3l2m2_at0.990_aMin0.010_aMax0.954_20260504.dat",
     "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n4l3m3_at0.990_aMin0.300_aMax1.432_20260504.dat",
     "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_n5l4m4_at0.990_aMin0.500_aMax2.100_20260504.dat",
+    "Sem 2/2. Relativistic Superradiance Rate/Mathematica/Data/SR_optimised_n8l7m7_at0.99_20261110_154215_9e1f5d41.dat"
 ]
 
 
@@ -42,7 +44,8 @@ COLOURS = [
     "#191970",  # MidnightBlue (low L)
     "#4169E1",  # RoyalBlue
     "#9370DB",  # MediumPurple (bridge tone)
-    "#B22222"   # BrickRed (high L)
+    "#B22222",  # BrickRed (high L)
+    "#D2691E"   # Chocolate (highest L)
 ]
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -69,8 +72,17 @@ def parse_quantum_numbers(filepath):
     return fname, None
 
 
+def resolve_data_path(filepath):
+    path = Path(filepath).expanduser()
+    if not path.is_absolute():
+        path = sem2_dir.parent / path
+    return path
+
+
 def load_file(filepath):
-    df = pd.read_csv(filepath, sep="\t")
+    # Both the original Mathematica exports and optimised exports are TSV.
+    filepath = resolve_data_path(filepath)
+    df = pd.read_csv(filepath, sep="\t", encoding="utf-8-sig")
     df.columns = df.columns.str.strip().str.strip('"')
     df["alpha"]       = df["alpha"].apply(parse_mathematica_number)
     df["CF_Gamma"]    = df["CF_Gamma"].apply(parse_mathematica_number)
@@ -89,12 +101,12 @@ plt.rcParams.update({
 
 fig, ax = plt.subplots(figsize=(4, 3.5))
 
-for filepath, colour in zip(FILES, COLOURS):
+for filepath, colour in zip(FILES, cycle(COLOURS)):
     label, quantum_numbers = parse_quantum_numbers(filepath)
     df = load_file(filepath)
 
     if quantum_numbers: 
-        n, m, l = quantum_numbers
+        n, l, m = quantum_numbers
         a_star = 0.99 # replace later
 
         # CF data: positive values only
@@ -148,7 +160,7 @@ legend_handles = [
 ax.set_xlabel(r"$\alpha$", fontsize=13)
 ax.set_ylabel(r"$\log_{10}(\Gamma^{\mathrm{sr}} r_g)$", fontsize=13)
 ax.yaxis.set_major_locator(mticker.MultipleLocator(2))
-ax.set_ylim(-16, -6)
+#ax.set_ylim(-16, -6)
 
 # Add minor tick marks at log-subdivisions (2..9) within each decade.
 y_min, y_max = ax.get_ylim()
@@ -164,11 +176,11 @@ ax.tick_params(axis="y", which="minor", length=3)
 
 # Keep grid lines only on major ticks.
 #ax.grid(True, which="major", linestyle="--", alpha=0.4)
-ax.set_xlim(0, 2.25)
+ax.set_xlim(0, 3.25)
 
 plt.tight_layout()
 
-output_path = Path("Sem 2/2. Relativistic Superradiance Rate/Plots/superradiance_plot.pdf")
+output_path = current_dir / "Plots" / "superradiance_plot.pdf"
 output_path.parent.mkdir(parents=True, exist_ok=True)
 plt.savefig(output_path, dpi=150)
 plt.show()
